@@ -29,8 +29,19 @@ def _save(genre: str, data: dict) -> Path:
     return path
 
 
+def _save_gdd_draft(interrupt_value: dict) -> Path:
+    """Save the GDD draft to a file so the human can review it."""
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    path = OUTPUT_DIR / "gdd_draft.json"
+    path.write_text(json.dumps(interrupt_value["gdd"], indent=2))
+    return path
+
+
 def _display_hitl_prompt(interrupt_value: dict) -> str:
-    """Show the GDD + review to the human and collect their response."""
+    """Save the GDD for review, show summary + review, and collect response."""
+    # Save full GDD to file for human to read
+    draft_path = _save_gdd_draft(interrupt_value)
+
     print("\n" + "=" * 60)
     print("  HUMAN REVIEW REQUIRED — Game Design Document")
     print("=" * 60)
@@ -39,6 +50,8 @@ def _display_hitl_prompt(interrupt_value: dict) -> str:
     print(f"  Score:    {interrupt_value['auto_review_score']}/10"
           f" ({'PASSED' if interrupt_value['auto_review_passed'] else 'MAX ATTEMPTS'})")
     print(f"  Attempt:  {interrupt_value['gdd_attempt']}")
+    print(f"\n  >>> Full GDD saved to: {draft_path}")
+    print("  >>> Open it in your editor to review before approving.")
 
     print("\n  Strengths:")
     for s in interrupt_value["strengths"]:
