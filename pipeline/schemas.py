@@ -161,6 +161,42 @@ class GameDesignDocument(BaseModel):
     )
 
 
+class ImplSpecReview(BaseModel):
+    """Result of reviewing an Implementation Spec for completeness and buildability."""
+
+    passed: bool = Field(
+        description=(
+            "True if the spec is detailed enough to start coding. "
+            "False if it needs rework."
+        )
+    )
+
+    score: int = Field(
+        description=(
+            "Quality score from 1-10. "
+            "7+ means pass. Below 7 means rework is needed."
+        )
+    )
+
+    strengths: list[str] = Field(
+        description="What the spec does well — keep these in the next iteration."
+    )
+
+    issues: list[str] = Field(
+        description=(
+            "Specific problems that must be fixed. Each issue should be actionable, "
+            'e.g. "Enemy entity has no spawn_rate property — needed for the wave system" '
+            'not "missing details".'
+        )
+    )
+
+    suggestions: list[str] = Field(
+        description=(
+            "Optional improvements that would strengthen the spec but aren't blockers."
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Step 3: Implementation Spec
 # ---------------------------------------------------------------------------
