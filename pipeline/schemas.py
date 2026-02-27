@@ -51,6 +51,42 @@ class GenreAnalysis(BaseModel):
     )
 
 
+class GddReview(BaseModel):
+    """Result of reviewing a Game Design Document for quality and completeness."""
+
+    passed: bool = Field(
+        description=(
+            "True if the GDD is good enough to move to implementation. "
+            "False if it needs rework."
+        )
+    )
+
+    score: int = Field(
+        description=(
+            "Quality score from 1-10. "
+            "7+ means pass. Below 7 means rework is needed."
+        )
+    )
+
+    strengths: list[str] = Field(
+        description="What the GDD does well — keep these in the next iteration."
+    )
+
+    issues: list[str] = Field(
+        description=(
+            "Specific problems that must be fixed. Each issue should be actionable, "
+            'e.g. "Core loop is too vague — describe exact player inputs per second" '
+            'not "needs more detail".'
+        )
+    )
+
+    suggestions: list[str] = Field(
+        description=(
+            "Optional improvements that would make the GDD stronger but aren't blockers."
+        )
+    )
+
+
 class GameDesignDocument(BaseModel):
     """Concrete game design document for a hyper-casual HTML5 browser game."""
 

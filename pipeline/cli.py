@@ -37,24 +37,32 @@ def main():
 
     genre = " ".join(sys.argv[1:])
 
-    print(f"[1/3] Researching genre: {genre} ...")
+    print(f"[pipeline] Researching genre: {genre} ...")
     graph = build_graph()
     result = graph.invoke({"genre": genre})
 
     analysis = result["analysis"]
     gdd = result["gdd"]
+    gdd_review = result.get("gdd_review")
+    gdd_attempt = result.get("gdd_attempt", 1)
     impl_spec = result["impl_spec"]
 
     # Build combined output
     data = {
         "genre_analysis": analysis.model_dump(),
         "gdd": gdd.model_dump(),
+        "gdd_review": gdd_review.model_dump() if gdd_review else None,
+        "gdd_attempts": gdd_attempt,
         "implementation_spec": impl_spec.model_dump(),
     }
 
     # Summary
-    print(f"[2/3] GDD generated: {gdd.title}")
-    print(f"[3/3] Impl spec: {len(impl_spec.entities)} entities, "
+    print(f"[pipeline] GDD generated: {gdd.title}")
+    if gdd_review:
+        print(f"[pipeline] GDD review: score {gdd_review.score}/10 "
+              f"({'PASSED' if gdd_review.passed else 'FORCED'}) "
+              f"after {gdd_attempt} attempt(s)")
+    print(f"[pipeline] Impl spec: {len(impl_spec.entities)} entities, "
           f"{len(impl_spec.balance_tables)} balance tables, "
           f"{len(impl_spec.asset_manifest)} assets")
     print("=" * 60)
