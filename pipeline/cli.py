@@ -7,10 +7,24 @@ Usage:
 
 import json
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 from pipeline.graph import build_graph
+
+OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
+
+
+def _save(genre: str, data: dict) -> Path:
+    """Save analysis JSON to output/<genre>_<timestamp>.json."""
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    slug = genre.lower().replace(" ", "_")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    path = OUTPUT_DIR / f"{slug}_{ts}.json"
+    path.write_text(json.dumps(data, indent=2))
+    return path
 
 
 def main():
@@ -25,12 +39,17 @@ def main():
     print(f"Researching genre: {genre}\n")
 
     graph = build_graph()
-    result = graph.invoke({"genre": genre, "analysis": None})
+    result = graph.invoke({"genre": genre})
 
     analysis = result["analysis"]
+    data = analysis.model_dump()
 
     # Pretty-print the structured output
-    print(json.dumps(analysis.model_dump(), indent=2))
+    print(json.dumps(data, indent=2))
+
+    # Persist to output/
+    out_path = _save(genre, data)
+    print(f"\nSaved to {out_path}")
 
 
 if __name__ == "__main__":
