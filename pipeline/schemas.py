@@ -201,15 +201,25 @@ class ImplSpecReview(BaseModel):
 # Step 3: Implementation Spec
 # ---------------------------------------------------------------------------
 
+class PropertyDef(BaseModel):
+    """A single property on a game entity."""
+
+    name: str = Field(description="Property name, e.g. 'speed', 'hp'.")
+    type_description: str = Field(
+        description=(
+            "Type + description, e.g. 'number — pixels/sec, default 300'."
+        )
+    )
+
+
 class EntityDef(BaseModel):
     """Definition of a game entity / object."""
 
     name: str = Field(description="Entity name in PascalCase, e.g. 'PlayerShip'.")
-    properties: dict[str, str] = Field(
+    properties: list[PropertyDef] = Field(
         description=(
-            "Map of property name → type + description. "
-            'e.g. {"speed": "number — pixels/sec, default 300", '
-            '"hp": "number — starts at 3, max 5"}'
+            "All properties for this entity. "
+            "Include type, default value, and brief description for each."
         )
     )
     behavior: str = Field(
@@ -233,16 +243,29 @@ class GameState(BaseModel):
     )
 
 
+class BalanceParam(BaseModel):
+    """A single tunable game parameter."""
+
+    name: str = Field(description="Parameter name, e.g. 'player_speed'.")
+    value: str = Field(
+        description=(
+            "Value + unit + rationale, "
+            "e.g. '300 px/s — fast enough to dodge, slow enough to require planning'."
+        )
+    )
+
+
 class BalanceTable(BaseModel):
     """A set of tunable game parameters with concrete starting values."""
 
     category: str = Field(
         description="Category name, e.g. 'Player', 'Enemies', 'Scoring', 'Difficulty'."
     )
-    params: dict[str, str] = Field(
+    params: list[BalanceParam] = Field(
         description=(
-            "Map of parameter name → value + unit + rationale. "
-            'e.g. {"player_speed": "300 px/s — fast enough to dodge, slow enough to require planning"}'
+            "All tunable parameters in this category. "
+            "Every number in the game should appear here with a starting value "
+            "and brief rationale."
         )
     )
 
