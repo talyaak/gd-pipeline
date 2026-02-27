@@ -6,7 +6,7 @@ This is Step 1 of the pipeline: get comfortable with LangGraph basics.
 
 from typing import TypedDict
 
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 
 from pipeline.schemas import GenreAnalysis
@@ -41,9 +41,9 @@ on enemy death" is useful.
 
 
 def research_genre(state: ResearchState) -> ResearchState:
-    """Call Claude with structured output to produce a GenreAnalysis."""
-    llm = ChatAnthropic(
-        model="claude-sonnet-4-20250514",
+    """Call GPT-4o with structured output to produce a GenreAnalysis."""
+    llm = ChatOpenAI(
+        model="gpt-4o",
         temperature=0.3,
         max_tokens=4096,
     )
