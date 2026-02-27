@@ -3,6 +3,8 @@
 Step 1: Genre Research — structured analysis of a game genre.
 Step 2: GDD Generation — Cycle X auto-review + HITL human approval gate.
 Step 3: Implementation Spec — Cycle X auto-review for technical completeness.
+Step 4: Code Generation — produce a single-file HTML5 browser game.
+Step 5: Code Review — Cycle X auto-review for playability and spec fidelity.
 
 Cycle X pattern: Generate → Review → Fix → Repeat until quality threshold met.
 HITL: Human-in-the-loop interrupt between GDD approval and impl spec generation.
@@ -14,9 +16,12 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt
 
+from pipeline import output
 from pipeline.schemas import (
+    CodeReview,
     GameDesignDocument,
     GddReview,
+    GeneratedGame,
     GenreAnalysis,
     ImplSpecReview,
     ImplementationSpec,
@@ -24,6 +29,7 @@ from pipeline.schemas import (
 
 MAX_GDD_ATTEMPTS = 3
 MAX_IMPL_SPEC_ATTEMPTS = 3
+MAX_CODE_ATTEMPTS = 3
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +46,9 @@ class PipelineState(TypedDict):
     impl_spec: ImplementationSpec | None
     impl_spec_review: ImplSpecReview | None
     impl_spec_attempt: int
+    code: GeneratedGame | None
+    code_review: CodeReview | None
+    code_attempt: int
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +85,9 @@ def research_genre(state: PipelineState) -> PipelineState:
     analysis = structured_llm.invoke(
         RESEARCH_PROMPT.format(genre=state["genre"])
     )
+
+    path = output.save("01_genre_research", "analysis.json", analysis.model_dump())
+    print(f"  [research_genre] Done → {output.rel(path)}")
 
     return {"analysis": analysis}
 
@@ -185,6 +197,9 @@ def generate_gdd(state: PipelineState) -> PipelineState:
 
     gdd = structured_llm.invoke(prompt)
 
+    path = output.save("02_gdd", "gdd.json", gdd.model_dump(), attempt=attempt)
+    print(f"  [generate_gdd] Attempt {attempt} → {output.rel(path)}")
+
     return {"gdd": gdd, "gdd_attempt": attempt, "human_feedback": None}
 
 
@@ -243,6 +258,11 @@ def review_gdd(state: PipelineState) -> PipelineState:
     review = structured_llm.invoke(
         REVIEW_GDD_PROMPT.format(genre=state["genre"], gdd_json=gdd_json)
     )
+
+    attempt = state.get("gdd_attempt", 1)
+    status = "passed" if review.passed and review.score >= 7 else "needs rework"
+    path = output.save("02_gdd", "review.json", review.model_dump(), attempt=attempt)
+    print(f"  [review_gdd] Score {review.score}/10 ({status}) → {output.rel(path)}")
 
     return {"gdd_review": review}
 
@@ -410,6 +430,11 @@ def generate_impl_spec(state: PipelineState) -> PipelineState:
 
     impl_spec = structured_llm.invoke(prompt)
 
+    path = output.save(
+        "03_impl_spec", "impl_spec.json", impl_spec.model_dump(), attempt=attempt
+    )
+    print(f"  [generate_impl_spec] Attempt {attempt} → {output.rel(path)}")
+
     return {"impl_spec": impl_spec, "impl_spec_attempt": attempt}
 
 
@@ -473,22 +498,234 @@ def review_impl_spec(state: PipelineState) -> PipelineState:
         )
     )
 
+    attempt = state.get("impl_spec_attempt", 1)
+    status = "passed" if review.passed and review.score >= 7 else "needs rework"
+    path = output.save(
+        "03_impl_spec", "review.json", review.model_dump(), attempt=attempt
+    )
+    print(f"  [review_impl_spec] Score {review.score}/10 ({status}) → {output.rel(path)}")
+
     return {"impl_spec_review": review}
 
 
 def should_rework_impl_spec(state: PipelineState) -> str:
-    """Conditional edge: decide whether to rework the impl spec or finish."""
+    """Conditional edge: decide whether to rework the impl spec or proceed to code gen."""
     review = state["impl_spec_review"]
     attempt = state.get("impl_spec_attempt", 1)
 
     if review.passed and review.score >= 7:
-        return END
+        return "generate_code"
 
     if attempt >= MAX_IMPL_SPEC_ATTEMPTS:
         # Avoid infinite loops — proceed with best effort
-        return END
+        return "generate_code"
 
     return "generate_impl_spec"
+
+
+# ---------------------------------------------------------------------------
+# Node: generate_code
+# ---------------------------------------------------------------------------
+CODE_GEN_PROMPT = """\
+You are an expert HTML5 game developer. Generate a complete, single-file HTML5 \
+browser game based on the game design document and implementation spec below.
+
+Game: **{title}**
+Genre: **{genre}**
+
+Game Design Document:
+{gdd_json}
+
+Implementation Spec:
+{spec_json}
+
+Requirements:
+- Output a SINGLE complete HTML file with all CSS and JavaScript inline.
+- Use HTML5 Canvas 2D API — no WebGL, no external libraries, no CDN imports.
+- Game must be immediately playable when opened in a browser (no build step).
+- Implement ALL entities from the spec with their properties and behaviors.
+- Implement the full state machine (all states and transitions).
+- Use the exact balance values from the spec's balance tables.
+- Implement the scene flow from the spec.
+- Target 60fps with requestAnimationFrame and delta-time game loop.
+- Handle both mouse and touch input for desktop + mobile compatibility.
+
+Code structure expectations:
+- All balance/config constants defined at the top of the script.
+- Clear separation of update() and render() phases.
+- Proper game loop with delta time (no fixed-step assumptions).
+- Simple but functional collision detection (AABB or circle).
+- All game states implemented with proper transitions.
+- Canvas auto-sized to fill the viewport.
+"""
+
+
+REWORK_CODE_PROMPT = """\
+You are an expert HTML5 game developer REVISING a browser game based on \
+reviewer feedback. Keep what works, fix what doesn't.
+
+Game: **{title}**
+Genre: **{genre}**
+
+Implementation Spec (your reference for correctness):
+{spec_json}
+
+Previous code that needs improvement:
+```html
+{previous_code}
+```
+
+Reviewer feedback (score {score}/10):
+Strengths (KEEP these): {strengths}
+Issues (MUST FIX): {issues}
+Suggestions (nice to have): {suggestions}
+
+Generate an improved version that fixes every issue. Do not break the strengths. \
+Output a complete, runnable HTML file — not a diff or partial snippet.
+"""
+
+
+def generate_code(state: PipelineState) -> PipelineState:
+    """Generate a complete single-file HTML5 game from the GDD + impl spec.
+
+    On rework attempts, incorporates code review feedback.
+    """
+    llm = ChatOpenAI(
+        model="gpt-4o",
+        temperature=0.3,
+        max_tokens=16384,
+    )
+
+    structured_llm = llm.with_structured_output(GeneratedGame)
+
+    gdd_json = state["gdd"].model_dump_json(indent=2)
+    spec_json = state["impl_spec"].model_dump_json(indent=2)
+    attempt = state.get("code_attempt", 0) + 1
+    review = state.get("code_review")
+
+    if review and not review.passed:
+        previous_code = state["code"].html_code
+        prompt = REWORK_CODE_PROMPT.format(
+            title=state["gdd"].title,
+            genre=state["genre"],
+            spec_json=spec_json,
+            previous_code=previous_code,
+            score=review.score,
+            strengths="; ".join(review.strengths),
+            issues="; ".join(review.issues),
+            suggestions="; ".join(review.suggestions),
+        )
+    else:
+        prompt = CODE_GEN_PROMPT.format(
+            title=state["gdd"].title,
+            genre=state["genre"],
+            gdd_json=gdd_json,
+            spec_json=spec_json,
+        )
+
+    game = structured_llm.invoke(prompt)
+
+    # Save the playable HTML file + notes
+    html_path = output.save_text(
+        "04_code", "game.html", game.html_code, attempt=attempt
+    )
+    output.save(
+        "04_code", "notes.json",
+        {"implementation_notes": game.implementation_notes},
+        attempt=attempt,
+    )
+    print(f"  [generate_code] Attempt {attempt} → {output.rel(html_path)}")
+
+    return {"code": game, "code_attempt": attempt}
+
+
+# ---------------------------------------------------------------------------
+# Node: review_code
+# ---------------------------------------------------------------------------
+CODE_REVIEW_PROMPT = """\
+You are a senior game developer reviewing HTML5 game code against its \
+implementation spec. The game should be playable and match the spec.
+
+Game: **{title}**
+Genre: **{genre}**
+
+Implementation Spec (what the code SHOULD implement):
+{spec_json}
+
+Generated Code:
+```html
+{code}
+```
+
+Review the code against the spec. Score from 1-10:
+
+- **Spec fidelity** (weight: 3x): Does the code implement all entities, states, \
+and balance values from the spec? Are behaviors correct?
+- **Playability** (weight: 3x): Would this run in a browser without errors? Is it \
+actually fun? Does the core loop work?
+- **Code quality** (weight: 2x): Clean structure, proper game loop with delta time, \
+input handling for desktop + mobile?
+- **Completeness** (weight: 2x): All scenes, all states, all transitions? Any \
+missing features that would make the game unplayable?
+
+Scoring guide:
+- 9-10: Ready to play. Matches spec, runs cleanly.
+- 7-8: Playable with minor issues. Core loop works.
+- 5-6: Runs but has significant missing features or bugs.
+- 1-4: Broken or fundamentally incomplete.
+
+Pass threshold: 7 or above.
+
+Be specific. "The Enemy entity is missing the patrol behavior described in the \
+spec — it just moves in a straight line" is useful. "Code needs improvement" is not.
+"""
+
+
+def review_code(state: PipelineState) -> PipelineState:
+    """Review the generated game code against the implementation spec."""
+    llm = ChatOpenAI(
+        model="gpt-4o",
+        temperature=0.3,
+        max_tokens=4096,
+    )
+
+    structured_llm = llm.with_structured_output(CodeReview)
+
+    spec_json = state["impl_spec"].model_dump_json(indent=2)
+    code = state["code"].html_code
+
+    review = structured_llm.invoke(
+        CODE_REVIEW_PROMPT.format(
+            title=state["gdd"].title,
+            genre=state["genre"],
+            spec_json=spec_json,
+            code=code,
+        )
+    )
+
+    attempt = state.get("code_attempt", 1)
+    status = "passed" if review.passed and review.score >= 7 else "needs rework"
+    path = output.save(
+        "04_code", "review.json", review.model_dump(), attempt=attempt
+    )
+    print(f"  [review_code] Score {review.score}/10 ({status}) → {output.rel(path)}")
+
+    return {"code_review": review}
+
+
+def should_rework_code(state: PipelineState) -> str:
+    """Conditional edge: decide whether to rework the code or finish."""
+    review = state["code_review"]
+    attempt = state.get("code_attempt", 1)
+
+    if review.passed and review.score >= 7:
+        return END
+
+    if attempt >= MAX_CODE_ATTEMPTS:
+        # Avoid infinite loops — ship what we have
+        return END
+
+    return "generate_code"
 
 
 # ---------------------------------------------------------------------------
@@ -498,19 +735,19 @@ def build_graph(checkpointer=None):
     """Build and compile the game design pipeline graph.
 
     Flow:
-        START → research_genre → generate_gdd → review_gdd ──┬── (auto fail) → generate_gdd
-                                                              │
-                                     ┌── (human reject) ─────┤
-                                     ↓                        │
-                                generate_gdd ← ─ ─ ─ ─ ─ ─ ─ ┤
-                                                              │
-                                                              └── (auto pass) → human_review_gdd
-                                                                                    │
-                                                              ┌── (approved) ───────┘
-                                                              ↓
-                                                        generate_impl_spec → review_impl_spec ─┬─ (pass) → END
-                                                              ↑                                │
-                                                              └───── (fail, retry) ────────────┘
+        START → research_genre → generate_gdd → review_gdd ─┬─ (fail) → generate_gdd
+                                                             └─ (pass) → human_review_gdd
+                                                                           │
+                            ┌── (reject) ──────────────────────────────────┘
+                            ↓                                  │
+                       generate_gdd ← ─ ─ ─ ─ ─ ─ ─ ─ ─ ─    │
+                                                               └─ (approve)
+                                                                     ↓
+        generate_impl_spec → review_impl_spec ─┬─ (fail) → generate_impl_spec
+                                               └─ (pass) → generate_code
+                                                               ↓
+        generate_code → review_code ─┬─ (fail) → generate_code
+                                     └─ (pass) → END
 
     Args:
         checkpointer: LangGraph checkpointer for HITL interrupt persistence.
@@ -538,5 +775,13 @@ def build_graph(checkpointer=None):
     # Edges — Impl spec cycle
     builder.add_edge("generate_impl_spec", "review_impl_spec")
     builder.add_conditional_edges("review_impl_spec", should_rework_impl_spec)
+
+    # Nodes — Code gen cycle
+    builder.add_node("generate_code", generate_code)
+    builder.add_node("review_code", review_code)
+
+    # Edges — Code gen cycle
+    builder.add_edge("generate_code", "review_code")
+    builder.add_conditional_edges("review_code", should_rework_code)
 
     return builder.compile(checkpointer=checkpointer)

@@ -5,42 +5,20 @@ Usage:
     python -m pipeline "tower defense"
 """
 
-import json
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
 
 from dotenv import load_dotenv
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
+from pipeline import output
 from pipeline.graph import build_graph
-
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
-
-
-def _save(genre: str, data: dict) -> Path:
-    """Save analysis JSON to output/<genre>_<timestamp>.json."""
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    slug = genre.lower().replace(" ", "_")
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    path = OUTPUT_DIR / f"{slug}_{ts}.json"
-    path.write_text(json.dumps(data, indent=2))
-    return path
-
-
-def _save_gdd_draft(interrupt_value: dict) -> Path:
-    """Save the GDD draft to a file so the human can review it."""
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    path = OUTPUT_DIR / "gdd_draft.json"
-    path.write_text(json.dumps(interrupt_value["gdd"], indent=2))
-    return path
 
 
 def _display_hitl_prompt(interrupt_value: dict) -> str:
     """Save the GDD for review, show summary + review, and collect response."""
-    # Save full GDD to file for human to read
-    draft_path = _save_gdd_draft(interrupt_value)
+    # Save full GDD to a convenience file for human review
+    draft_path = output.save("02_gdd", "gdd_for_review.json", interrupt_value["gdd"])
 
     print("\n" + "=" * 60)
     print("  HUMAN REVIEW REQUIRED — Game Design Document")
@@ -88,6 +66,10 @@ def main():
 
     genre = " ".join(sys.argv[1:])
 
+    # Initialize output directory for this run
+    run_dir = output.init_run(genre)
+    print(f"[pipeline] Output directory: {output.rel(run_dir)}")
+
     # Build graph with checkpointer for HITL interrupts
     checkpointer = MemorySaver()
     graph = build_graph(checkpointer=checkpointer)
@@ -127,8 +109,11 @@ def main():
     impl_spec = final_state["impl_spec"]
     impl_spec_review = final_state.get("impl_spec_review")
     impl_spec_attempt = final_state.get("impl_spec_attempt", 1)
+    code = final_state.get("code")
+    code_review = final_state.get("code_review")
+    code_attempt = final_state.get("code_attempt", 1)
 
-    # Build combined output
+    # Build combined output (metadata only — code is in separate .html files)
     data = {
         "genre_analysis": analysis.model_dump(),
         "gdd": gdd.model_dump(),
@@ -139,28 +124,37 @@ def main():
             impl_spec_review.model_dump() if impl_spec_review else None
         ),
         "impl_spec_attempts": impl_spec_attempt,
+        "code_review": code_review.model_dump() if code_review else None,
+        "code_attempts": code_attempt,
     }
 
-    # Summary
-    print("\n" + "=" * 60)
-    print(f"[pipeline] GDD: {gdd.title}")
-    if gdd_review:
-        print(f"[pipeline] GDD review: score {gdd_review.score}/10 "
-              f"({'PASSED' if gdd_review.passed else 'FORCED'}) "
-              f"after {gdd_attempt} attempt(s)")
-    if impl_spec_review:
-        print(f"[pipeline] Impl spec review: score {impl_spec_review.score}/10 "
-              f"({'PASSED' if impl_spec_review.passed else 'FORCED'}) "
-              f"after {impl_spec_attempt} attempt(s)")
-    print(f"[pipeline] Impl spec: {len(impl_spec.entities)} entities, "
-          f"{len(impl_spec.balance_tables)} balance tables, "
-          f"{len(impl_spec.asset_manifest)} assets")
-    print("=" * 60)
-    print(json.dumps(data, indent=2))
+    # Save combined summary
+    summary_path = output.save(".", "summary.json", data)
 
-    # Persist to output/
-    out_path = _save(genre, data)
-    print(f"\nSaved to {out_path}")
+    # Print concise summary — no JSON walls
+    print("\n" + "=" * 60)
+    print(f"  Game:       {gdd.title}")
+    print(f"  Pitch:      {gdd.one_liner}")
+    if gdd_review:
+        print(f"  GDD:        score {gdd_review.score}/10 "
+              f"({'PASSED' if gdd_review.passed else 'FORCED'}) "
+              f"· {gdd_attempt} attempt(s)")
+    if impl_spec_review:
+        print(f"  Impl spec:  score {impl_spec_review.score}/10 "
+              f"({'PASSED' if impl_spec_review.passed else 'FORCED'}) "
+              f"· {impl_spec_attempt} attempt(s)")
+    if code_review:
+        print(f"  Code:       score {code_review.score}/10 "
+              f"({'PASSED' if code_review.passed else 'FORCED'}) "
+              f"· {code_attempt} attempt(s)")
+    print(f"  Entities:   {len(impl_spec.entities)}")
+    print(f"  Balance:    {len(impl_spec.balance_tables)} tables")
+    print(f"  Assets:     {len(impl_spec.asset_manifest)}")
+    if code:
+        print(f"  Game file:  04_code/attempt_{code_attempt}/game.html")
+    print("=" * 60)
+    print(f"\n  All artifacts → {output.rel(output.run_dir())}/")
+    print(f"  Full summary → {output.rel(summary_path)}")
 
 
 if __name__ == "__main__":
