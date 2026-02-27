@@ -1,8 +1,8 @@
-"""CLI entry point for the genre research agent.
+"""CLI entry point for the game design pipeline.
 
 Usage:
-    python -m pipeline.cli "endless runner"
-    python -m pipeline.cli "tower defense"
+    python -m pipeline "endless runner"
+    python -m pipeline "tower defense"
 """
 
 import json
@@ -31,20 +31,28 @@ def main():
     load_dotenv()
 
     if len(sys.argv) < 2:
-        print("Usage: python -m pipeline.cli <genre>")
-        print('Example: python -m pipeline.cli "endless runner"')
+        print("Usage: python -m pipeline <genre>")
+        print('Example: python -m pipeline "endless runner"')
         sys.exit(1)
 
     genre = " ".join(sys.argv[1:])
-    print(f"Researching genre: {genre}\n")
 
+    print(f"[1/2] Researching genre: {genre} ...")
     graph = build_graph()
     result = graph.invoke({"genre": genre})
 
     analysis = result["analysis"]
-    data = analysis.model_dump()
+    gdd = result["gdd"]
 
-    # Pretty-print the structured output
+    # Build combined output
+    data = {
+        "genre_analysis": analysis.model_dump(),
+        "gdd": gdd.model_dump(),
+    }
+
+    # Pretty-print
+    print(f"\n[2/2] GDD generated: {gdd.title}")
+    print("=" * 60)
     print(json.dumps(data, indent=2))
 
     # Persist to output/
