@@ -279,6 +279,7 @@ def human_review_gdd(state: PipelineState) -> PipelineState:
         "type": "gdd_review",
         "title": gdd.title,
         "one_liner": gdd.one_liner,
+        "gdd": gdd.model_dump(),
         "auto_review_score": review.score,
         "auto_review_passed": review.passed,
         "strengths": review.strengths,
