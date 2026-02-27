@@ -123,3 +123,115 @@ class GameDesignDocument(BaseModel):
             "Polish, meta-game, monetization hooks, additional content."
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# Step 3: Implementation Spec
+# ---------------------------------------------------------------------------
+
+class EntityDef(BaseModel):
+    """Definition of a game entity / object."""
+
+    name: str = Field(description="Entity name in PascalCase, e.g. 'PlayerShip'.")
+    properties: dict[str, str] = Field(
+        description=(
+            "Map of property name → type + description. "
+            'e.g. {"speed": "number — pixels/sec, default 300", '
+            '"hp": "number — starts at 3, max 5"}'
+        )
+    )
+    behavior: str = Field(
+        description=(
+            "1-3 sentence description of what this entity does each frame "
+            "and how it interacts with other entities."
+        )
+    )
+
+
+class GameState(BaseModel):
+    """A state in the game's top-level state machine."""
+
+    name: str = Field(description="State name, e.g. 'Playing', 'GameOver', 'Paused'.")
+    description: str = Field(description="What happens in this state.")
+    transitions: list[str] = Field(
+        description=(
+            "List of transitions OUT of this state. "
+            'Format: "event → TargetState", e.g. "player_dies → GameOver".'
+        )
+    )
+
+
+class BalanceTable(BaseModel):
+    """A set of tunable game parameters with concrete starting values."""
+
+    category: str = Field(
+        description="Category name, e.g. 'Player', 'Enemies', 'Scoring', 'Difficulty'."
+    )
+    params: dict[str, str] = Field(
+        description=(
+            "Map of parameter name → value + unit + rationale. "
+            'e.g. {"player_speed": "300 px/s — fast enough to dodge, slow enough to require planning"}'
+        )
+    )
+
+
+class AssetEntry(BaseModel):
+    """A single asset needed for the game."""
+
+    name: str = Field(description="Asset identifier, e.g. 'spr_player', 'sfx_explosion'.")
+    asset_type: str = Field(
+        description="One of: sprite, spritesheet, sound, music, font, particle."
+    )
+    description: str = Field(
+        description="What this asset looks like / sounds like. Enough detail to create or source it."
+    )
+
+
+class ImplementationSpec(BaseModel):
+    """Technical implementation spec — bridge between GDD and code."""
+
+    entities: list[EntityDef] = Field(
+        description=(
+            "All game entities/objects with their properties and behaviors. "
+            "Include player, enemies, projectiles, pickups, UI elements — "
+            "everything that exists in the game world."
+        )
+    )
+
+    state_machine: list[GameState] = Field(
+        description=(
+            "Top-level game state machine. Must include at least: "
+            "Loading, Playing, GameOver. Add states as needed (Paused, LevelUp, etc.)."
+        )
+    )
+
+    balance_tables: list[BalanceTable] = Field(
+        description=(
+            "Concrete balance/tuning parameters grouped by category. "
+            "Every number in the game should be here with a starting value "
+            "and brief rationale. Think: what would you put in a config.json?"
+        )
+    )
+
+    scene_flow: list[str] = Field(
+        description=(
+            "Ordered list of screens/scenes the player moves through. "
+            'Format: "SceneName — description", '
+            'e.g. "TitleScreen — logo + tap to start, no menus".'
+        )
+    )
+
+    asset_manifest: list[AssetEntry] = Field(
+        description=(
+            "Complete list of visual and audio assets needed for the MVP. "
+            "Be specific about dimensions, frame counts, and style."
+        )
+    )
+
+    technical_notes: list[str] = Field(
+        description=(
+            "Implementation-specific notes: collision approach, rendering strategy, "
+            "performance considerations, recommended libraries/frameworks, "
+            "canvas vs WebGL, etc."
+        )
+    )
