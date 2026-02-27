@@ -2,6 +2,7 @@
 
 Step 1: Genre Research — structured analysis of a game genre.
 Step 2: GDD Generation — concrete game design document from the analysis.
+Step 3: Implementation Spec — technical blueprint with entities, balance, assets.
 """
 
 from typing import TypedDict
@@ -9,7 +10,7 @@ from typing import TypedDict
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 
-from pipeline.schemas import GameDesignDocument, GenreAnalysis
+from pipeline.schemas import GameDesignDocument, GenreAnalysis, ImplementationSpec
 
 
 # ---------------------------------------------------------------------------
@@ -19,6 +20,7 @@ class PipelineState(TypedDict):
     genre: str
     analysis: GenreAnalysis | None
     gdd: GameDesignDocument | None
+    impl_spec: ImplementationSpec | None
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +109,69 @@ def generate_gdd(state: PipelineState) -> PipelineState:
 
 
 # ---------------------------------------------------------------------------
+# Node: generate_impl_spec
+# ---------------------------------------------------------------------------
+IMPL_SPEC_PROMPT = """\
+You are a senior game programmer writing the technical implementation spec for \
+an HTML5 browser game. Your spec will be handed directly to a developer — it \
+must be concrete enough to start coding from.
+
+Game: **{title}**
+Genre: **{genre}**
+
+Game Design Document:
+{gdd_json}
+
+Produce a complete implementation spec:
+
+1. **Entities**: Every object in the game world. Include exact properties with \
+types and default values. Think about what a developer needs in their class/struct.
+
+2. **State machine**: Top-level game states with transitions. Cover the full \
+lifecycle: load → play → die → retry.
+
+3. **Balance tables**: EVERY tunable number in the game grouped by category. \
+Player speed, enemy HP, spawn rates, score multipliers, difficulty ramp — all \
+with concrete starting values and brief rationale for each.
+
+4. **Scene flow**: Ordered list of screens/scenes.
+
+5. **Asset manifest**: Every sprite, sound, and font needed for the MVP. \
+Include dimensions, frame counts, and style notes. Keep it minimal — use \
+geometric shapes and simple SFX where possible.
+
+6. **Technical notes**: Canvas 2D vs WebGL, collision approach, performance \
+budget (target 60fps on mid-range mobile), recommended libraries if any.
+
+Be ruthlessly practical. A developer should be able to `npm init` and start \
+building from this spec.
+"""
+
+
+def generate_impl_spec(state: PipelineState) -> PipelineState:
+    """Turn the GDD into a technical implementation spec."""
+    llm = ChatOpenAI(
+        model="gpt-4o",
+        temperature=0.3,
+        max_tokens=8192,
+    )
+
+    structured_llm = llm.with_structured_output(ImplementationSpec)
+
+    gdd_json = state["gdd"].model_dump_json(indent=2)
+
+    impl_spec = structured_llm.invoke(
+        IMPL_SPEC_PROMPT.format(
+            title=state["gdd"].title,
+            genre=state["genre"],
+            gdd_json=gdd_json,
+        )
+    )
+
+    return {"impl_spec": impl_spec}
+
+
+# ---------------------------------------------------------------------------
 # Graph wiring
 # ---------------------------------------------------------------------------
 def build_graph():
@@ -115,9 +180,11 @@ def build_graph():
 
     builder.add_node("research_genre", research_genre)
     builder.add_node("generate_gdd", generate_gdd)
+    builder.add_node("generate_impl_spec", generate_impl_spec)
 
     builder.add_edge(START, "research_genre")
     builder.add_edge("research_genre", "generate_gdd")
-    builder.add_edge("generate_gdd", END)
+    builder.add_edge("generate_gdd", "generate_impl_spec")
+    builder.add_edge("generate_impl_spec", END)
 
     return builder.compile()

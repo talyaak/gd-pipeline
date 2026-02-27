@@ -37,21 +37,26 @@ def main():
 
     genre = " ".join(sys.argv[1:])
 
-    print(f"[1/2] Researching genre: {genre} ...")
+    print(f"[1/3] Researching genre: {genre} ...")
     graph = build_graph()
     result = graph.invoke({"genre": genre})
 
     analysis = result["analysis"]
     gdd = result["gdd"]
+    impl_spec = result["impl_spec"]
 
     # Build combined output
     data = {
         "genre_analysis": analysis.model_dump(),
         "gdd": gdd.model_dump(),
+        "implementation_spec": impl_spec.model_dump(),
     }
 
-    # Pretty-print
-    print(f"\n[2/2] GDD generated: {gdd.title}")
+    # Summary
+    print(f"[2/3] GDD generated: {gdd.title}")
+    print(f"[3/3] Impl spec: {len(impl_spec.entities)} entities, "
+          f"{len(impl_spec.balance_tables)} balance tables, "
+          f"{len(impl_spec.asset_manifest)} assets")
     print("=" * 60)
     print(json.dumps(data, indent=2))
 
