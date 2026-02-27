@@ -330,3 +330,63 @@ class ImplementationSpec(BaseModel):
             "canvas vs WebGL, etc."
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# Step 4: Code Generation
+# ---------------------------------------------------------------------------
+
+class GeneratedGame(BaseModel):
+    """A complete single-file HTML5 browser game."""
+
+    html_code: str = Field(
+        description=(
+            "Complete, runnable HTML5 document with embedded CSS and JavaScript. "
+            "Must open in a browser and be immediately playable — no build step, "
+            "no external dependencies, no module imports."
+        )
+    )
+
+    implementation_notes: list[str] = Field(
+        description=(
+            "Brief notes about implementation decisions, any deviations from "
+            "the spec, and known limitations."
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
+# Step 5: Code Review
+# ---------------------------------------------------------------------------
+
+class CodeReview(BaseModel):
+    """Review of generated game code against the implementation spec."""
+
+    passed: bool = Field(
+        description=(
+            "True if the code is playable and reasonably matches the spec. "
+            "False if there are blocking bugs or major missing features."
+        )
+    )
+
+    score: int = Field(
+        description=(
+            "Quality score from 1-10. "
+            "7+ means pass. Below 7 means rework is needed."
+        )
+    )
+
+    strengths: list[str] = Field(
+        description="What the code does well — keep these in rework iterations."
+    )
+
+    issues: list[str] = Field(
+        description=(
+            "Specific bugs, missing features, or spec deviations that must be fixed. "
+            "Reference function names, expected vs actual behavior."
+        )
+    )
+
+    suggestions: list[str] = Field(
+        description="Optional improvements that aren't blockers."
+    )
