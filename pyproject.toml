@@ -1,0 +1,18 @@
+[project]
+name = "gd-pipeline"
+version = "0.1.0"
+description = "AI-driven indie HTML5 game production pipeline"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.2",
+    "langchain-anthropic>=0.3",
+    "langchain-openai>=0.3",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
