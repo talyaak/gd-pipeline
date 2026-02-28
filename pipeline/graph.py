@@ -79,7 +79,7 @@ def research_genre(state: PipelineState) -> PipelineState:
     llm = ChatOpenAI(
         model=LLM_MODEL,
         temperature=0.3,
-        max_tokens=4096,
+        max_tokens=16384,
     )
 
     # .with_structured_output() makes the LLM return a Pydantic model directly
@@ -172,7 +172,7 @@ def generate_gdd(state: PipelineState) -> PipelineState:
     llm = ChatOpenAI(
         model=LLM_MODEL,
         temperature=0.7,
-        max_tokens=4096,
+        max_tokens=16384,
     )
 
     structured_llm = llm.with_structured_output(GameDesignDocument)
@@ -251,7 +251,7 @@ def review_gdd(state: PipelineState) -> PipelineState:
     llm = ChatOpenAI(
         model=LLM_MODEL,
         temperature=0.3,
-        max_tokens=4096,
+        max_tokens=16384,
     )
 
     structured_llm = llm.with_structured_output(GddReview)
@@ -402,7 +402,7 @@ def generate_impl_spec(state: PipelineState) -> PipelineState:
     llm = ChatOpenAI(
         model=LLM_MODEL,
         temperature=0.3,
-        max_tokens=8192,
+        max_tokens=32768,
     )
 
     structured_llm = llm.with_structured_output(ImplementationSpec)
@@ -486,7 +486,7 @@ def review_impl_spec(state: PipelineState) -> PipelineState:
     llm = ChatOpenAI(
         model=LLM_MODEL,
         temperature=0.3,
-        max_tokens=4096,
+        max_tokens=16384,
     )
 
     structured_llm = llm.with_structured_output(ImplSpecReview)
@@ -617,7 +617,7 @@ def generate_code(state: PipelineState) -> PipelineState:
     llm = ChatOpenAI(
         model=LLM_MODEL,
         temperature=0.3,
-        max_tokens=16384,
+        max_tokens=65536,
     )
 
     structured_llm = llm.with_structured_output(GeneratedGame)
@@ -718,7 +718,7 @@ def review_code(state: PipelineState) -> PipelineState:
     llm = ChatOpenAI(
         model=LLM_MODEL,
         temperature=0.3,
-        max_tokens=4096,
+        max_tokens=16384,
     )
 
     structured_llm = llm.with_structured_output(CodeReview)
