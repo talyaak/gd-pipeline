@@ -3,26 +3,42 @@
 Usage:
     python -m pipeline "endless runner"
     python -m pipeline "tower defense"
+    python -m pipeline --resume output/endless_runner_20260228_110813
 """
 
 import sys
 import warnings
+from pathlib import Path
 
 # Suppress noisy langchain/pydantic v1 deprecation warnings
 warnings.filterwarnings("ignore", message=".*Pydantic V1.*")
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="langchain")
+# Suppress pydantic structured serializer warnings from LangChain's structured output
+warnings.filterwarnings(
+    "ignore",
+    message="Pydantic serializer warnings.*",
+    category=UserWarning,
+    module="pydantic.main",
+)
 
 from dotenv import load_dotenv
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
+from openai import APIConnectionError
 
 from pipeline import output
 from pipeline.graph import build_graph
 
 
 def _display_hitl_prompt(interrupt_value: dict) -> str:
+    """Handle HITL interrupts: GDD review or impl spec review."""
+    if interrupt_value.get("type") == "impl_spec_review":
+        return _display_impl_spec_review(interrupt_value)
+    return _display_gdd_review(interrupt_value)
+
+
+def _display_gdd_review(interrupt_value: dict) -> str:
     """Save the GDD for review, show summary + review, and collect response."""
-    # Save full GDD to a convenience file for human review
     draft_path = output.save("02_gdd", "gdd_for_review.json", interrupt_value["gdd"])
 
     print("\n" + "=" * 60)
@@ -51,17 +67,20 @@ def _display_hitl_prompt(interrupt_value: dict) -> str:
             print(f"    ~ {s}")
 
     print("\n" + "-" * 60)
-    print("  'approve'  → proceed to implementation spec")
-    print("  'fix'      → rework using the reviewer's issues + suggestions")
-    print("  <anything> → rework with your custom feedback")
+    print("  'approve' / 'a'  → proceed to implementation spec")
+    print("  'fix' / 'f'      → rework using the reviewer's issues + suggestions")
+    print("  <anything>      → rework with your custom feedback")
     print("-" * 60)
 
     response = input("\n> ").strip()
     if not response:
         response = "approve"
+    if response.lower() in ("a",):
+        response = "approve"
+    if response.lower() in ("f",):
+        response = "fix"
 
     if response.lower() == "fix":
-        # Build feedback from the LLM reviewer's issues + suggestions
         parts = []
         if interrupt_value["issues"]:
             parts.append("FIX THESE ISSUES: " + "; ".join(interrupt_value["issues"]))
@@ -72,49 +91,138 @@ def _display_hitl_prompt(interrupt_value: dict) -> str:
     return response
 
 
+def _display_impl_spec_review(interrupt_value: dict) -> str:
+    """Show impl spec review and collect response — approve or provide feedback."""
+    print("\n" + "=" * 60)
+    print("  HUMAN REVIEW REQUIRED — Implementation Spec")
+    print("=" * 60)
+    print(f"\n  Game:     {interrupt_value['title']}")
+    print(f"  Score:    {interrupt_value['auto_review_score']}/10"
+          f" ({'PASSED' if interrupt_value['auto_review_passed'] else 'needs rework'})")
+    print(f"  Attempt:  {interrupt_value['impl_spec_attempt']}")
+    print(f"\n  >>> Full spec: 03_impl_spec/attempt_{interrupt_value['impl_spec_attempt']}/impl_spec.json")
+
+    print("\n  Strengths:")
+    for s in interrupt_value["strengths"]:
+        print(f"    + {s}")
+
+    if interrupt_value["issues"]:
+        print("\n  Issues:")
+        for i in interrupt_value["issues"]:
+            print(f"    - {i}")
+
+    if interrupt_value["suggestions"]:
+        print("\n  Suggestions:")
+        for s in interrupt_value["suggestions"]:
+            print(f"    ~ {s}")
+
+    print("\n" + "-" * 60)
+    print("  'approve' / 'a'  → proceed to code generation (spec is good enough)")
+    print("  'fix' / 'f'      → rework using the reviewer's issues + suggestions")
+    print("  <anything>      → rework with your custom feedback")
+    print("-" * 60)
+
+    response = input("\n> ").strip()
+    if not response:
+        response = "approve"
+    if response.lower() in ("a",):
+        response = "approve"
+    if response.lower() in ("f",):
+        response = "fix"
+
+    if response.lower() == "fix":
+        parts = []
+        if interrupt_value["issues"]:
+            parts.append("FIX THESE ISSUES: " + "; ".join(interrupt_value["issues"]))
+        if interrupt_value["suggestions"]:
+            parts.append("APPLY THESE SUGGESTIONS: " + "; ".join(interrupt_value["suggestions"]))
+        response = "\n".join(parts) if parts else "Apply all reviewer suggestions."
+
+    return response
+
+
+def _genre_from_run_dir(run_path: Path) -> str:
+    """Infer genre from run directory name (e.g. endless_runner_20260228 -> endless runner)."""
+    name = run_path.name
+    # Strip timestamp suffix: endless_runner_20260228_110813 -> endless_runner
+    parts = name.rsplit("_", 2)
+    if len(parts) >= 3 and parts[-1].isdigit() and parts[-2].isdigit():
+        slug = "_".join(parts[:-2])
+    else:
+        slug = name
+    return slug.replace("_", " ")
+
+
 def main():
     load_dotenv()
 
-    if len(sys.argv) < 2:
+    args = sys.argv[1:]
+    if not args:
         print("Usage: python -m pipeline <genre>")
+        print('       python -m pipeline --resume <output_dir>')
         print('Example: python -m pipeline "endless runner"')
         sys.exit(1)
 
-    genre = " ".join(sys.argv[1:])
+    resume_path = None
+    if args[0] == "--resume":
+        if len(args) < 2:
+            print("Usage: python -m pipeline --resume <output_dir>")
+            sys.exit(1)
+        resume_path = args[1]
+        args = args[2:]
 
-    # Initialize output directory for this run
-    run_dir = output.init_run(genre)
-    print(f"[pipeline] Output directory: {output.rel(run_dir)}")
+    if resume_path:
+        # Resume from existing run
+        try:
+            run_dir = output.init_resume(resume_path)
+        except FileNotFoundError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        genre = _genre_from_run_dir(run_dir)
+        print(f"[pipeline] Resuming run: {output.rel(run_dir)}")
+    else:
+        genre = " ".join(args)
+        run_dir = output.init_run(genre)
+        print(f"[pipeline] Output directory: {output.rel(run_dir)}")
 
-    # Build graph with checkpointer for HITL interrupts
-    checkpointer = MemorySaver()
-    graph = build_graph(checkpointer=checkpointer)
+    # Persistent checkpointer so we can resume after crashes
+    checkpoint_path = run_dir / ".checkpoint.sqlite"
     config = {"configurable": {"thread_id": "1"}}
 
-    print(f"[pipeline] Researching genre: {genre} ...")
+    with SqliteSaver.from_conn_string(str(checkpoint_path)) as checkpointer:
+        graph = build_graph(checkpointer=checkpointer)
 
-    # First invoke — runs until HITL interrupt (or completion if no interrupt)
-    result = graph.invoke({"genre": genre}, config)
+        if not resume_path:
+            print(f"[pipeline] Researching genre: {genre} ...")
 
-    # HITL loop: handle interrupts until the graph completes
-    while True:
-        state = graph.get_state(config)
+        # Invoke: checkpoint is loaded automatically when using same thread_id
+        initial_input = {"genre": genre}
+        try:
+            result = graph.invoke(initial_input, config)
+        except APIConnectionError:
+            print(f"\n[pipeline] Connection error. When your network is back, resume with:")
+            print(f"  python -m pipeline.cli --resume {output.rel(run_dir)}")
+            raise
 
-        # Check if there are pending interrupts
-        if not state.tasks or not any(
-            t.interrupts for t in state.tasks
-        ):
-            break  # Graph is complete
+        # HITL loop: handle interrupts until the graph completes
+        while True:
+            state = graph.get_state(config)
 
-        # Get the interrupt value and show to human
-        interrupt_value = state.tasks[0].interrupts[0].value
-        human_response = _display_hitl_prompt(interrupt_value)
+            # Check if there are pending interrupts
+            if not state.tasks or not any(
+                t.interrupts for t in state.tasks
+            ):
+                break  # Graph is complete
 
-        print(f"\n[pipeline] Resuming with: "
-              f"{'APPROVED' if human_response.lower() in ('approve', 'y', 'yes', 'ok', 'lgtm') else 'REWORK'}")
+            # Get the interrupt value and show to human
+            interrupt_value = state.tasks[0].interrupts[0].value
+            human_response = _display_hitl_prompt(interrupt_value)
 
-        # Resume the graph with the human's response
-        result = graph.invoke(Command(resume=human_response), config)
+            print(f"\n[pipeline] Resuming with: "
+                  f"{'APPROVED' if human_response.lower() in ('approve', 'y', 'yes', 'ok', 'lgtm') else 'REWORK'}")
+
+            # Resume the graph with the human's response
+            result = graph.invoke(Command(resume=human_response), config)
 
     # Extract final results
     final_state = graph.get_state(config).values
@@ -147,6 +255,21 @@ def main():
     # Save combined summary
     summary_path = output.save(".", "summary.json", data)
 
+    # Save human-readable pipeline summary
+    output.save_pipeline_summary(
+        title=gdd.title,
+        one_liner=gdd.one_liner,
+        gdd_score=gdd_review.score if gdd_review else None,
+        gdd_passed=gdd_review.passed if gdd_review else None,
+        gdd_issues=gdd_review.issues if gdd_review else None,
+        impl_spec_score=impl_spec_review.score if impl_spec_review else None,
+        impl_spec_passed=impl_spec_review.passed if impl_spec_review else None,
+        impl_spec_issues=impl_spec_review.issues if impl_spec_review else None,
+        code_score=code_review.score if code_review else None,
+        code_passed=code_review.passed if code_review else None,
+        code_issues=code_review.issues if code_review else None,
+    )
+
     # Print concise summary — no JSON walls
     print("\n" + "=" * 60)
     print(f"  Game:       {gdd.title}")
@@ -171,6 +294,7 @@ def main():
     print("=" * 60)
     print(f"\n  All artifacts → {output.rel(output.run_dir())}/")
     print(f"  Full summary → {output.rel(summary_path)}")
+    print(f"  Pipeline summary → {output.rel(output.run_dir() / 'pipeline_summary.md')}")
 
 
 if __name__ == "__main__":
