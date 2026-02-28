@@ -6,6 +6,11 @@ Usage:
 """
 
 import sys
+import warnings
+
+# Suppress noisy langchain/pydantic v1 deprecation warnings
+warnings.filterwarnings("ignore", message=".*Pydantic V1.*")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="langchain")
 
 from dotenv import load_dotenv
 from langgraph.checkpoint.memory import MemorySaver
