@@ -29,11 +29,12 @@ from pipeline.schemas import (
 )
 from pipeline.validate import check_html_game
 
-LLM_MODEL = "gpt-4o-mini"
+LLM_MODEL    = "gpt-4o-mini"   # generation tasks: GDD, impl spec, code
+REVIEW_MODEL = "gpt-4o-mini"   # review tasks: cheaper/faster (swap for e.g. gpt-4.1-mini)
 
-MAX_GDD_ATTEMPTS = 3
-MAX_IMPL_SPEC_ATTEMPTS = 3
-MAX_CODE_ATTEMPTS = 3
+MAX_GDD_ATTEMPTS       = 3
+MAX_IMPL_SPEC_ATTEMPTS = 2
+MAX_CODE_ATTEMPTS      = 2
 
 
 # ---------------------------------------------------------------------------
@@ -76,15 +77,14 @@ on enemy death" is useful.
 
 
 def research_genre(state: PipelineState) -> PipelineState:
-    """Call GPT-4o with structured output to produce a GenreAnalysis."""
+    """Call the review model with structured output to produce a GenreAnalysis."""
     llm = ChatOpenAI(
-        model=LLM_MODEL,
+        model=REVIEW_MODEL,
         temperature=0.3,
-        max_tokens=16384,
+        max_tokens=2048,
     )
 
-    # .with_structured_output() makes the LLM return a Pydantic model directly
-    structured_llm = llm.with_structured_output(GenreAnalysis)
+    structured_llm = llm.with_structured_output(GenreAnalysis, method="function_calling")
 
     analysis = invoke_with_retry(
         structured_llm, RESEARCH_PROMPT.format(genre=state["genre"])
@@ -176,16 +176,16 @@ def generate_gdd(state: PipelineState) -> PipelineState:
         max_tokens=16384,
     )
 
-    structured_llm = llm.with_structured_output(GameDesignDocument)
+    structured_llm = llm.with_structured_output(GameDesignDocument, method="function_calling")
 
-    analysis_json = state["analysis"].model_dump_json(indent=2)
+    analysis_json = state["analysis"].model_dump_json()
     attempt = state.get("gdd_attempt", 0) + 1
     review = state.get("gdd_review")
     human_feedback = state.get("human_feedback")
 
     if (review and not review.passed) or human_feedback:
         # Rework: feed previous GDD + feedback into a focused rework prompt
-        previous_gdd_json = state["gdd"].model_dump_json(indent=2)
+        previous_gdd_json = state["gdd"].model_dump_json()
         prompt = REWORK_GDD_PROMPT.format(
             genre=state["genre"],
             analysis_json=analysis_json,
@@ -211,6 +211,9 @@ def generate_gdd(state: PipelineState) -> PipelineState:
 # Node: review_gdd
 # ---------------------------------------------------------------------------
 REVIEW_GDD_PROMPT = """\
+Be concise: list at most 5 blocking issues and 5 suggestions; keep total \
+output under 400 tokens.
+
 You are a ruthless game design reviewer with 15 years of experience shipping \
 hyper-casual HTML5 games on web portals (CrazyGames, Poki, itch.io).
 
@@ -250,14 +253,14 @@ patterns, spawn rates, or how dodging feels different from walking" is useful.
 def review_gdd(state: PipelineState) -> PipelineState:
     """Review the GDD for quality and decide if it needs rework."""
     llm = ChatOpenAI(
-        model=LLM_MODEL,
+        model=REVIEW_MODEL,
         temperature=0.3,
-        max_tokens=16384,
+        max_tokens=512,
     )
 
-    structured_llm = llm.with_structured_output(GddReview)
+    structured_llm = llm.with_structured_output(GddReview, method="function_calling")
 
-    gdd_json = state["gdd"].model_dump_json(indent=2)
+    gdd_json = state["gdd"].model_dump_json()
 
     review = invoke_with_retry(
         structured_llm,
@@ -454,15 +457,15 @@ def generate_impl_spec(state: PipelineState) -> PipelineState:
         max_tokens=32768,
     )
 
-    structured_llm = llm.with_structured_output(ImplementationSpec)
+    structured_llm = llm.with_structured_output(ImplementationSpec, method="function_calling")
 
-    gdd_json = state["gdd"].model_dump_json(indent=2)
+    gdd_json = state["gdd"].model_dump_json()
     attempt = state.get("impl_spec_attempt", 0) + 1
     review = state.get("impl_spec_review")
 
     if (review and not review.passed) or state.get("human_feedback"):
         # Rework: feed previous spec + feedback (from reviewer and/or human)
-        previous_spec_json = state["impl_spec"].model_dump_json(indent=2)
+        previous_spec_json = state["impl_spec"].model_dump_json()
         prompt = REWORK_IMPL_SPEC_PROMPT.format(
             title=state["gdd"].title,
             genre=state["genre"],
@@ -533,14 +536,14 @@ Be specific but concise. Focus on blockers, not nice-to-haves.
 def review_impl_spec(state: PipelineState) -> PipelineState:
     """Review the implementation spec for completeness and buildability."""
     llm = ChatOpenAI(
-        model=LLM_MODEL,
+        model=REVIEW_MODEL,
         temperature=0.3,
-        max_tokens=16384,
+        max_tokens=512,
     )
 
-    structured_llm = llm.with_structured_output(ImplSpecReview)
+    structured_llm = llm.with_structured_output(ImplSpecReview, method="function_calling")
 
-    spec_json = state["impl_spec"].model_dump_json(indent=2)
+    spec_json = state["impl_spec"].model_dump_json()
 
     review = invoke_with_retry(
         structured_llm,
@@ -705,8 +708,8 @@ def generate_code(state: PipelineState) -> PipelineState:
     )
     # ← REMOVED: structured_llm = llm.with_structured_output(GeneratedGame)
 
-    gdd_json = state["gdd"].model_dump_json(indent=2)
-    spec_json = state["impl_spec"].model_dump_json(indent=2)
+    gdd_json = state["gdd"].model_dump_json()
+    spec_json = state["impl_spec"].model_dump_json()
     attempt = state.get("code_attempt", 0) + 1
     review = state.get("code_review")
 
@@ -765,6 +768,9 @@ def generate_code(state: PipelineState) -> PipelineState:
 # Node: review_code
 # ---------------------------------------------------------------------------
 CODE_REVIEW_PROMPT = """\
+Be concise: list at most 5 blocking issues and 5 suggestions; keep total \
+output under 400 tokens.
+
 Review this Phaser 3 game against its spec. Code passed automated validation \
 (no external files, correct structure, variable naming), so focus on logic.
 
@@ -820,14 +826,14 @@ def review_code(state: PipelineState) -> PipelineState:
 
     # ── LLM review (code passed basic checks) ────────────────────────
     llm = ChatOpenAI(
-        model=LLM_MODEL,
+        model=REVIEW_MODEL,
         temperature=0.3,
-        max_tokens=16384,
+        max_tokens=512,
     )
 
-    structured_llm = llm.with_structured_output(CodeReview)
+    structured_llm = llm.with_structured_output(CodeReview, method="function_calling")
 
-    spec_json = state["impl_spec"].model_dump_json(indent=2)
+    spec_json = state["impl_spec"].model_dump_json()
 
     review = invoke_with_retry(
         structured_llm,
