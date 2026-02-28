@@ -29,12 +29,24 @@ from pipeline.schemas import (
 )
 from pipeline.validate import check_html_game
 
-LLM_MODEL    = "gpt-4o-mini"   # generation tasks: GDD, impl spec, code
-REVIEW_MODEL = "gpt-4o-mini"   # review tasks: cheaper/faster (swap for e.g. gpt-4.1-mini)
+LLM_MODEL    = "gpt-4.1"   # generation tasks: GDD, impl spec, code
+REVIEW_MODEL = "gpt-4.1-mini"   # review tasks: cheaper/faster (swap for e.g. gpt-4.1-mini)
+
+# Maximum completion tokens per model (OpenAI hard limits)
+_MODEL_OUTPUT_LIMITS: dict[str, int] = {
+    "gpt-4o-mini":  16_384,
+    "gpt-4.1-mini": 16_384,
+    "gpt-4.1":      32_768,
+    "gpt-5.2":      32_768,
+}
+
+def _max_tokens(model: str, want: int) -> int:
+    """Cap *want* to the model's output-token limit."""
+    return min(want, _MODEL_OUTPUT_LIMITS.get(model, 16_384))
 
 MAX_GDD_ATTEMPTS       = 3
 MAX_IMPL_SPEC_ATTEMPTS = 2
-MAX_CODE_ATTEMPTS      = 2
+MAX_CODE_ATTEMPTS      = 3
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +185,7 @@ def generate_gdd(state: PipelineState) -> PipelineState:
     llm = ChatOpenAI(
         model=LLM_MODEL,
         temperature=0.7,
-        max_tokens=16384,
+        max_tokens=_max_tokens(LLM_MODEL, 32_768),
     )
 
     structured_llm = llm.with_structured_output(GameDesignDocument, method="function_calling")
@@ -235,6 +247,15 @@ Or is it a disguised AAA pitch?
 not just "add screen shake"?
 - **Fun factor** (weight: 2x): Would this actually be fun to play for 2 minutes? \
 Does the core mechanic have inherent satisfaction?
+
+DESIGN COHERENCE CHECK — flag as a blocking issue if any of these are violated:
+- If the game has N lanes/tracks/paths, the controls MUST include N-1 lateral \
+movement inputs (e.g. 3 lanes → left/right inputs). A multi-lane game with \
+only a single jump input does not use the lanes and is not fun.
+- If the game has a dash/dodge mechanic, the controls must specify what triggers it.
+- If the game has a fire/attack mechanic, the controls must specify the input.
+- Every mechanic listed in core_loop must be achievable with the listed controls. \
+If there is a mismatch (mechanic exists but no input for it), that is a blocker.
 
 Scoring guide:
 - 9-10: Ship it. Exceptional GDD, ready to build.
@@ -454,7 +475,7 @@ def generate_impl_spec(state: PipelineState) -> PipelineState:
     llm = ChatOpenAI(
         model=LLM_MODEL,
         temperature=0.3,
-        max_tokens=32768,
+        max_tokens=_max_tokens(LLM_MODEL, 32_768),
     )
 
     structured_llm = llm.with_structured_output(ImplementationSpec, method="function_calling")
@@ -613,10 +634,30 @@ def should_proceed_after_impl_review(state: PipelineState) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Node: generate_code
+# Node: generate_code — multi-pass generation
 # ---------------------------------------------------------------------------
-CODE_GEN_PROMPT = """\
-Generate a complete, single-file HTML5 Phaser 3 browser game.
+
+def _strip_fences(text: str) -> str:
+    """Strip markdown code fences the model occasionally wraps output in."""
+    text = text.strip()
+    if text.startswith("```"):
+        parts = text.split("```", 2)
+        body = parts[1] if len(parts) > 1 else text
+        if body.startswith("html"):
+            body = body[4:]
+        body = body.rsplit("```", 1)[0]
+        return body.strip()
+    return text
+
+
+def _run_code_pass(llm, prompt: str) -> str:
+    """Invoke one code-generation LLM pass and return clean HTML."""
+    response = invoke_with_retry(llm, prompt)
+    return _strip_fences(response.content)
+
+
+CODE_PASS1_PROMPT = """\
+Generate a complete, single-file Phaser 3 HTML5 game.
 
 Game: **{title}** | Genre: **{genre}**
 
@@ -626,134 +667,268 @@ GDD:
 Implementation Spec:
 {spec_json}
 
-Constraints:
-- ONE .html file. Only allowed external import: Phaser 3 via CDN.
-- ALL graphics MUST be procedural (this.add.graphics() + generateTexture()).
-  NEVER load external files. NO this.load.image(). NO this.load.audio().
-  NO references to .png/.jpg/.mp3/.wav files. They do not exist.
-  Use Web Audio API (new AudioContext()) for sound effects if needed.
-- Implement ALL entities, states, balance values, and scenes from the spec.
+PASS 1 — FOUNDATION
+Build the full working game. Every system must be functional by end of this pass.
 
-Mandatory structure:
+REQUIRED STRUCTURE:
+- BootScene: generates ALL textures then transitions to TitleScene (or PlayScene)
+- One scene per spec.scene_flow entry — each with complete create() AND update()
+- CONFIG object at the top with EVERY value from spec.balance_tables (no placeholders)
+- Full core loop: spawn, collision, scoring, difficulty ramp, death, restart
+- If spec.example_chunks is non-empty: implement a chunk sequencer that cycles them
 
-    <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
-    <script>
-    const CONFIG = {{ /* all balance values here */ }};
+PROCEDURAL VISUALS — no plain colored boxes:
+Every entity texture must layer at least 4-5 distinct drawing operations in BootScene.
+Combine fillRect, fillCircle, fillTriangle, strokeRect, strokeCircle, and lineTo arcs.
+Use a thematic palette per entity (not random colors). Add outlines and accent details.
+Background: at least 2 scrolling tileSprite layers at different speeds.
+Player must have a subtle idle animation: a looping tween on scale or y position.
 
-    class BootScene extends Phaser.Scene {{
-        constructor() {{ super('Boot'); }}
-        create() {{
-            // Generate ALL textures here with graphics + generateTexture()
-            const gfx = this.add.graphics();
-            gfx.fillStyle(0xff0000); gfx.fillCircle(16, 16, 16);
-            gfx.generateTexture('player', 32, 32); gfx.destroy();
-            this.scene.start('Play');
-        }}
-    }}
+AUDIO — Web Audio API (mandatory):
+Create AudioContext on the first pointerdown or keydown event (autoplay policy).
+Write a playTone(freq, waveType, duration, volume) helper using OscillatorNode + GainNode.
+Minimum sounds: action (jump/fire), pickup/collect, hit/death.
 
-    class PlayScene extends Phaser.Scene {{
-        constructor() {{ super('Play'); }}
-        create() {{ /* spawn entities using generated textures */ }}
-        update(time, delta) {{
-            const dt = delta / 1000;
-            // Use dt everywhere
-        }}
-    }}
+CONTROLS — implement these FIRST, before any other system in PlayScene.create():
+Read spec.technical_notes for the input scheme. Wire every listed input to its \
+handler at the TOP of create(), before arrays, pools, or spawners. \
+If the spec says "left/right arrow keys", create this.cursors and handle LEFT/RIGHT. \
+If the spec says "swipe", set up pointerdown + pointermove delta handlers. \
+If the spec says "tap = jump, swipe left/right = lane switch", implement BOTH. \
+A control that is "optional" or "if enabled" must still be implemented and enabled. \
+Disabling a core movement mechanic (lane_switch_enabled: false, etc.) is forbidden.
 
-    new Phaser.Game({{
-        width: 800, height: 600, scene: [BootScene, PlayScene, ...],
-        physics: {{ default: 'arcade' }}
-    }});
-    </script>
+INITIALIZATION ORDER RULE — in every scene's create():
+Declare ALL arrays and objects (this.activeX = [], this.pool = new Pool(), etc.) \
+BEFORE calling any method that uses them. Never call spawnX(), initX(), or startX() \
+before the arrays/objects those methods push into are initialized.
 
-STRICT rules (automated validation will reject violations):
-- Delta time: dt = delta / 1000. NEVER use 'deltaTime' or 'elapsed'.
-- ZERO external files. Every sprite = generateTexture(). Every sound = Web Audio.
-- Every scene = class extending Phaser.Scene. Use Phaser arcade physics.
-- Config constants at top. Game auto-sizes or fills viewport.
-- Output ONLY the raw HTML document. No markdown fences. No explanation. 
+TECHNICAL RULES:
+- dt = delta / 1000 in every update(). Never use deltaTime or elapsed.
+- Zero external files. All sprites = generateTexture(). All audio = Web Audio API.
+- Every scene = class extending Phaser.Scene with super('SceneName') constructor.
+- Phaser.Game config: type Phaser.AUTO, backgroundColor set, arcade physics enabled.
+- NEVER call Canvas 2D context methods on a Phaser Graphics object — they don't exist \
+and throw TypeError at runtime. Banned: g.save(), g.restore(), g.translate(), \
+g.rotate(), g.quadraticCurveTo(), g.bezierCurveTo(), g.setTransform(), g.clip(). \
+Use only Phaser Graphics API: fillRect, fillCircle, fillEllipse, fillTriangle, \
+strokeRect, strokeCircle, arc, moveTo, lineTo, fillPath, strokePath. \
+Bake all offsets directly into x/y arguments — no matrix transforms.
+- Output ONLY raw HTML. No markdown fences. No explanations.
 - Start with <!DOCTYPE html> and end with </html>. Nothing else.
 """
 
 
-REWORK_CODE_PROMPT = """\
-Fix this Phaser 3 game based on review feedback. Output a COMPLETE .html file.
+CODE_PASS2_PROMPT = """\
+Expand this Phaser 3 game into a production-quality implementation.
 
 Game: **{title}** | Genre: **{genre}**
 
-Spec: {spec_json}
+Spec:
+{spec_json}
+
+Current game (Pass 1):
+```html
+{previous_code}
+```
+
+PASS 2 — SYSTEMS
+Deepen and complete every gameplay system. Do not remove any existing code — extend it.
+
+SPAWNING AND POOLING:
+If spec.example_chunks is non-empty, implement a real chunk sequencer: maintain a \
+chunk index, advance it on each spawn, cycle through the spec chunks in order.
+Otherwise: implement at least 3 distinct spawn formations or obstacle patterns.
+Use object pooling — group.get() / setActive(true) / setVisible(true) — instead of \
+repeated create() calls that spike GC.
+
+DIFFICULTY PROGRESSION:
+Implement a continuous ramp from spec.balance_tables: speed and spawn rate increase \
+every N seconds. Define at least 3 distinct phases. Show a brief visual indicator \
+(flash or text) when a phase changes.
+
+SCORING AND PERSISTENCE:
+Persist the best score in localStorage. Show it on the HUD and game-over screen.
+When the score increases, spawn a floating "+N" text that rises and fades out using \
+a tween (scale 1→0, y -= 40, alpha 1→0 over 700ms).
+Add a combo multiplier if the GDD mentions combos; otherwise add a distance bonus.
+
+HITBOXES:
+Call setSize() and setOffset() on every physics body.
+Use 60-70% of visual sprite dimensions for hitboxes — forgiving feel beats precision.
+
+PARALLAX BACKGROUND:
+Ensure at least 3 tileSprite layers scrolling at different speeds (e.g. 0.2x, 0.5x, 1x).
+
+HUD:
+Display score, best score, and any lives/health from the spec.
+Anchor all HUD elements to the camera viewport (setScrollFactor(0)), not world coords.
+
+CLEANUP:
+Destroy or pool-return any object that moves off-screen (x < -128 or y > height + 64).
+On game-over → restart: reset all counters, clear all groups, start scene fresh.
+
+Output the COMPLETE updated HTML file — not a diff, the entire file.
+Same rules: dt only, zero external files, generateTexture, Web Audio, raw HTML only. \
+Never use Canvas 2D methods (save/restore/translate/rotate/quadraticCurveTo/bezierCurveTo) \
+on Phaser Graphics — use only Phaser Graphics API and bake offsets into coords.
+"""
+
+
+CODE_PASS3_PROMPT = """\
+Add juice, polish and game feel to this Phaser 3 game.
+
+Game: **{title}** | Genre: **{genre}**
+
+GDD juice list — implement EVERY item:
+{juice_list}
+
+Current game (Pass 2):
+```html
+{previous_code}
+```
+
+PASS 3 — JUICE
+Implement every item in the juice list above, plus all of the following baseline polish.
+
+SCREEN EFFECTS:
+- Death/hit: this.cameras.main.shake(300, 0.02) + a brief red overlay tween (alpha 0→0.4→0)
+- Milestone or phase change: this.cameras.main.flash(200, 255, 255, 255, true)
+- Near-miss or close dodge: subtle shake(80, 0.004)
+
+PARTICLES:
+- Death: Phaser particle emitter — 20-30 particles, radial burst, 800ms lifespan, gravity
+- Pickup or collect: 8-10 particles, upward arc, color matching the pickup
+- Ambient: one persistent emitter tied to the player (dust trail, sparks, or bubbles)
+
+TWEENS ON EVERY STATE CHANGE:
+- Score increment: scale text 1→1.35→1, duration 200ms, ease 'Back.easeOut'
+- Entity spawn: scale 0→1, ease 'Elastic.easeOut', duration 400ms
+- Player death: scale 1→0 combined with 360-degree rotation over 500ms before game-over
+- All scene transitions: this.cameras.main.fadeOut(400) on exit, fadeIn(400) on enter
+
+HIT FREEZE (critical for game feel — do not skip):
+On any damaging collision: this.physics.world.pause() for 50ms then resume.
+Flash the hit entity: setTint(0xff4444), then tween tint back to 0xffffff over 200ms.
+
+AUDIO POLISH:
+- Pitch variation: multiply frequency by (0.88 + Math.random() * 0.24) on each playTone call
+- Background music: a simple looping pattern via OscillatorNode. Starts on first input, \
+pauses on death, resumes on retry.
+- Death sound: linearRampToValueAtTime from 800 Hz to 80 Hz over 400ms.
+- Milestone sound: ascending 3-note arpeggio (e.g. 440, 554, 659 Hz played 80ms apart).
+
+TITLE SCREEN POLISH:
+- Title text: floating sine-wave via a looping yoyo tween on y (±8px, duration 1800ms)
+- "Tap to Play" text: pulse alpha 1→0.25→1 in a loop, duration 900ms
+- Background parallax layers must already be scrolling on the title screen
+
+GAME OVER SCREEN:
+- Show score and best score prominently side by side
+- If a new high score was set: display a "New Best!" banner with a scale-in tween
+- Retry button: scale tween on pointerover (1→1.1) and pointerout (1.1→1)
+
+Output the COMPLETE final HTML file — the entire file, not a patch.
+Same rules: dt only, zero external files, generateTexture, Web Audio, raw HTML only. \
+Never use Canvas 2D methods (save/restore/translate/rotate/quadraticCurveTo/bezierCurveTo) \
+on Phaser Graphics — use only Phaser Graphics API and bake offsets into coords.
+"""
+
+
+REWORK_CODE_PROMPT = """\
+Fix this Phaser 3 game based on reviewer feedback. Output the COMPLETE corrected file.
+
+Game: **{title}** | Genre: **{genre}**
+
+Spec:
+{spec_json}
 
 Previous code:
 ```html
 {previous_code}
 ```
 
-Score {score}/10 — Strengths: {strengths}
-MUST FIX: {issues}
+Review — Score {score}/10
+Strengths (preserve these): {strengths}
+MUST FIX (every item is blocking): {issues}
 Nice to have: {suggestions}
 
-Same rules: Phaser 3, dt (never deltaTime), ZERO external files (generateTexture \
-only), every scene extends Phaser.Scene, complete file.
-Output ONLY the corrected raw HTML document. No markdown fences. No explanation.
-Start with <!DOCTYPE html> and end with </html>. Nothing else.
+Address every blocking issue precisely. Do not regress any working system.
+Preserve all juice and polish that was already present in the code.
+Same rules: dt = delta/1000 only, zero external files, generateTexture for all sprites, \
+Web Audio for all sounds, every scene extends Phaser.Scene, raw HTML from \
+<!DOCTYPE html> to </html>. \
+Never use Canvas 2D methods (save/restore/translate/rotate/quadraticCurveTo/bezierCurveTo) \
+on Phaser Graphics — use only Phaser Graphics API and bake offsets into coords.
 """
 
 
 def generate_code(state: PipelineState) -> PipelineState:
-    # Use plain LLM, NOT structured output
     llm = ChatOpenAI(
         model=LLM_MODEL,
         temperature=0.3,
-        max_tokens=65536,
+        max_tokens=_max_tokens(LLM_MODEL, 32_768),
     )
-    # ← REMOVED: structured_llm = llm.with_structured_output(GeneratedGame)
 
-    gdd_json = state["gdd"].model_dump_json()
-    spec_json = state["impl_spec"].model_dump_json()
+    gdd = state["gdd"]
+    impl_spec = state["impl_spec"]
+    gdd_json = gdd.model_dump_json()
+    spec_json = impl_spec.model_dump_json()
     attempt = state.get("code_attempt", 0) + 1
     review = state.get("code_review")
 
     if review and not review.passed:
-        previous_code = state["code"].html_code
-        prompt = REWORK_CODE_PROMPT.format(
-            title=state["gdd"].title,
+        # Targeted rework: reviewer identified specific issues — fix them precisely.
+        html = _run_code_pass(llm, REWORK_CODE_PROMPT.format(
+            title=gdd.title,
             genre=state["genre"],
             spec_json=spec_json,
-            previous_code=previous_code,
+            previous_code=state["code"].html_code,
             score=review.score,
             strengths="; ".join(review.strengths),
             issues="; ".join(review.issues),
             suggestions="; ".join(review.suggestions),
-        )
+        ))
     else:
-        prompt = CODE_GEN_PROMPT.format(
-            title=state["gdd"].title,
-            genre=state["genre"],
-            gdd_json=gdd_json,
-            spec_json=spec_json,
-        )
+        # First attempt — three-pass generation: foundation → systems → juice.
+        juice_list = "\n".join(f"  - {j}" for j in gdd.juice_list)
 
-    # ← CHANGED: plain invoke, get raw string back
-    response = invoke_with_retry(llm, prompt)
-    html = response.content
+        print(f"  [generate_code] Pass 1/3 (foundation) ...")
+        code1 = _run_code_pass(llm, CODE_PASS1_PROMPT.format(
+            title=gdd.title, genre=state["genre"],
+            gdd_json=gdd_json, spec_json=spec_json,
+        ))
+        output.save_text("04_code", "game_pass1.html", code1, attempt=attempt)
+        issues1 = check_html_game(code1)
 
-    # Strip markdown fences if model wraps output in ```html ... ```
-    if html.startswith("```"):
-        html = html.split("```", 2)[1]          # drop opening fence
-        if html.startswith("html"):
-            html = html[4:]                      # drop "html" language tag
-        html = html.rsplit("```", 1)          # drop closing fence
-    html = html.strip()
+        if len(issues1) > 5:
+            # Pass 1 catastrophically broken — surface it for the review cycle to diagnose.
+            html = code1
+        else:
+            print(f"  [generate_code] Pass 2/3 (systems) ...")
+            code2 = _run_code_pass(llm, CODE_PASS2_PROMPT.format(
+                title=gdd.title, genre=state["genre"],
+                spec_json=spec_json, previous_code=code1,
+            ))
+            output.save_text("04_code", "game_pass2.html", code2, attempt=attempt)
+            issues2 = check_html_game(code2)
+            best2 = code2 if len(issues2) <= len(issues1) else code1
 
-    # ← SAME: manually construct GeneratedGame
+            print(f"  [generate_code] Pass 3/3 (juice) ...")
+            code3 = _run_code_pass(llm, CODE_PASS3_PROMPT.format(
+                title=gdd.title, genre=state["genre"],
+                juice_list=juice_list, previous_code=best2,
+            ))
+            output.save_text("04_code", "game_pass3.html", code3, attempt=attempt)
+            issues3 = check_html_game(code3)
+            html = code3 if len(issues3) <= len(issues2) else best2
+
     game = GeneratedGame(
         html_code=html,
-        implementation_notes=["Generated via plain text — no structured output."],
+        implementation_notes=["Multi-pass generation (foundation → systems → juice)."],
     )
 
-    html_path = output.save_text(
-        "04_code", "game.html", game.html_code, attempt=attempt
-    )
+    html_path = output.save_text("04_code", "game.html", game.html_code, attempt=attempt)
     output.save(
         "04_code", "notes.json",
         {"implementation_notes": game.implementation_notes},
@@ -768,28 +943,56 @@ def generate_code(state: PipelineState) -> PipelineState:
 # Node: review_code
 # ---------------------------------------------------------------------------
 CODE_REVIEW_PROMPT = """\
-Be concise: list at most 5 blocking issues and 5 suggestions; keep total \
-output under 400 tokens.
-
-Review this Phaser 3 game against its spec. Code passed automated validation \
-(no external files, correct structure, variable naming), so focus on logic.
+Review this Phaser 3 game against its implementation spec.
 
 Game: **{title}** | Genre: **{genre}**
 
-Spec: {spec_json}
+Spec:
+{spec_json}
 
 Code:
 ```html
 {code}
 ```
 
-Score 1-10 (pass ≥ 7):
-- **Runtime correctness** (4x): Any error that prevents gameplay = auto-fail (≤ 4).
-- **Spec fidelity** (3x): All entities, states, balance values implemented?
-- **Playability** (2x): Core loop works? Fun?
-- **Completeness** (1x): All scenes and transitions?
+Score 1-10 (pass >= 7). Weighted criteria:
 
-Be specific: name the scene, the function, the bug, the expected behavior.
+- **Runtime correctness** (4x): Does the game run without errors? Any undefined \
+variable, missing method, broken game loop, or unhandled crash = score <= 4. \
+Name the exact scene/function and the error or missing reference.
+
+- **Core loop completeness** (3x): Can a player start, play, die, and restart \
+without getting stuck? Is every mechanic from the spec implemented — not stubbed \
+or omitted? Name any mechanic that is missing or non-functional.
+
+- **Game feel and juice** (2x): Does it have screen shake on death, particle effects \
+on pickups/death, tween animations on score and entities, audio feedback, and a \
+parallax background? List specifically what IS present and what is MISSING.
+
+- **Spec fidelity** (1x): Do balance values, entity properties, and state machine \
+transitions match the spec? Note any significant deviations.
+
+CONTROLS AUDIT (required — treat failures as runtime correctness bugs):
+For every input listed in spec.technical_notes, answer: what is the exact Phaser \
+event/method that handles it, and what does it trigger? If any listed control has \
+no handler, or is present but disabled (e.g. a flag set to false), treat it as a \
+blocking bug. Example: "spec says left/right arrow keys → lane switch; code has \
+cursors.left but no lane switch handler — BLOCKER."
+
+INITIALIZATION ORDER (flag if violated):
+Check that PlayScene.create() (or equivalent) declares all arrays (activeX = [], \
+pools, groups) BEFORE calling any method that pushes into them. If spawnX() or \
+initX() is called before the arrays it uses are initialized, name it as a blocker.
+
+Scoring guide:
+- 9-10: Excellent. Ships as-is.
+- 7-8: Good. Minor gaps, fully playable.
+- 5-6: Playable but missing key systems or has significant bugs. List up to 5 blockers.
+- 3-4: Broken core loop or runtime errors prevent play.
+- 1-2: Does not run at all.
+
+Be precise: name the scene, the method, the expected behavior vs actual.
+List at most 5 blocking issues and 5 suggestions.
 """
 
 
@@ -828,7 +1031,7 @@ def review_code(state: PipelineState) -> PipelineState:
     llm = ChatOpenAI(
         model=REVIEW_MODEL,
         temperature=0.3,
-        max_tokens=512,
+        max_tokens=1024,
     )
 
     structured_llm = llm.with_structured_output(CodeReview, method="function_calling")

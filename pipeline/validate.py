@@ -85,6 +85,28 @@ def check_html_game(html: str) -> list[str]:
     if "update" not in js:
         issues.append("No update() method found in any scene.")
 
+    # ── Procedural graphics check ──────────────────────────────────────
+    if "generateTexture" not in js:
+        issues.append(
+            "No generateTexture() calls found. All sprites must be procedurally "
+            "generated — use this.add.graphics() + generateTexture()."
+        )
+
+    # ── Canvas 2D methods not available on Phaser Graphics (always crash) ──
+    _CANVAS2D_ONLY = re.compile(
+        r"\bg\.(save|restore|translate|rotate|quadraticCurveTo|bezierCurveTo|"
+        r"setTransform|transform|clip|drawImage)\s*\("
+    )
+    canvas2d_hits = _CANVAS2D_ONLY.findall(js)
+    if canvas2d_hits:
+        methods = ", ".join(f"g.{m}()" for m in dict.fromkeys(canvas2d_hits))
+        issues.append(
+            f"Canvas 2D context methods used on Phaser Graphics: {methods}. "
+            "Phaser Graphics does not have these — use only its own API "
+            "(fillRect, fillCircle, fillEllipse, arc, moveTo, lineTo, fillPath, etc.) "
+            "and bake all offsets directly into coordinates."
+        )
+
     return issues
 
 

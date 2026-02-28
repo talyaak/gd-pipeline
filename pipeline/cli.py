@@ -28,6 +28,7 @@ from openai import APIConnectionError
 
 from pipeline import output
 from pipeline.graph import build_graph
+from pipeline.schemas import GeneratedGame
 
 
 def _display_hitl_prompt(interrupt_value: dict) -> str:
@@ -141,6 +142,36 @@ def _display_impl_spec_review(interrupt_value: dict) -> str:
     return response
 
 
+def _inject_code(graph, config: dict, run_dir: Path, html_path_str: str) -> None:
+    """Inject an HTML file into the graph state as if generate_code just ran.
+
+    Uses LangGraph update_state to write the code into the checkpoint so the
+    pipeline resumes from review_code without re-running the LLM passes.
+    """
+    html_path = Path(html_path_str)
+    if not html_path.is_absolute():
+        # Try relative to the run dir first (convenient for pass files)
+        candidate = run_dir / html_path
+        if candidate.exists():
+            html_path = candidate
+
+    if not html_path.exists():
+        print(f"Error: HTML file not found: {html_path_str}")
+        sys.exit(1)
+
+    html = html_path.read_text(encoding="utf-8")
+    game = GeneratedGame(
+        html_code=html,
+        implementation_notes=[f"Injected from {html_path.name}"],
+    )
+    graph.update_state(
+        config,
+        {"code": game, "code_attempt": 1},
+        as_node="generate_code",
+    )
+    print(f"[pipeline] Injected code from {html_path.name} → jumping to review_code")
+
+
 def _genre_from_run_dir(run_path: Path) -> str:
     """Infer genre from run directory name (e.g. endless_runner_20260228 -> endless runner)."""
     name = run_path.name
@@ -160,6 +191,7 @@ def main():
     if not args:
         print("Usage: python -m pipeline <genre>")
         print('       python -m pipeline --resume <output_dir>')
+        print('       python -m pipeline --resume <output_dir> --inject-code <game.html>')
         print('Example: python -m pipeline "endless runner"')
         sys.exit(1)
 
@@ -170,6 +202,19 @@ def main():
             sys.exit(1)
         resume_path = args[1]
         args = args[2:]
+
+    inject_code_path = None
+    if "--inject-code" in args:
+        idx = args.index("--inject-code")
+        if idx + 1 >= len(args):
+            print("Error: --inject-code requires a path argument")
+            sys.exit(1)
+        inject_code_path = args[idx + 1]
+        args = args[:idx] + args[idx + 2:]
+
+    if inject_code_path and not resume_path:
+        print("Error: --inject-code requires --resume <run_dir>")
+        sys.exit(1)
 
     if resume_path:
         # Resume from existing run
@@ -197,12 +242,16 @@ def main():
 
         # Invoke: checkpoint is loaded automatically when using same thread_id
         initial_input = {"genre": genre}
-        try:
-            result = graph.invoke(initial_input, config)
-        except APIConnectionError:
-            print(f"\n[pipeline] Connection error. When your network is back, resume with:")
-            print(f"  python -m pipeline.cli --resume {output.rel(run_dir)}")
-            raise
+        if inject_code_path:
+            _inject_code(graph, config, run_dir, inject_code_path)
+            result = graph.invoke(None, config)
+        else:
+            try:
+                result = graph.invoke(initial_input, config)
+            except APIConnectionError:
+                print(f"\n[pipeline] Connection error. When your network is back, resume with:")
+                print(f"  python -m pipeline.cli --resume {output.rel(run_dir)}")
+                raise
 
         # HITL loop: handle interrupts until the graph completes
         while True:
@@ -224,8 +273,9 @@ def main():
             # Resume the graph with the human's response
             result = graph.invoke(Command(resume=human_response), config)
 
+        final_state = graph.get_state(config).values
+
     # Extract final results
-    final_state = graph.get_state(config).values
     analysis = final_state["analysis"]
     gdd = final_state["gdd"]
     gdd_review = final_state.get("gdd_review")

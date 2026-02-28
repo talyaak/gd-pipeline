@@ -72,7 +72,7 @@ def save(
         target = target / f"attempt_{attempt}"
     target.mkdir(parents=True, exist_ok=True)
     path = target / filename
-    path.write_text(json.dumps(data, indent=2, default=str))
+    path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
     return path
 
 
@@ -90,7 +90,7 @@ def save_text(
         target = target / f"attempt_{attempt}"
     target.mkdir(parents=True, exist_ok=True)
     path = target / filename
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
     return path
 
 
@@ -159,5 +159,5 @@ def save_pipeline_summary(
 ---
 Artifacts: {_run_dir.name}/
 """
-    path.write_text(md, encoding="utf-8")
+    path.write_text(md, encoding="utf-8")  # already utf-8
     return path
