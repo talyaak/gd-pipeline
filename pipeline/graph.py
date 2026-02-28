@@ -28,6 +28,8 @@ from pipeline.schemas import (
 )
 from pipeline.validate import check_html_game
 
+LLM_MODEL = "gpt-5.2"
+
 MAX_GDD_ATTEMPTS = 3
 MAX_IMPL_SPEC_ATTEMPTS = 3
 MAX_CODE_ATTEMPTS = 3
@@ -75,7 +77,7 @@ on enemy death" is useful.
 def research_genre(state: PipelineState) -> PipelineState:
     """Call GPT-4o with structured output to produce a GenreAnalysis."""
     llm = ChatOpenAI(
-        model="gpt-4o",
+        model=LLM_MODEL,
         temperature=0.3,
         max_tokens=4096,
     )
@@ -168,7 +170,7 @@ def generate_gdd(state: PipelineState) -> PipelineState:
     On rework attempts, incorporates auto-review and/or human feedback.
     """
     llm = ChatOpenAI(
-        model="gpt-4o",
+        model=LLM_MODEL,
         temperature=0.7,
         max_tokens=4096,
     )
@@ -247,7 +249,7 @@ patterns, spawn rates, or how dodging feels different from walking" is useful.
 def review_gdd(state: PipelineState) -> PipelineState:
     """Review the GDD for quality and decide if it needs rework."""
     llm = ChatOpenAI(
-        model="gpt-4o",
+        model=LLM_MODEL,
         temperature=0.3,
         max_tokens=4096,
     )
@@ -398,7 +400,7 @@ def generate_impl_spec(state: PipelineState) -> PipelineState:
     On rework attempts, incorporates review feedback to improve the spec.
     """
     llm = ChatOpenAI(
-        model="gpt-4o",
+        model=LLM_MODEL,
         temperature=0.3,
         max_tokens=8192,
     )
@@ -482,7 +484,7 @@ value — needed for the combat system described in the GDD" is useful. \
 def review_impl_spec(state: PipelineState) -> PipelineState:
     """Review the implementation spec for completeness and buildability."""
     llm = ChatOpenAI(
-        model="gpt-4o",
+        model=LLM_MODEL,
         temperature=0.3,
         max_tokens=4096,
     )
@@ -528,7 +530,7 @@ def should_rework_impl_spec(state: PipelineState) -> str:
 # Node: generate_code
 # ---------------------------------------------------------------------------
 CODE_GEN_PROMPT = """\
-Generate a complete, single-file HTML5 Canvas 2D browser game.
+Generate a complete, single-file HTML5 Phaser 3 browser game.
 
 Game: **{title}** | Genre: **{genre}**
 
@@ -539,32 +541,55 @@ Implementation Spec:
 {spec_json}
 
 Constraints:
-- ONE .html file, inline CSS+JS. No imports, no CDN, no build step.
+- ONE .html file. Only allowed external import: Phaser 3 via CDN.
+- ALL graphics MUST be procedural (this.add.graphics() + generateTexture()).
+  NEVER load external files. NO this.load.image(). NO this.load.audio().
+  NO references to .png/.jpg/.mp3/.wav files. They do not exist.
+  Use Web Audio API (new AudioContext()) for sound effects if needed.
 - Implement ALL entities, states, balance values, and scenes from the spec.
-- Mouse + touch input for desktop + mobile.
 
-Mandatory game loop (use EXACTLY this structure):
+Mandatory structure:
 
-    let lastTime = 0;
-    function gameLoop(timestamp) {{
-        const dt = (timestamp - lastTime) / 1000;
-        lastTime = timestamp;
-        update(dt);
-        render();
-        requestAnimationFrame(gameLoop);
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
+    <script>
+    const CONFIG = {{ /* all balance values here */ }};
+
+    class BootScene extends Phaser.Scene {{
+        constructor() {{ super('Boot'); }}
+        create() {{
+            // Generate ALL textures here with graphics + generateTexture()
+            const gfx = this.add.graphics();
+            gfx.fillStyle(0xff0000); gfx.fillCircle(16, 16, 16);
+            gfx.generateTexture('player', 32, 32); gfx.destroy();
+            this.scene.start('Play');
+        }}
     }}
 
+    class PlayScene extends Phaser.Scene {{
+        constructor() {{ super('Play'); }}
+        create() {{ /* spawn entities using generated textures */ }}
+        update(time, delta) {{
+            const dt = delta / 1000;
+            // Use dt everywhere
+        }}
+    }}
+
+    new Phaser.Game({{
+        width: 800, height: 600, scene: [BootScene, PlayScene, ...],
+        physics: {{ default: 'arcade' }}
+    }});
+    </script>
+
 STRICT rules (automated validation will reject violations):
-- Delta time is ALWAYS 'dt'. NEVER 'deltaTime', 'delta', or 'elapsed'.
-- Pass dt as a parameter to every helper that needs it.
-- Never reference a variable not defined in the current scope.
-- Config constants at top of script. update(dt) and render() separated.
-- Canvas fills viewport. AABB or circle collision.
+- Delta time: dt = delta / 1000. NEVER use 'deltaTime' or 'elapsed'.
+- ZERO external files. Every sprite = generateTexture(). Every sound = Web Audio.
+- Every scene = class extending Phaser.Scene. Use Phaser arcade physics.
+- Config constants at top. Game auto-sizes or fills viewport.
 """
 
 
 REWORK_CODE_PROMPT = """\
-Fix this HTML5 game based on review feedback. Output a COMPLETE .html file.
+Fix this Phaser 3 game based on review feedback. Output a COMPLETE .html file.
 
 Game: **{title}** | Genre: **{genre}**
 
@@ -579,7 +604,8 @@ Score {score}/10 — Strengths: {strengths}
 MUST FIX: {issues}
 Nice to have: {suggestions}
 
-Same rules apply: dt (never deltaTime), no undefined refs, complete file.
+Same rules: Phaser 3, dt (never deltaTime), ZERO external files (generateTexture \
+only), every scene extends Phaser.Scene, complete file.
 """
 
 
@@ -589,7 +615,7 @@ def generate_code(state: PipelineState) -> PipelineState:
     On rework attempts, incorporates code review feedback.
     """
     llm = ChatOpenAI(
-        model="gpt-4o",
+        model=LLM_MODEL,
         temperature=0.3,
         max_tokens=16384,
     )
@@ -641,8 +667,8 @@ def generate_code(state: PipelineState) -> PipelineState:
 # Node: review_code
 # ---------------------------------------------------------------------------
 CODE_REVIEW_PROMPT = """\
-Review this HTML5 game code against its spec. The code already passed automated \
-validation (syntax, structure, variable naming), so focus on logic and fidelity.
+Review this Phaser 3 game against its spec. Code passed automated validation \
+(no external files, correct structure, variable naming), so focus on logic.
 
 Game: **{title}** | Genre: **{genre}**
 
@@ -654,13 +680,12 @@ Code:
 ```
 
 Score 1-10 (pass ≥ 7):
-- **Runtime correctness** (4x): Trace page load → gameLoop → update → render. \
-Any ReferenceError, TypeError, or logic bug that prevents gameplay = auto-fail (≤ 4).
+- **Runtime correctness** (4x): Any error that prevents gameplay = auto-fail (≤ 4).
 - **Spec fidelity** (3x): All entities, states, balance values implemented?
 - **Playability** (2x): Core loop works? Fun?
 - **Completeness** (1x): All scenes and transitions?
 
-Be specific: name the function, the bug, the expected behavior.
+Be specific: name the scene, the function, the bug, the expected behavior.
 """
 
 
@@ -691,7 +716,7 @@ def review_code(state: PipelineState) -> PipelineState:
 
     # ── LLM review (code passed basic checks) ────────────────────────
     llm = ChatOpenAI(
-        model="gpt-4o",
+        model=LLM_MODEL,
         temperature=0.3,
         max_tokens=4096,
     )
