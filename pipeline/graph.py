@@ -26,6 +26,7 @@ from pipeline.schemas import (
     ImplSpecReview,
     ImplementationSpec,
 )
+from pipeline.validate import check_html_game
 
 MAX_GDD_ATTEMPTS = 3
 MAX_IMPL_SPEC_ATTEMPTS = 3
@@ -527,87 +528,58 @@ def should_rework_impl_spec(state: PipelineState) -> str:
 # Node: generate_code
 # ---------------------------------------------------------------------------
 CODE_GEN_PROMPT = """\
-You are an expert HTML5 game developer. Generate a complete, single-file HTML5 \
-browser game based on the game design document and implementation spec below.
+Generate a complete, single-file HTML5 Canvas 2D browser game.
 
-Game: **{title}**
-Genre: **{genre}**
+Game: **{title}** | Genre: **{genre}**
 
-Game Design Document:
+GDD:
 {gdd_json}
 
 Implementation Spec:
 {spec_json}
 
-Requirements:
-- Output a SINGLE complete HTML file with all CSS and JavaScript inline.
-- Use HTML5 Canvas 2D API — no WebGL, no external libraries, no CDN imports.
-- Game must be immediately playable when opened in a browser (no build step).
-- Implement ALL entities from the spec with their properties and behaviors.
-- Implement the full state machine (all states and transitions).
-- Use the exact balance values from the spec's balance tables.
-- Implement the scene flow from the spec.
-- Handle both mouse and touch input for desktop + mobile compatibility.
+Constraints:
+- ONE .html file, inline CSS+JS. No imports, no CDN, no build step.
+- Implement ALL entities, states, balance values, and scenes from the spec.
+- Mouse + touch input for desktop + mobile.
 
-CRITICAL — game loop skeleton (you MUST follow this exact structure):
+Mandatory game loop (use EXACTLY this structure):
 
     let lastTime = 0;
     function gameLoop(timestamp) {{
-        const dt = (timestamp - lastTime) / 1000;  // seconds
+        const dt = (timestamp - lastTime) / 1000;
         lastTime = timestamp;
         update(dt);
         render();
         requestAnimationFrame(gameLoop);
     }}
-    function update(dt) {{
-        // Use 'dt' everywhere — NEVER reference 'deltaTime' or 'delta'.
-        // Pass dt to every function that needs elapsed time.
-    }}
 
-Variable naming rules (STRICT — violating these causes runtime crashes):
-- The delta-time variable is ALWAYS called 'dt', everywhere, in every function.
-- NEVER use 'deltaTime', 'delta', 'elapsed', or any other name for it.
-- Every helper function that needs delta time must accept 'dt' as a parameter.
-- NEVER reference a variable that isn't defined in the current scope or passed in.
-- Before writing any function call, verify the callee exists and accepts those args.
-
-Code structure expectations:
-- All balance/config constants defined at the top of the script.
-- Clear separation of update(dt) and render() phases.
-- Simple but functional collision detection (AABB or circle).
-- All game states implemented with proper transitions.
-- Canvas auto-sized to fill the viewport.
+STRICT rules (automated validation will reject violations):
+- Delta time is ALWAYS 'dt'. NEVER 'deltaTime', 'delta', or 'elapsed'.
+- Pass dt as a parameter to every helper that needs it.
+- Never reference a variable not defined in the current scope.
+- Config constants at top of script. update(dt) and render() separated.
+- Canvas fills viewport. AABB or circle collision.
 """
 
 
 REWORK_CODE_PROMPT = """\
-You are an expert HTML5 game developer REVISING a browser game based on \
-reviewer feedback. Keep what works, fix what doesn't.
+Fix this HTML5 game based on review feedback. Output a COMPLETE .html file.
 
-Game: **{title}**
-Genre: **{genre}**
+Game: **{title}** | Genre: **{genre}**
 
-Implementation Spec (your reference for correctness):
-{spec_json}
+Spec: {spec_json}
 
-Previous code that needs improvement:
+Previous code:
 ```html
 {previous_code}
 ```
 
-Reviewer feedback (score {score}/10):
-Strengths (KEEP these): {strengths}
-Issues (MUST FIX): {issues}
-Suggestions (nice to have): {suggestions}
+Score {score}/10 — Strengths: {strengths}
+MUST FIX: {issues}
+Nice to have: {suggestions}
 
-CRITICAL RULES (same as original generation):
-- Delta time is ALWAYS called 'dt' — never 'deltaTime', 'delta', or 'elapsed'.
-- Every function that needs delta time must accept 'dt' as a parameter.
-- Before referencing any variable, verify it is defined in the current scope.
-- Before calling any function, verify the function exists and accepts those args.
-
-Generate an improved version that fixes every issue. Do not break the strengths. \
-Output a complete, runnable HTML file — not a diff or partial snippet.
+Same rules apply: dt (never deltaTime), no undefined refs, complete file.
 """
 
 
@@ -669,57 +641,55 @@ def generate_code(state: PipelineState) -> PipelineState:
 # Node: review_code
 # ---------------------------------------------------------------------------
 CODE_REVIEW_PROMPT = """\
-You are a senior game developer reviewing HTML5 game code against its \
-implementation spec. Your job is to catch bugs BEFORE the code runs in a browser.
+Review this HTML5 game code against its spec. The code already passed automated \
+validation (syntax, structure, variable naming), so focus on logic and fidelity.
 
-Game: **{title}**
-Genre: **{genre}**
+Game: **{title}** | Genre: **{genre}**
 
-Implementation Spec (what the code SHOULD implement):
-{spec_json}
+Spec: {spec_json}
 
-Generated Code:
+Code:
 ```html
 {code}
 ```
 
-FIRST — perform a runtime-error audit (MANDATORY, do this before anything else):
-1. Trace every function call. Does the called function exist? Is it defined before use?
-2. Check every variable reference. Is it defined in scope? Or is it a typo of another \
-variable name? Common bug: game loop uses 'dt' but a helper references 'deltaTime'.
-3. Check every property access. If code does obj.foo, does obj actually have 'foo'?
-4. Look for mismatched function signatures — caller passes 2 args, function takes 1.
-5. Check for missing 'break' in switch statements, missing 'return' in functions.
+Score 1-10 (pass ≥ 7):
+- **Runtime correctness** (4x): Trace page load → gameLoop → update → render. \
+Any ReferenceError, TypeError, or logic bug that prevents gameplay = auto-fail (≤ 4).
+- **Spec fidelity** (3x): All entities, states, balance values implemented?
+- **Playability** (2x): Core loop works? Fun?
+- **Completeness** (1x): All scenes and transitions?
 
-If ANY undefined-variable or reference error exists, the code CANNOT pass. \
-Score it 4 or below — the game will crash on load.
-
-THEN — score from 1-10:
-
-- **Runtime correctness** (weight: 4x): Will the code actually run without errors? \
-Trace the execution path from page load → gameLoop → update → render. \
-Any ReferenceError, TypeError, or infinite loop means automatic fail.
-- **Spec fidelity** (weight: 3x): Does the code implement all entities, states, \
-and balance values from the spec? Are behaviors correct?
-- **Playability** (weight: 2x): Does the core loop work? Is it fun?
-- **Completeness** (weight: 1x): All scenes, states, transitions?
-
-Scoring guide:
-- 9-10: Runs perfectly. Matches spec, no bugs.
-- 7-8: Runs cleanly. Minor gaps a player wouldn't notice.
-- 5-6: Runs but has noticeable missing features.
-- 1-4: Has runtime errors OR fundamentally broken. WILL CRASH in browser.
-
-Pass threshold: 7 or above.
-
-Be specific. "spawnEntities() on line ~315 references 'deltaTime' but the game loop \
-passes 'dt' — this will throw ReferenceError and crash the game" is useful. \
-"Code needs improvement" is not.
+Be specific: name the function, the bug, the expected behavior.
 """
 
 
 def review_code(state: PipelineState) -> PipelineState:
-    """Review the generated game code against the implementation spec."""
+    """Review the generated game code against the implementation spec.
+
+    Runs automated validation first — if critical issues are found,
+    skips the LLM call entirely and returns a synthetic failing review.
+    """
+    code = state["code"].html_code
+    attempt = state.get("code_attempt", 1)
+
+    # ── Automated validation gate (free, no tokens) ───────────────────
+    validation_issues = check_html_game(code)
+    if validation_issues:
+        review = CodeReview(
+            passed=False,
+            score=3,
+            strengths=["Skipped LLM review — fix validation errors first."],
+            issues=validation_issues,
+            suggestions=[],
+        )
+        path = output.save(
+            "04_code", "review.json", review.model_dump(), attempt=attempt
+        )
+        print(f"  [review_code] VALIDATION FAILED ({len(validation_issues)} issue(s)) → {output.rel(path)}")
+        return {"code_review": review}
+
+    # ── LLM review (code passed basic checks) ────────────────────────
     llm = ChatOpenAI(
         model="gpt-4o",
         temperature=0.3,
@@ -729,7 +699,6 @@ def review_code(state: PipelineState) -> PipelineState:
     structured_llm = llm.with_structured_output(CodeReview)
 
     spec_json = state["impl_spec"].model_dump_json(indent=2)
-    code = state["code"].html_code
 
     review = structured_llm.invoke(
         CODE_REVIEW_PROMPT.format(
@@ -740,7 +709,6 @@ def review_code(state: PipelineState) -> PipelineState:
         )
     )
 
-    attempt = state.get("code_attempt", 1)
     status = "passed" if review.passed and review.score >= 7 else "needs rework"
     path = output.save(
         "04_code", "review.json", review.model_dump(), attempt=attempt
