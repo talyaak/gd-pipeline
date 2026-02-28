@@ -51,13 +51,24 @@ def _display_hitl_prompt(interrupt_value: dict) -> str:
             print(f"    ~ {s}")
 
     print("\n" + "-" * 60)
-    print("  Type 'approve' to proceed to implementation spec.")
-    print("  Or type feedback to send the GDD back for rework.")
+    print("  'approve'  → proceed to implementation spec")
+    print("  'fix'      → rework using the reviewer's issues + suggestions")
+    print("  <anything> → rework with your custom feedback")
     print("-" * 60)
 
     response = input("\n> ").strip()
     if not response:
         response = "approve"
+
+    if response.lower() == "fix":
+        # Build feedback from the LLM reviewer's issues + suggestions
+        parts = []
+        if interrupt_value["issues"]:
+            parts.append("FIX THESE ISSUES: " + "; ".join(interrupt_value["issues"]))
+        if interrupt_value["suggestions"]:
+            parts.append("APPLY THESE SUGGESTIONS: " + "; ".join(interrupt_value["suggestions"]))
+        response = "\n".join(parts) if parts else "Apply all reviewer suggestions."
+
     return response
 
 
