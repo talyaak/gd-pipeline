@@ -17,6 +17,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt
 
 from pipeline import output
+from pipeline.retry import invoke_with_retry
 from pipeline.schemas import (
     CodeReview,
     GameDesignDocument,
@@ -28,7 +29,7 @@ from pipeline.schemas import (
 )
 from pipeline.validate import check_html_game
 
-LLM_MODEL = "gpt-5.2"
+LLM_MODEL = "gpt-4o-mini"
 
 MAX_GDD_ATTEMPTS = 3
 MAX_IMPL_SPEC_ATTEMPTS = 3
@@ -85,8 +86,8 @@ def research_genre(state: PipelineState) -> PipelineState:
     # .with_structured_output() makes the LLM return a Pydantic model directly
     structured_llm = llm.with_structured_output(GenreAnalysis)
 
-    analysis = structured_llm.invoke(
-        RESEARCH_PROMPT.format(genre=state["genre"])
+    analysis = invoke_with_retry(
+        structured_llm, RESEARCH_PROMPT.format(genre=state["genre"])
     )
 
     path = output.save("01_genre_research", "analysis.json", analysis.model_dump())
@@ -198,7 +199,7 @@ def generate_gdd(state: PipelineState) -> PipelineState:
             analysis_json=analysis_json,
         )
 
-    gdd = structured_llm.invoke(prompt)
+    gdd = invoke_with_retry(structured_llm, prompt)
 
     path = output.save("02_gdd", "gdd.json", gdd.model_dump(), attempt=attempt)
     print(f"  [generate_gdd] Attempt {attempt} → {output.rel(path)}")
@@ -258,8 +259,9 @@ def review_gdd(state: PipelineState) -> PipelineState:
 
     gdd_json = state["gdd"].model_dump_json(indent=2)
 
-    review = structured_llm.invoke(
-        REVIEW_GDD_PROMPT.format(genre=state["genre"], gdd_json=gdd_json)
+    review = invoke_with_retry(
+        structured_llm,
+        REVIEW_GDD_PROMPT.format(genre=state["genre"], gdd_json=gdd_json),
     )
 
     attempt = state.get("gdd_attempt", 1)
@@ -343,6 +345,7 @@ Genre: **{genre}**
 
 Game Design Document:
 {gdd_json}
+{gdd_issues_section}
 
 Produce a complete implementation spec:
 
@@ -365,6 +368,15 @@ geometric shapes and simple SFX where possible.
 6. **Technical notes**: Canvas 2D vs WebGL, collision approach, performance \
 budget (target 60fps on mid-range mobile), recommended libraries if any.
 
+7. **Example chunks** (REQUIRED if the game uses chunk/pattern spawning): \
+Include 3–5 concrete JSON chunk examples. At minimum: single obstacle, \
+obstacle + coins, gap + warning. Each example must be valid JSON a dev can \
+load. This is non-negotiable for buildability.
+
+SCOPE: Fully specify core gameplay (entities, collision, spawning, scoring). \
+For RNG algorithm, audio polyphony, exact UI hit-testing — write "implementer's \
+choice" and do not over-specify. Keep total spec under 1000 lines.
+
 Be ruthlessly practical. A developer should be able to `npm init` and start \
 building from this spec.
 """
@@ -372,7 +384,7 @@ building from this spec.
 
 REWORK_IMPL_SPEC_PROMPT = """\
 You are a senior game programmer REVISING a technical implementation spec based \
-on reviewer feedback. Keep what works, fix what doesn't.
+on reviewer and/or human feedback. Keep what works, fix what doesn't.
 
 Game: **{title}**
 Genre: **{genre}**
@@ -383,15 +395,52 @@ Game Design Document:
 Previous implementation spec that needs improvement:
 {previous_spec_json}
 
-Reviewer feedback (score {score}/10):
-Strengths (KEEP these): {strengths}
-Issues (MUST FIX): {issues}
-Suggestions (nice to have): {suggestions}
+{feedback_section}
 
 Generate an improved spec that addresses every issue. Do not lose the strengths. \
 Every entity property needs a type and default value. Every balance number needs \
 a rationale. Every asset needs dimensions.
+
+If the game uses chunk spawning and example_chunks is empty or incomplete, add \
+3–5 concrete JSON chunk examples. Keep total spec under 1000 lines — cut polish \
+details before core gameplay.
 """
+
+
+def _build_gdd_issues_for_impl_spec(state: PipelineState) -> str:
+    """Build GDD reviewer issues to pass into impl spec — prevents propagation of known gaps."""
+    review = state.get("gdd_review")
+    if not review or not (review.issues or review.suggestions):
+        return ""
+    parts = [
+        "GDD REVIEWER FEEDBACK — address these gaps in your impl spec before expanding:",
+        "",
+    ]
+    if review.issues:
+        parts.append("Issues to resolve: " + "; ".join(review.issues))
+    if review.suggestions:
+        parts.append("Suggestions to incorporate: " + "; ".join(review.suggestions))
+    return "\n".join(parts)
+
+
+def _build_impl_spec_feedback_section(state: PipelineState) -> str:
+    """Build the feedback section for the impl spec rework prompt."""
+    parts = []
+    human_feedback = state.get("human_feedback")
+    review = state.get("impl_spec_review")
+
+    if human_feedback:
+        parts.append(f"**HUMAN REVIEWER (highest priority):**\n{human_feedback}")
+
+    if review:
+        parts.append(
+            f"Automated reviewer feedback (score {review.score}/10):\n"
+            f"Strengths (KEEP these): {'; '.join(review.strengths)}\n"
+            f"Issues (MUST FIX): {'; '.join(review.issues)}\n"
+            f"Suggestions (nice to have): {'; '.join(review.suggestions)}"
+        )
+
+    return "\n\n".join(parts)
 
 
 def generate_impl_spec(state: PipelineState) -> PipelineState:
@@ -411,27 +460,26 @@ def generate_impl_spec(state: PipelineState) -> PipelineState:
     attempt = state.get("impl_spec_attempt", 0) + 1
     review = state.get("impl_spec_review")
 
-    if review and not review.passed:
-        # Rework: feed previous spec + feedback
+    if (review and not review.passed) or state.get("human_feedback"):
+        # Rework: feed previous spec + feedback (from reviewer and/or human)
         previous_spec_json = state["impl_spec"].model_dump_json(indent=2)
         prompt = REWORK_IMPL_SPEC_PROMPT.format(
             title=state["gdd"].title,
             genre=state["genre"],
             gdd_json=gdd_json,
             previous_spec_json=previous_spec_json,
-            score=review.score,
-            strengths="; ".join(review.strengths),
-            issues="; ".join(review.issues),
-            suggestions="; ".join(review.suggestions),
+            feedback_section=_build_impl_spec_feedback_section(state),
         )
     else:
+        gdd_issues_section = _build_gdd_issues_for_impl_spec(state)
         prompt = IMPL_SPEC_PROMPT.format(
             title=state["gdd"].title,
             genre=state["genre"],
             gdd_json=gdd_json,
+            gdd_issues_section=gdd_issues_section,
         )
 
-    impl_spec = structured_llm.invoke(prompt)
+    impl_spec = invoke_with_retry(structured_llm, prompt)
 
     path = output.save(
         "03_impl_spec", "impl_spec.json", impl_spec.model_dump(), attempt=attempt
@@ -445,9 +493,9 @@ def generate_impl_spec(state: PipelineState) -> PipelineState:
 # Node: review_impl_spec
 # ---------------------------------------------------------------------------
 REVIEW_IMPL_SPEC_PROMPT = """\
-You are a senior technical reviewer evaluating an implementation spec for an \
-HTML5 browser game. A developer will code directly from this spec — it must be \
-complete and unambiguous.
+You are a pragmatic technical reviewer evaluating an implementation spec for a \
+hyper-casual HTML5 browser game. Target: MVP buildable in 1-2 weeks. Be strict \
+on blockers, lenient on polish.
 
 Game: **{title}**
 Genre: **{genre}**
@@ -456,28 +504,29 @@ Implementation Spec:
 {spec_json}
 
 Score the spec from 1-10 based on these criteria:
-- **Entity completeness** (weight: 3x): Does every entity have all needed properties \
-with types and default values? Are behaviors concrete, not hand-wavy?
-- **Balance table coverage** (weight: 2x): Is every tunable number in the game \
-present with a starting value and rationale? Could you create a config.json from this?
-- **State machine clarity** (weight: 2x): Are all states and transitions covered? \
-No missing edges, no dead ends?
-- **Asset specificity** (weight: 1x): Are assets described well enough to create \
-or source them? Dimensions, frame counts, style notes?
-- **Buildability** (weight: 2x): Could a mid-level developer start coding from \
-this spec today without asking clarifying questions?
+- **Entity completeness** (weight: 2x): Core entities (player, obstacles, pickups) \
+have properties with types and defaults. Minor entities can have gaps.
+- **Balance table coverage** (weight: 2x): Key tunables (speed, spawn rates, scoring) \
+present with values. Not every edge-case number needed for MVP.
+- **State machine** (weight: 1x): Load → Play → GameOver → Retry covered. \
+Transitions clear enough to implement.
+- **Asset specificity** (weight: 1x): Enough to use procedural graphics or placeholders. \
+Exact dimensions optional for MVP.
+- **Buildability** (weight: 2x): Could a developer start coding the core loop \
+without major clarifying questions? Perfect pseudocode and edge-case coverage \
+are NOT required for MVP.
 
-Scoring guide:
-- 9-10: Ready to code. Exceptional spec.
-- 7-8: Good enough. Minor gaps a dev can fill.
-- 5-6: Needs work. Too many missing details or inconsistencies.
-- 1-4: Start over. Fundamental gaps.
+Scoring guide (MVP-focused):
+- 9-10: Exceptional. Ready to code.
+- 7-8: Good enough for MVP. Minor gaps OK. PASS.
+- 5-6: Has core structure but significant gaps that would block implementation. \
+List the 3-5 most critical blockers only.
+- 1-4: Fundamental gaps. Missing core entities or unbuildable.
 
-Pass threshold: 7 or above.
+Pass threshold: 7 or above. When in doubt between 6 and 7, prefer 7 if the \
+core loop is spec'd and a dev could make reasonable choices for the gaps.
 
-Be specific. "Enemy entity is missing a damage property with type and default \
-value — needed for the combat system described in the GDD" is useful. \
-"Needs more detail" is not.
+Be specific but concise. Focus on blockers, not nice-to-haves.
 """
 
 
@@ -493,12 +542,13 @@ def review_impl_spec(state: PipelineState) -> PipelineState:
 
     spec_json = state["impl_spec"].model_dump_json(indent=2)
 
-    review = structured_llm.invoke(
+    review = invoke_with_retry(
+        structured_llm,
         REVIEW_IMPL_SPEC_PROMPT.format(
             title=state["gdd"].title,
             genre=state["genre"],
             spec_json=spec_json,
-        )
+        ),
     )
 
     attempt = state.get("impl_spec_attempt", 1)
@@ -512,17 +562,50 @@ def review_impl_spec(state: PipelineState) -> PipelineState:
 
 
 def should_rework_impl_spec(state: PipelineState) -> str:
-    """Conditional edge: decide whether to rework the impl spec or proceed to code gen."""
+    """Conditional edge: pass → code gen, fail → human review (no auto-retry loop)."""
     review = state["impl_spec_review"]
-    attempt = state.get("impl_spec_attempt", 1)
-
     if review.passed and review.score >= 7:
         return "generate_code"
+    return "human_review_impl_spec"
 
-    if attempt >= MAX_IMPL_SPEC_ATTEMPTS:
-        # Avoid infinite loops — proceed with best effort
+
+# ---------------------------------------------------------------------------
+# Node: human_review_impl_spec (HITL interrupt)
+# ---------------------------------------------------------------------------
+def human_review_impl_spec(state: PipelineState) -> PipelineState:
+    """Pause for human review of the implementation spec.
+
+    When auto-review fails (e.g. 6/10), human can approve to proceed or
+    provide feedback for one targeted rework — avoids token burn on retry loops.
+    """
+    review = state["impl_spec_review"]
+    impl_spec = state["impl_spec"]
+    gdd = state["gdd"]
+
+    human_response = interrupt({
+        "type": "impl_spec_review",
+        "title": gdd.title,
+        "auto_review_score": review.score,
+        "auto_review_passed": review.passed,
+        "strengths": review.strengths,
+        "issues": review.issues,
+        "suggestions": review.suggestions,
+        "impl_spec_attempt": state.get("impl_spec_attempt", 1),
+    })
+
+    response_text = human_response.strip()
+    if response_text.lower() in ("approve", "y", "yes", "ok", "lgtm"):
+        return {"human_approved": True, "human_feedback": None}
+    return {
+        "human_approved": False,
+        "human_feedback": response_text,
+    }
+
+
+def should_proceed_after_impl_review(state: PipelineState) -> str:
+    """Conditional edge: human approved → code gen, rejected → rework impl spec."""
+    if state.get("human_approved"):
         return "generate_code"
-
     return "generate_impl_spec"
 
 
@@ -585,6 +668,8 @@ STRICT rules (automated validation will reject violations):
 - ZERO external files. Every sprite = generateTexture(). Every sound = Web Audio.
 - Every scene = class extending Phaser.Scene. Use Phaser arcade physics.
 - Config constants at top. Game auto-sizes or fills viewport.
+- Output ONLY the raw HTML document. No markdown fences. No explanation. 
+- Start with <!DOCTYPE html> and end with </html>. Nothing else.
 """
 
 
@@ -606,21 +691,19 @@ Nice to have: {suggestions}
 
 Same rules: Phaser 3, dt (never deltaTime), ZERO external files (generateTexture \
 only), every scene extends Phaser.Scene, complete file.
+Output ONLY the corrected raw HTML document. No markdown fences. No explanation.
+Start with <!DOCTYPE html> and end with </html>. Nothing else.
 """
 
 
 def generate_code(state: PipelineState) -> PipelineState:
-    """Generate a complete single-file HTML5 game from the GDD + impl spec.
-
-    On rework attempts, incorporates code review feedback.
-    """
+    # Use plain LLM, NOT structured output
     llm = ChatOpenAI(
         model=LLM_MODEL,
         temperature=0.3,
         max_tokens=65536,
     )
-
-    structured_llm = llm.with_structured_output(GeneratedGame)
+    # ← REMOVED: structured_llm = llm.with_structured_output(GeneratedGame)
 
     gdd_json = state["gdd"].model_dump_json(indent=2)
     spec_json = state["impl_spec"].model_dump_json(indent=2)
@@ -647,9 +730,24 @@ def generate_code(state: PipelineState) -> PipelineState:
             spec_json=spec_json,
         )
 
-    game = structured_llm.invoke(prompt)
+    # ← CHANGED: plain invoke, get raw string back
+    response = invoke_with_retry(llm, prompt)
+    html = response.content
 
-    # Save the playable HTML file + notes
+    # Strip markdown fences if model wraps output in ```html ... ```
+    if html.startswith("```"):
+        html = html.split("```", 2)[1]          # drop opening fence
+        if html.startswith("html"):
+            html = html[4:]                      # drop "html" language tag
+        html = html.rsplit("```", 1)          # drop closing fence
+    html = html.strip()
+
+    # ← SAME: manually construct GeneratedGame
+    game = GeneratedGame(
+        html_code=html,
+        implementation_notes=["Generated via plain text — no structured output."],
+    )
+
     html_path = output.save_text(
         "04_code", "game.html", game.html_code, attempt=attempt
     )
@@ -696,10 +794,16 @@ def review_code(state: PipelineState) -> PipelineState:
     skips the LLM call entirely and returns a synthetic failing review.
     """
     code = state["code"].html_code
-    attempt = state.get("code_attempt", 1)
+    attempt = state.get("code_attempt", 1)    
 
     # ── Automated validation gate (free, no tokens) ───────────────────
     validation_issues = check_html_game(code)
+    if len(validation_issues) > 5:
+        # fail fast, skip LLM review, return directly
+        return {"code_review": CodeReview(
+            passed=False, score=2,
+            strengths=[], issues=validation_issues, suggestions=[]
+        )}
     if validation_issues:
         review = CodeReview(
             passed=False,
@@ -725,13 +829,14 @@ def review_code(state: PipelineState) -> PipelineState:
 
     spec_json = state["impl_spec"].model_dump_json(indent=2)
 
-    review = structured_llm.invoke(
+    review = invoke_with_retry(
+        structured_llm,
         CODE_REVIEW_PROMPT.format(
             title=state["gdd"].title,
             genre=state["genre"],
             spec_json=spec_json,
             code=code,
-        )
+        ),
     )
 
     status = "passed" if review.passed and review.score >= 7 else "needs rework"
@@ -773,8 +878,12 @@ def build_graph(checkpointer=None):
                        generate_gdd ← ─ ─ ─ ─ ─ ─ ─ ─ ─ ─    │
                                                                └─ (approve)
                                                                      ↓
-        generate_impl_spec → review_impl_spec ─┬─ (fail) → generate_impl_spec
+        generate_impl_spec → review_impl_spec ─┬─ (fail) → human_review_impl_spec
                                                └─ (pass) → generate_code
+                                                                  │
+                            ┌── (fix) ───────────────────────────┤
+                            ↓                                      └─ (approve)
+                       generate_impl_spec ← ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
                                                                ↓
         generate_code → review_code ─┬─ (fail) → generate_code
                                      └─ (pass) → END
@@ -792,6 +901,7 @@ def build_graph(checkpointer=None):
     builder.add_node("human_review_gdd", human_review_gdd)
     builder.add_node("generate_impl_spec", generate_impl_spec)
     builder.add_node("review_impl_spec", review_impl_spec)
+    builder.add_node("human_review_impl_spec", human_review_impl_spec)
 
     # Edges — GDD cycle
     builder.add_edge(START, "research_genre")
@@ -805,6 +915,9 @@ def build_graph(checkpointer=None):
     # Edges — Impl spec cycle
     builder.add_edge("generate_impl_spec", "review_impl_spec")
     builder.add_conditional_edges("review_impl_spec", should_rework_impl_spec)
+    builder.add_conditional_edges(
+        "human_review_impl_spec", should_proceed_after_impl_review
+    )
 
     # Nodes — Code gen cycle
     builder.add_node("generate_code", generate_code)

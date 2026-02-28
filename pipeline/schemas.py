@@ -331,6 +331,16 @@ class ImplementationSpec(BaseModel):
         )
     )
 
+    example_chunks: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "3–5 concrete JSON chunk examples for games with chunk/pattern spawning. "
+            "Each dict represents one chunk (id, duration, spawns, etc.). "
+            "Required for endless runners, lane games, procedural levels. "
+            "Empty list if game has no chunk system."
+        ),
+    )
+
 
 # ---------------------------------------------------------------------------
 # Step 4: Code Generation
