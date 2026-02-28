@@ -547,13 +547,33 @@ Requirements:
 - Implement the full state machine (all states and transitions).
 - Use the exact balance values from the spec's balance tables.
 - Implement the scene flow from the spec.
-- Target 60fps with requestAnimationFrame and delta-time game loop.
 - Handle both mouse and touch input for desktop + mobile compatibility.
+
+CRITICAL — game loop skeleton (you MUST follow this exact structure):
+
+    let lastTime = 0;
+    function gameLoop(timestamp) {{
+        const dt = (timestamp - lastTime) / 1000;  // seconds
+        lastTime = timestamp;
+        update(dt);
+        render();
+        requestAnimationFrame(gameLoop);
+    }}
+    function update(dt) {{
+        // Use 'dt' everywhere — NEVER reference 'deltaTime' or 'delta'.
+        // Pass dt to every function that needs elapsed time.
+    }}
+
+Variable naming rules (STRICT — violating these causes runtime crashes):
+- The delta-time variable is ALWAYS called 'dt', everywhere, in every function.
+- NEVER use 'deltaTime', 'delta', 'elapsed', or any other name for it.
+- Every helper function that needs delta time must accept 'dt' as a parameter.
+- NEVER reference a variable that isn't defined in the current scope or passed in.
+- Before writing any function call, verify the callee exists and accepts those args.
 
 Code structure expectations:
 - All balance/config constants defined at the top of the script.
-- Clear separation of update() and render() phases.
-- Proper game loop with delta time (no fixed-step assumptions).
+- Clear separation of update(dt) and render() phases.
 - Simple but functional collision detection (AABB or circle).
 - All game states implemented with proper transitions.
 - Canvas auto-sized to fill the viewport.
@@ -579,6 +599,12 @@ Reviewer feedback (score {score}/10):
 Strengths (KEEP these): {strengths}
 Issues (MUST FIX): {issues}
 Suggestions (nice to have): {suggestions}
+
+CRITICAL RULES (same as original generation):
+- Delta time is ALWAYS called 'dt' — never 'deltaTime', 'delta', or 'elapsed'.
+- Every function that needs delta time must accept 'dt' as a parameter.
+- Before referencing any variable, verify it is defined in the current scope.
+- Before calling any function, verify the function exists and accepts those args.
 
 Generate an improved version that fixes every issue. Do not break the strengths. \
 Output a complete, runnable HTML file — not a diff or partial snippet.
@@ -644,7 +670,7 @@ def generate_code(state: PipelineState) -> PipelineState:
 # ---------------------------------------------------------------------------
 CODE_REVIEW_PROMPT = """\
 You are a senior game developer reviewing HTML5 game code against its \
-implementation spec. The game should be playable and match the spec.
+implementation spec. Your job is to catch bugs BEFORE the code runs in a browser.
 
 Game: **{title}**
 Genre: **{genre}**
@@ -657,27 +683,38 @@ Generated Code:
 {code}
 ```
 
-Review the code against the spec. Score from 1-10:
+FIRST — perform a runtime-error audit (MANDATORY, do this before anything else):
+1. Trace every function call. Does the called function exist? Is it defined before use?
+2. Check every variable reference. Is it defined in scope? Or is it a typo of another \
+variable name? Common bug: game loop uses 'dt' but a helper references 'deltaTime'.
+3. Check every property access. If code does obj.foo, does obj actually have 'foo'?
+4. Look for mismatched function signatures — caller passes 2 args, function takes 1.
+5. Check for missing 'break' in switch statements, missing 'return' in functions.
 
+If ANY undefined-variable or reference error exists, the code CANNOT pass. \
+Score it 4 or below — the game will crash on load.
+
+THEN — score from 1-10:
+
+- **Runtime correctness** (weight: 4x): Will the code actually run without errors? \
+Trace the execution path from page load → gameLoop → update → render. \
+Any ReferenceError, TypeError, or infinite loop means automatic fail.
 - **Spec fidelity** (weight: 3x): Does the code implement all entities, states, \
 and balance values from the spec? Are behaviors correct?
-- **Playability** (weight: 3x): Would this run in a browser without errors? Is it \
-actually fun? Does the core loop work?
-- **Code quality** (weight: 2x): Clean structure, proper game loop with delta time, \
-input handling for desktop + mobile?
-- **Completeness** (weight: 2x): All scenes, all states, all transitions? Any \
-missing features that would make the game unplayable?
+- **Playability** (weight: 2x): Does the core loop work? Is it fun?
+- **Completeness** (weight: 1x): All scenes, states, transitions?
 
 Scoring guide:
-- 9-10: Ready to play. Matches spec, runs cleanly.
-- 7-8: Playable with minor issues. Core loop works.
-- 5-6: Runs but has significant missing features or bugs.
-- 1-4: Broken or fundamentally incomplete.
+- 9-10: Runs perfectly. Matches spec, no bugs.
+- 7-8: Runs cleanly. Minor gaps a player wouldn't notice.
+- 5-6: Runs but has noticeable missing features.
+- 1-4: Has runtime errors OR fundamentally broken. WILL CRASH in browser.
 
 Pass threshold: 7 or above.
 
-Be specific. "The Enemy entity is missing the patrol behavior described in the \
-spec — it just moves in a straight line" is useful. "Code needs improvement" is not.
+Be specific. "spawnEntities() on line ~315 references 'deltaTime' but the game loop \
+passes 'dt' — this will throw ReferenceError and crash the game" is useful. \
+"Code needs improvement" is not.
 """
 
 
