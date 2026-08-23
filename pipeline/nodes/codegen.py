@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 
+from config import CODEGEN_MAX_TOKENS
 from pipeline.llm import get_generation_llm
 from pipeline.output import stage_dir, write_text
 from pipeline.schemas import RunState
@@ -67,7 +68,7 @@ def codegen(state: RunState) -> dict:
     prior_execution = state.get("execution") or {}
     attempt = prior_code.get("attempt", 0) + 1
 
-    llm = get_generation_llm(temperature=0.3, max_tokens=16000)
+    llm = get_generation_llm(temperature=0.3, max_tokens=CODEGEN_MAX_TOKENS)
 
     if attempt == 1:
         prompt = PROMPT.format(gdd=gdd, spec=impl_spec)
@@ -83,7 +84,7 @@ def codegen(state: RunState) -> dict:
             canvas_rendered=exec_artifact.get("canvas_rendered", "unknown"),
             input_response=exec_artifact.get("input_response_detected", "unknown"),
             review_issues=(review.get("spec_fidelity_issues", []) + review.get("quality_issues", [])) or "(none)",
-            previous_html=(prior_code.get("artifact") or {}).get("html", "")[:8000],
+            previous_html=(prior_code.get("artifact") or {}).get("html", ""),
         )
 
     raw = llm.invoke(prompt)
