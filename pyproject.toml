@@ -17,6 +17,9 @@ dev = [
     "playwright>=1.45",
 ]
 
+[tool.pytest.ini_options]
+markers = ["slow: launches a real headless browser; excluded from the mocked-model CI smoke run"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
