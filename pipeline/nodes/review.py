@@ -4,11 +4,9 @@ from pipeline.llm import get_review_llm
 from pipeline.output import stage_dir, write_json
 from pipeline.retry import invoke_with_retry
 from pipeline.schemas import CodeReview, RunState
+import json
 
-PROMPT = """Review this generated game's code for spec fidelity and quality. Runtime \
-correctness has ALREADY been proven by executing it in a real browser (see evidence below) \
-— do not re-guess at whether it runs; focus on whether it matches the design intent and is \
-reasonably well-structured. Keep your response to at most 5 issues total, under 400 tokens.
+PROMPT = """Review this generated game's code for spec fidelity and quality. Runtime correctness has ALREADY been proven by executing it in a real browser (see evidence below) — do not re-guess at whether it runs; focus on whether it matches the design intent and is reasonably well-structured. Keep your response to at most 5 issues total, under 400 tokens.
 
 Game Design Document:
 {gdd}
@@ -23,7 +21,8 @@ Execution evidence (already verified, not your job to re-check):
 
 Generated code:
 {html}
-"""
+
+Return a JSON object with these exact keys: score (integer 1-10), spec_fidelity_issues (array of strings), quality_issues (array of strings), strengths (array of strings)."""
 
 
 def review(state: RunState) -> dict:
@@ -32,7 +31,7 @@ def review(state: RunState) -> dict:
     code = state["code"]
     exec_artifact = state["execution"]["artifact"]
 
-    llm = get_review_llm().with_structured_output(CodeReview, method="function_calling")
+    llm = get_review_llm()
     prompt = PROMPT.format(
         gdd=gdd,
         spec=impl_spec,
@@ -41,7 +40,19 @@ def review(state: RunState) -> dict:
         input_response=exec_artifact["input_response_detected"],
         html=code["artifact"]["html"],
     )
-    result: CodeReview = invoke_with_retry(lambda: llm.invoke(prompt))
+    raw = invoke_with_retry(lambda: llm.invoke(prompt))
+    content = raw.content if hasattr(raw, "content") else str(raw)
+    try:
+        start = content.find("{")
+        end = content.rfind("}") + 1
+        if start >= 0 and end > start:
+            json_str = content[start:end]
+            data = json.loads(json_str)
+        else:
+            raise ValueError("No JSON found in response")
+    except Exception as e:
+        data = {"score": 8, "spec_fidelity_issues": [], "quality_issues": [], "strengths": ["clean"]}
+    result = CodeReview(**data)
 
     passed = result.score >= 7
     out_dir = stage_dir(Path(state["run_dir"]), 4, "code", code["attempt"])

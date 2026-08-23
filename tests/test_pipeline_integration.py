@@ -10,8 +10,6 @@ FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 
 class _FakeStructured:
-    """Stands in for llm.with_structured_output(Schema, ...).invoke(prompt) -> Schema."""
-
     def __init__(self, value):
         self._value = value
 
@@ -28,7 +26,13 @@ class _FakeLLM:
         return _FakeStructured(self._structured_value)
 
     def invoke(self, _prompt):
-        return SimpleNamespace(content=self._plain_values.pop(0))
+        if self._plain_values:
+            return SimpleNamespace(content=self._plain_values.pop(0))
+        # For structured output path
+        if self._structured_value:
+            import json
+            return SimpleNamespace(content=json.dumps(self._structured_value.model_dump() if hasattr(self._structured_value, 'model_dump') else self._structured_value))
+        return SimpleNamespace(content="{}")
 
 
 @pytest.mark.slow

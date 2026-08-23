@@ -18,7 +18,7 @@ Implementation Spec:
 Hard requirements:
 - Output a single HTML file starting with <!DOCTYPE html>. Nothing before it, nothing \
 after the closing </html> tag — no markdown fences, no commentary.
-- Load Phaser 3 from a CDN: <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
+- Phaser 3 is PRELOADED as a global `Phaser` variable. Do NOT include any <script src="..."> tags for Phaser or any other external library. Write only your game code.
 - Generate ALL textures procedurally at runtime via graphics.generateTexture(). Never call \
 this.load.image, this.load.audio, this.load.spritesheet, or reference any image/audio file \
 by path or extension (.png, .jpg, .mp3, .wav, etc.) anywhere in the code.

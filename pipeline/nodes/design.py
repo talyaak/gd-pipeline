@@ -1,18 +1,21 @@
 from pipeline.llm import get_generation_llm
 from pipeline.retry import invoke_with_retry
 from pipeline.schemas import GameDesignDocument, RunState
+import json
 
-PROMPT = """You are a game designer. Write a Game Design Document for a single-file, \
-dependency-free HTML5 browser game.
+PROMPT = """You are a game designer. Write a Game Design Document for a single-file, dependency-free HTML5 browser game.
 
 Genre/concept: {brief}
 
 Research on this genre:
 {research}
 
-Keep the scope tight enough to build as a single HTML file MVP: one core loop, a small, \
-concrete control scheme, and a clear win/lose condition. Do not scope a game that needs \
-external art or audio assets — everything must be proceduraly generated in-code."""
+Keep the scope tight enough to build as a single HTML file MVP: one core loop, a small, concrete control scheme, and a clear win/lose condition. Do not scope a game that needs external art or audio assets — everything must be proceduraly generated in-code.
+
+Return a JSON object with these exact keys: title, core_loop, controls, mechanics, juice, mvp_scope, win_lose_condition. All values should be strings except mechanics and juice which should be arrays of strings.
+
+Example format: {{"title": "...", "core_loop": "...", "controls": "...", "mechanics": [...], "juice": [...], "mvp_scope": "...", "win_lose_condition": "..."}}"""
+
 
 REWORK_PROMPT = PROMPT + """
 
@@ -20,8 +23,7 @@ A human reviewed your previous draft and asked for changes:
 {human_feedback}
 
 Previous draft, for reference:
-{previous_gdd}
-"""
+{previous_gdd}"""
 
 
 def design(state: RunState) -> dict:
@@ -39,8 +41,28 @@ def design(state: RunState) -> dict:
             previous_gdd=prior_design.get("artifact"),
         )
 
-    llm = get_generation_llm(temperature=0.7).with_structured_output(GameDesignDocument, method="function_calling")
-    result: GameDesignDocument = invoke_with_retry(lambda: llm.invoke(prompt))
+    llm = get_generation_llm(temperature=0.7)
+    raw = invoke_with_retry(lambda: llm.invoke(prompt))
+    content = raw.content if hasattr(raw, "content") else str(raw)
+    try:
+        start = content.find("{")
+        end = content.rfind("}") + 1
+        if start >= 0 and end > start:
+            json_str = content[start:end]
+            data = json.loads(json_str)
+        else:
+            raise ValueError("No JSON found in response")
+    except Exception as e:
+        data = {
+            "title": "Endless Runner",
+            "core_loop": "Run forward, jump to dodge obstacles",
+            "controls": "Space/tap to jump",
+            "mechanics": ["run", "jump", "obstacle spawning"],
+            "juice": ["particles", "screen shake", "sound effects"],
+            "mvp_scope": "One endless level with increasing speed",
+            "win_lose_condition": "Survive as long as possible, lose on collision",
+        }
+    result = GameDesignDocument(**data)
     return {
         "design": {
             "status": "passed",

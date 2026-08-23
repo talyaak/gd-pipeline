@@ -17,6 +17,15 @@ ASSET_LOADER_CALLS = [
     "load.tilemapTiledJSON",
 ]
 
+# Patterns that indicate external network usage
+EXTERNAL_SCRIPT_TAG = re.compile(r'<script\s+src\s*=\s*["\']https?://', re.IGNORECASE)
+NETWORK_API_CALLS = [
+    "fetch(",
+    "XMLHttpRequest",
+    "WebSocket(",
+    "navigator.sendBeacon",
+]
+
 
 def _extract_script_contents(html: str) -> str:
     scripts = re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", html, re.DOTALL | re.IGNORECASE)
@@ -48,6 +57,15 @@ def check_html_game(html: str) -> list[str]:
 
     if not re.search(r"\bupdate\s*\(", script):
         issues.append("No update() method found")
+
+    # Check for external script tags (CDN references)
+    if EXTERNAL_SCRIPT_TAG.search(html):
+        issues.append("Contains external <script src=\"http...\"> tag — all code must be self-contained")
+
+    # Check for network API calls
+    for api in NETWORK_API_CALLS:
+        if api in script:
+            issues.append(f"Uses network API '{api}' — no external network access allowed")
 
     node_issues = _check_js_syntax(script)
     issues.extend(node_issues)

@@ -7,6 +7,10 @@ from playwright.sync_api import sync_playwright
 
 from pipeline.schemas import ExecutionReport
 
+# Path to vendored Phaser
+VENDOR_DIR = Path(__file__).parent / "vendor"
+PHASER_JS = (VENDOR_DIR / "phaser.min.js").read_text(encoding="utf-8")
+
 INPUT_WAIT_MS = 500
 POST_INPUT_WAIT_MS = 1500
 LOAD_WAIT_MS = 2000
@@ -23,6 +27,14 @@ def _serve_dir(directory: Path):
 
 def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
     out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Inject vendored Phaser into the HTML before serving
+    # Insert before </head> or at the start of <body> if no </head>
+    if "</head>" in html:
+        html = html.replace("</head>", f"<script>{PHASER_JS}</script></head>")
+    else:
+        html = html.replace("<body>", f"<body><script>{PHASER_JS}</script>")
+    
     game_path = out_dir / "game.html"
     game_path.write_text(html, encoding="utf-8")
 
@@ -31,9 +43,9 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
         with sync_playwright() as p:
             browser = p.chromium.launch(args=["--no-sandbox"])
             context = browser.new_context()
+            # Block ALL external network requests - no CDN allowlist
             context.route("**/*", lambda route: route.abort()
                            if route.request.url.startswith("http") and "127.0.0.1" not in route.request.url
-                           and "cdn.jsdelivr.net" not in route.request.url
                            else route.continue_())
             page = context.new_page()
 
