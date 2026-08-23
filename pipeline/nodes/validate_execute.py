@@ -1,9 +1,13 @@
 from pathlib import Path
+import gzip
 
 from pipeline.execute import run_execution_report
 from pipeline.output import stage_dir, write_json
 from pipeline.schemas import RunState
 from pipeline.validate import check_html_game
+
+# Size gate: gzipped HTML must be under 500KB
+MAX_GZIP_SIZE_KB = 500
 
 
 def validate_execute(state: RunState) -> dict:
@@ -21,6 +25,20 @@ def validate_execute(state: RunState) -> dict:
             "artifact": None,
             "review": None,
             "error": "; ".join(static_issues),
+        }
+        write_json(out_dir, "execution", result)
+        return {"execution": result}
+
+    # Size gate: check gzipped HTML size
+    gzipped_html = gzip.compress(html.encode("utf-8"))
+    gzip_size_kb = len(gzipped_html) / 1024
+    if gzip_size_kb > MAX_GZIP_SIZE_KB:
+        result = {
+            "status": "failed_needs_rework",
+            "attempt": attempt,
+            "artifact": None,
+            "review": None,
+            "error": f"Gzipped HTML size ({gzip_size_kb:.1f} KB) exceeds limit ({MAX_GZIP_SIZE_KB} KB)",
         }
         write_json(out_dir, "execution", result)
         return {"execution": result}

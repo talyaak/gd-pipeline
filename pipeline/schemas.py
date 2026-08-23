@@ -76,4 +76,5 @@ class RunState(TypedDict, total=False):
     spec: StageResult
     code: StageResult
     execution: StageResult
+    variants: StageResult
     human_feedback: Optional[str]
