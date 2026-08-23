@@ -45,7 +45,12 @@ def validate_execute(state: RunState) -> dict:
 
     report = run_execution_report(html, out_dir)
 
-    runtime_ok = report.loaded and not report.console_errors and report.canvas_rendered
+    runtime_ok = (
+        report.loaded
+        and not report.console_errors
+        and report.canvas_rendered
+        and report.input_response_detected
+    )
     result = {
         "status": "passed" if runtime_ok else "failed_needs_rework",
         "attempt": attempt,

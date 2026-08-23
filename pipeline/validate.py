@@ -73,10 +73,19 @@ def check_html_game(html: str) -> list[str]:
     return issues
 
 
+class SyntaxCheckUnavailable(RuntimeError):
+    """Raised when the JS syntax check could not run at all (missing/broken `node`).
+    This must never be swallowed into an empty issue list — an unavailable check is
+    not the same as a passed check, and letting it through as [] would let a game
+    with a real syntax error masquerade as clean."""
+
+
 def _check_js_syntax(script: str) -> list[str]:
-    node = shutil.which("node")
-    if not node or not script.strip():
+    if not script.strip():
         return []
+    node = shutil.which("node")
+    if not node:
+        raise SyntaxCheckUnavailable("`node` executable not found on PATH — cannot run JS syntax check")
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
         f.write(script)
         temp_path = f.name
@@ -85,7 +94,7 @@ def _check_js_syntax(script: str) -> list[str]:
         if result.returncode != 0:
             return [f"JS syntax error (node --check): {result.stderr.strip()[:300]}"]
         return []
-    except (subprocess.TimeoutExpired, OSError):
-        return []
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        raise SyntaxCheckUnavailable(f"JS syntax check failed to run: {exc}") from exc
     finally:
         Path(temp_path).unlink(missing_ok=True)

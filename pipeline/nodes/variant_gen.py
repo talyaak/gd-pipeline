@@ -200,7 +200,7 @@ def _generate_variants(base_html: str, spec_artifact: dict, variant_types: list[
         vtype = variant_type["type"]
         vname = variant_type["name"]
         html = base_html
-        
+
         if vtype == "palette":
             html = _apply_palette_swap(html, vname)
         elif vtype == "difficulty":
@@ -209,15 +209,22 @@ def _generate_variants(base_html: str, spec_artifact: dict, variant_types: list[
             html = _inject_cta(html, vname)
         elif vtype == "theme":
             html = _apply_visual_theme(html, vname)
-        
+
+        # The transformation is brittle source-string replacement (matches literal
+        # patterns like "baseSpeed = 200"); if the base game's generated code
+        # doesn't happen to contain those exact tokens, the "transform" is a no-op
+        # that would otherwise silently report as a successful variant.
+        no_op = html == base_html
+
         # Add variant identifier comment after DOCTYPE
         html = html.replace("<!DOCTYPE html>", f"<!DOCTYPE html>\n<!-- Variant: {vtype}:{vname} -->")
-        
+
         variants.append({
             "type": vtype,
             "name": vname,
             "html": html,
             "spec": spec_artifact,
+            "no_op": no_op,
         })
     
     return variants
@@ -254,6 +261,18 @@ def variant_gen(state: RunState) -> dict:
         variant_dir = out_dir / f"variant_{i}_{variant['type']}_{variant['name']}"
         variant_dir.mkdir(parents=True, exist_ok=True)
         
+        # A transformation that changed nothing is not a successful variant, even
+        # if the (unchanged) base game still runs fine.
+        if variant["no_op"]:
+            results.append({
+                **variant,
+                "status": "failed_noop",
+                "errors": [f"{variant['type']}:{variant['name']} transformation matched nothing in the base game — html is unchanged"],
+            })
+            write_text(variant_dir, "game.html", variant["html"])
+            write_json(variant_dir, "errors.json", {"no_op": True})
+            continue
+
         # Static validation
         static_issues = check_html_game(variant["html"])
         if static_issues:
@@ -266,17 +285,18 @@ def variant_gen(state: RunState) -> dict:
             write_json(variant_dir, "errors.json", {"static": static_issues})
             continue
         
-        # Execution validation
+        # Execution validation. run_execution_report already writes the exact
+        # tested (Phaser/MRAID-injected) HTML to variant_dir/game.html — that is
+        # the canonical artifact; never overwrite it with the raw pre-injection html.
         report = run_execution_report(variant["html"], variant_dir)
         runtime_ok = report.loaded and not report.console_errors and report.canvas_rendered
-        
+
         results.append({
             **variant,
             "status": "passed" if runtime_ok else "failed_runtime",
             "execution": report.model_dump(),
         })
-        
-        write_text(variant_dir, "game.html", variant["html"])
+
         write_json(variant_dir, "execution.json", report.model_dump())
     
     passed_count = sum(1 for r in results if r["status"] == "passed")
