@@ -14,6 +14,20 @@ class MainScene extends Phaser.Scene {
         g.generateTexture('player', 16, 16);
         g.destroy();
         this.player = this.add.image(100, 100, 'player');
+        
+        // MRAID CTA button
+        if (typeof mraid !== 'undefined') {
+            mraid.ready();
+        }
+        this.ctaButton = this.add.rectangle(200, 150, 200, 50, 0x00aa00).setInteractive();
+        this.ctaText = this.add.text(200, 150, 'INSTALL NOW', {fontSize: '24px', fill: '#ffffff'}).setOrigin(0.5);
+        this.ctaButton.on('pointerdown', () => {
+            if (typeof mraid !== 'undefined' && mraid.open) {
+                mraid.open('https://example.com');
+            } else {
+                window.open('https://example.com', '_blank');
+            }
+        });
     }
     update(time, delta) {
         const dt = delta / 1000;
