@@ -2,6 +2,7 @@ from pathlib import Path
 
 from pipeline.llm import get_review_llm
 from pipeline.output import stage_dir, write_json
+from pipeline.retry import invoke_with_retry
 from pipeline.schemas import CodeReview, RunState
 
 PROMPT = """Review this generated game's code for spec fidelity and quality. Runtime \
@@ -32,16 +33,15 @@ def review(state: RunState) -> dict:
     exec_artifact = state["execution"]["artifact"]
 
     llm = get_review_llm().with_structured_output(CodeReview, method="function_calling")
-    result: CodeReview = llm.invoke(
-        PROMPT.format(
-            gdd=gdd,
-            spec=impl_spec,
-            loaded=exec_artifact["loaded"],
-            canvas_rendered=exec_artifact["canvas_rendered"],
-            input_response=exec_artifact["input_response_detected"],
-            html=code["artifact"]["html"][:12000],
-        )
+    prompt = PROMPT.format(
+        gdd=gdd,
+        spec=impl_spec,
+        loaded=exec_artifact["loaded"],
+        canvas_rendered=exec_artifact["canvas_rendered"],
+        input_response=exec_artifact["input_response_detected"],
+        html=code["artifact"]["html"],
     )
+    result: CodeReview = invoke_with_retry(lambda: llm.invoke(prompt))
 
     passed = result.score >= 7
     out_dir = stage_dir(Path(state["run_dir"]), 4, "code", code["attempt"])
