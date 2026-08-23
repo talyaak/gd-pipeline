@@ -1,6 +1,8 @@
 import re
+from pathlib import Path
 
 from pipeline.llm import get_generation_llm
+from pipeline.output import stage_dir, write_text
 from pipeline.schemas import RunState
 
 PROMPT = """You are a game programmer. Write ONE complete, self-contained HTML file that \
@@ -25,6 +27,29 @@ files.
 `const dt = delta / 1000;`). Never use 'deltaTime', 'elapsed', or 'elapsedTime'.
 - Implement a Phaser.Game with at least one Phaser.Scene that has create() and update() \
 methods, and make the described controls and win/lose condition actually work.
+- Declare every class before it is referenced (e.g. before it appears in a `scene: [...]` \
+array), to avoid ReferenceError: Cannot access '<Class>' before initialization.
+"""
+
+REWORK_PROMPT = PROMPT + """
+
+Your previous attempt failed. Here is the real evidence of what went wrong — fix these \
+specific problems, don't just rewrite from scratch:
+
+Static validation issues:
+{static_issues}
+
+Browser execution evidence:
+- Loaded without crashing: {loaded}
+- Console/runtime errors: {console_errors}
+- Canvas rendered: {canvas_rendered}
+- Input produced an observable change: {input_response}
+
+Code review feedback (only relevant if execution evidence above is clean):
+{review_issues}
+
+Previous attempt's code, for reference:
+{previous_html}
 """
 
 
@@ -38,18 +63,43 @@ def _strip_fences(text: str) -> str:
 def codegen(state: RunState) -> dict:
     gdd = state["design"]["artifact"]
     impl_spec = state["spec"]["artifact"]
+    prior_code = state.get("code") or {}
+    prior_execution = state.get("execution") or {}
+    attempt = prior_code.get("attempt", 0) + 1
+
     llm = get_generation_llm(temperature=0.3, max_tokens=16000)
-    raw = llm.invoke(PROMPT.format(gdd=gdd, spec=impl_spec))
+
+    if attempt == 1:
+        prompt = PROMPT.format(gdd=gdd, spec=impl_spec)
+    else:
+        exec_artifact = prior_execution.get("artifact") or {}
+        review = prior_code.get("review") or {}
+        prompt = REWORK_PROMPT.format(
+            gdd=gdd,
+            spec=impl_spec,
+            static_issues=prior_execution.get("error") or "(none)",
+            loaded=exec_artifact.get("loaded", "unknown"),
+            console_errors=exec_artifact.get("console_errors", []),
+            canvas_rendered=exec_artifact.get("canvas_rendered", "unknown"),
+            input_response=exec_artifact.get("input_response_detected", "unknown"),
+            review_issues=(review.get("spec_fidelity_issues", []) + review.get("quality_issues", [])) or "(none)",
+            previous_html=(prior_code.get("artifact") or {}).get("html", "")[:8000],
+        )
+
+    raw = llm.invoke(prompt)
     html = _strip_fences(raw.content if hasattr(raw, "content") else str(raw))
 
     error = None
     if not html.lstrip().lower().startswith("<!doctype html"):
         error = "Generated output does not start with <!DOCTYPE html>"
 
+    out_dir = stage_dir(Path(state["run_dir"]), 4, "code", attempt)
+    write_text(out_dir, "game.html", html)
+
     return {
         "code": {
             "status": "passed" if error is None else "failed_needs_rework",
-            "attempt": 1,
+            "attempt": attempt,
             "artifact": {"html": html},
             "review": None,
             "error": error,

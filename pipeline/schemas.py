@@ -40,6 +40,13 @@ class ImplementationSpec(BaseModel):
     )
 
 
+class CodeReview(BaseModel):
+    score: int = Field(ge=1, le=10, description="Overall score, 1-10. Runtime correctness issues auto-cap this at 3.")
+    spec_fidelity_issues: list[str] = Field(default_factory=list, description="Ways the code deviates from the GDD/spec")
+    quality_issues: list[str] = Field(default_factory=list, description="Code quality/juice concerns, given execution evidence already proved runtime correctness")
+    strengths: list[str] = Field(default_factory=list)
+
+
 class ExecutionReport(BaseModel):
     """Objective evidence from actually running the generated game in a browser. Populated starting Milestone 3."""
 
@@ -62,6 +69,7 @@ class StageResult(TypedDict, total=False):
 
 class RunState(TypedDict, total=False):
     run_id: str
+    run_dir: str
     brief: str
     research: StageResult
     design: StageResult
