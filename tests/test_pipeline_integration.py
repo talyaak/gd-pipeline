@@ -62,7 +62,7 @@ def test_full_pipeline_repairs_a_first_attempt_failure(tmp_path, monkeypatch):
     monkeypatch.setattr("pipeline.nodes.review.get_review_llm", lambda: _FakeLLM(structured_value=review_value))
 
     run_dir = tmp_path / "run"
-    graph = build_graph()
+    graph = build_graph(human_review_gdd_enabled=False)
     final_state = graph.invoke(
         {"brief": "test genre", "run_id": "run", "run_dir": str(run_dir)},
         {"recursion_limit": 50},

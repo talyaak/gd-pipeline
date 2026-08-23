@@ -1,4 +1,5 @@
 from pipeline.llm import get_review_llm
+from pipeline.retry import invoke_with_retry
 from pipeline.schemas import GenreAnalysis, RunState
 
 PROMPT = """You are a game design researcher. Given a game genre/concept, analyze it concisely.
@@ -12,7 +13,7 @@ well-known reference games."""
 
 def research(state: RunState) -> dict:
     llm = get_review_llm().with_structured_output(GenreAnalysis, method="function_calling")
-    result: GenreAnalysis = llm.invoke(PROMPT.format(brief=state["brief"]))
+    result: GenreAnalysis = invoke_with_retry(lambda: llm.invoke(PROMPT.format(brief=state["brief"])))
     return {
         "research": {
             "status": "passed",

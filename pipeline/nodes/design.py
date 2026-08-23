@@ -1,4 +1,5 @@
 from pipeline.llm import get_generation_llm
+from pipeline.retry import invoke_with_retry
 from pipeline.schemas import GameDesignDocument, RunState
 
 PROMPT = """You are a game designer. Write a Game Design Document for a single-file, \
@@ -13,17 +14,37 @@ Keep the scope tight enough to build as a single HTML file MVP: one core loop, a
 concrete control scheme, and a clear win/lose condition. Do not scope a game that needs \
 external art or audio assets — everything must be proceduraly generated in-code."""
 
+REWORK_PROMPT = PROMPT + """
+
+A human reviewed your previous draft and asked for changes:
+{human_feedback}
+
+Previous draft, for reference:
+{previous_gdd}
+"""
+
 
 def design(state: RunState) -> dict:
     research_artifact = state["research"]["artifact"]
+    prior_design = state.get("design") or {}
+    attempt = prior_design.get("attempt", 0) + 1
+
+    if attempt == 1:
+        prompt = PROMPT.format(brief=state["brief"], research=research_artifact)
+    else:
+        prompt = REWORK_PROMPT.format(
+            brief=state["brief"],
+            research=research_artifact,
+            human_feedback=state.get("human_feedback") or "(no specific feedback given)",
+            previous_gdd=prior_design.get("artifact"),
+        )
+
     llm = get_generation_llm(temperature=0.7).with_structured_output(GameDesignDocument, method="function_calling")
-    result: GameDesignDocument = llm.invoke(
-        PROMPT.format(brief=state["brief"], research=research_artifact)
-    )
+    result: GameDesignDocument = invoke_with_retry(lambda: llm.invoke(prompt))
     return {
         "design": {
             "status": "passed",
-            "attempt": 1,
+            "attempt": attempt,
             "artifact": result.model_dump(),
             "review": None,
             "error": None,
