@@ -30,6 +30,8 @@ files.
 methods, and make the described controls and win/lose condition actually work.
 - Declare every class before it is referenced (e.g. before it appears in a `scene: [...]` \
 array), to avoid ReferenceError: Cannot access '<Class>' before initialization.
+- Expose the Phaser.Game instance as `window.__GAME__` immediately after creation for \
+semantic validation (e.g. `window.__GAME__ = game;`).
 """
 
 REWORK_PROMPT = PROMPT + """

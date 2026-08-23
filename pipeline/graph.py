@@ -9,6 +9,7 @@ from pipeline.nodes.research import research
 from pipeline.nodes.review import review
 from pipeline.nodes.spec import spec
 from pipeline.nodes.validate_execute import validate_execute
+from pipeline.nodes.variant_gen import variant_gen
 from pipeline.schemas import RunState
 
 
@@ -24,7 +25,7 @@ def _after_validate_execute(state: RunState) -> str:
 def _after_review(state: RunState) -> str:
     code = state["code"]
     if code["status"] == "passed":
-        return "done"
+        return "variant_gen"
     if code["attempt"] >= MAX_CODE_ATTEMPTS:
         return "give_up"
     return "codegen"
@@ -55,6 +56,7 @@ def build_graph(checkpointer=None, human_review_gdd_enabled: bool | None = None)
     graph.add_node("codegen", codegen)
     graph.add_node("validate_execute", validate_execute)
     graph.add_node("review", review)
+    graph.add_node("variant_gen", variant_gen)
     graph.add_node("give_up", _give_up)
 
     graph.add_edge(START, "research")
@@ -72,7 +74,8 @@ def build_graph(checkpointer=None, human_review_gdd_enabled: bool | None = None)
     graph.add_conditional_edges(
         "validate_execute", _after_validate_execute, {"review": "review", "codegen": "codegen", "give_up": "give_up"}
     )
-    graph.add_conditional_edges("review", _after_review, {"done": END, "codegen": "codegen", "give_up": "give_up"})
+    graph.add_conditional_edges("review", _after_review, {"variant_gen": "variant_gen", "codegen": "codegen", "give_up": "give_up"})
+    graph.add_edge("variant_gen", END)
     graph.add_edge("give_up", END)
 
     return graph.compile(checkpointer=checkpointer)

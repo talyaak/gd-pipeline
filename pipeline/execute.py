@@ -9,7 +9,16 @@ from pipeline.schemas import ExecutionReport
 
 # Path to vendored Phaser
 VENDOR_DIR = Path(__file__).parent / "vendor"
-PHASER_JS = (VENDOR_DIR / "phaser.min.js").read_text(encoding="utf-8")
+CUSTOM_PHASER = VENDOR_DIR / "phaser.custom.min.js"
+FULL_PHASER = VENDOR_DIR / "phaser.min.js"
+
+# Use custom build if available, fallback to full build
+if CUSTOM_PHASER.exists():
+    PHASER_JS = CUSTOM_PHASER.read_text(encoding="utf-8")
+    print(f"[execute] Using custom Phaser build ({CUSTOM_PHASER.stat().st_size / 1024:.1f} KB)")
+else:
+    PHASER_JS = FULL_PHASER.read_text(encoding="utf-8")
+    print(f"[execute] Using full Phaser build ({FULL_PHASER.stat().st_size / 1024:.1f} KB)")
 
 INPUT_WAIT_MS = 500
 POST_INPUT_WAIT_MS = 1500
@@ -80,6 +89,37 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
             after_bytes = after_path.read_bytes()
 
             input_response_detected = before_bytes != after_bytes
+
+            # Semantic validation: check window.__GAME__ exposure and game state
+            semantic_ok = True
+            try:
+                game_exposed = page.evaluate("() => typeof window.__GAME__ !== 'undefined'")
+                if not game_exposed:
+                    console_errors.append("Semantic validation: window.__GAME__ not exposed")
+                    semantic_ok = False
+                else:
+                    # Check scene is active
+                    scene_active = page.evaluate("() => window.__GAME__.scene.isActive('Play') || window.__GAME__.scene.isActive('GameScene') || window.__GAME__.scene.isActive('MainScene')")
+                    if not scene_active:
+                        console_errors.append("Semantic validation: no active gameplay scene")
+                        semantic_ok = False
+                    
+                    # Check score registry
+                    has_score = page.evaluate("() => window.__GAME__.registry.has('score')")
+                    if has_score:
+                        score_val = page.evaluate("() => window.__GAME__.registry.get('score')")
+                        if not isinstance(score_val, (int, float)) or score_val < 0:
+                            console_errors.append("Semantic validation: invalid score value")
+                            semantic_ok = False
+                    
+                    # Check not game over immediately
+                    game_over = page.evaluate("() => window.__GAME__.registry.get('gameOver') === true")
+                    if game_over:
+                        console_errors.append("Semantic validation: game over immediately")
+                        semantic_ok = False
+            except Exception as exc:
+                console_errors.append(f"Semantic validation error: {exc}")
+                semantic_ok = False
 
             duration_ms = LOAD_WAIT_MS + INPUT_WAIT_MS + POST_INPUT_WAIT_MS
 

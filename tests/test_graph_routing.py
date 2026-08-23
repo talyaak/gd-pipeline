@@ -22,7 +22,7 @@ def test_validate_execute_failed_at_limit_routes_to_give_up():
 
 def test_review_passed_routes_to_done():
     state = _state("passed", 1, code_status="passed", code_attempt=1)
-    assert _after_review(state) == "done"
+    assert _after_review(state) == "variant_gen"
 
 
 def test_review_failed_under_limit_routes_to_codegen():

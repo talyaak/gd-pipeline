@@ -21,12 +21,15 @@ class MainScene extends Phaser.Scene {
     }
 }
 
-new Phaser.Game({
+var game = new Phaser.Game({
     type: Phaser.AUTO,
     width: 400,
     height: 300,
     scene: [MainScene],
 });
+window.__GAME__ = game;
+game.registry.set('score', 0);
+game.registry.set('gameOver', false);
 </script>
 </body>
 </html>
