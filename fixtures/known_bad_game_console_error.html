@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neon Sprint</title>
+<style>
+body {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: #000;
+  font-family: 'Courier New', monospace;
+}
+#game-container {
+  box-shadow: 0 0 40px rgba(0, 255, 255, 0.5);
+}
+</style>
+</head>
+<body>
+<div id="game-container"></div>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
+<script>
+const config = {
+  type: Phaser.AUTO,
+  width: 800,
+  height: 600,
+  parent: 'game-container',
+  backgroundColor: '#1a0033',
+  physics: {
+    default: 'arcade',
+    arcade: {
+      gravity: { y: 1200 },
+      debug: false
+    }
+  },
+  scene: [MainMenuScene, PlayScene, GameOverScene]
+};
+
+const game = new Phaser.Game(config);
+
+// Audio context for sound effects
+let audioContext;
+
+function playSound(frequency, duration, type = 'sine') {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+  
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+  
+  oscillator.frequency.value = frequency;
+  oscillator.type = type;
+  
+  gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+  
+  oscillator.start(audioContext.currentTime);
+  oscillator.stop(audioContext.currentTime + duration);
+}
+
+class MainMenuScene extends Phaser.Scene {
+  constructor() {
+    super({ key: 'MainMenu' });
+  }
+
+  create() {
+    const centerX = this.cameras.main.width / 2;
+    const centerY = this.cameras.main.height / 2;
+
+    this.add.text(centerX, centerY - 100, 'NEON SPRINT', {
+      fontSize: '64px',
+      fill: '#00FFFF',
+      stroke: '#00FFFF',
+      strokeThickness: 4,
+      shadow: { blur: 20, color: '#00FFFF', fill: true }
+    }).setOrigin(0.5);
+
+    this.add.text(centerX, centerY + 50, 'Press SPACE to Start', {
+      fontSize: '24px',
+      fill: '#FFFF00',
+      stroke: '#FFFF00',
+      strokeThickness: 2,
+      shadow: { blur: 10, color: '#FFFF00', fill: true }
+    }).setOrigin(0.5);
+
+    this.add.text(centerX, centerY + 100, 'Hold SPACE to jump higher', {
+      fontSize: '16px',
+      fill: '#FFFFFF',
+      stroke: '#FFFFFF',
+      strokeThickness: 1
+    }).setOrigin(0.5);
+
+    this.input.keyboard.once('keydown-SPACE', () => {
+      this.scene.start('Play');
+    });
+  }
+}
+
+class PlayScene extends Phaser.Scene {
+  constructor() {
+    super({ key: 'Play' });
+  }
+
+  create() {
+    // Create textures
+    this.createTextures();
+
+    // Game state
+    this.gameSpeed = 250;
+    this.baseGameSpeed = 250;
+    this.maxGameSpeed = 550;
+    this.speedIncreaseRate = 0.5;
+    this.groundY = 500;
+    this.distance = 0;
+    this.score = 0;
+    this.multiplier = 1.0;
+    this.maxMultiplier = 5.0;
+    this.multiplierDecayTimer = 0;
+    this.multiplierDecayInterval = 3.0;
+    this.sessionBest = 0;
+
+    // Background
+    this.backgroundGradient = this.add.graphics();
+    this.updateBackgroundColor();
+
+    // Ground
+    this.groundSegments = [];
+    for (let i = 0; i < 10; i++) {
+      const segment = this.add.graphics();
+      segment.fillStyle(0x001133, 1);
+      segment.fillRect(i * 100, this.groundY, 100, 100);
+      segment.lineStyle(1, 0x00FFFF, 0.3);
+      for (let j = 0; j < 5; j++) {
+        segment.lineBetween(i * 100 + j * 20, this.groundY, i * 100 + j * 20, 600);
+      }
+      this.groundSegments.push(segment);
+    }
+
+    // Player
+    this.player = this.physics.add.sprite(200, this.groundY - 32, 'player');
+    this.player.setDisplaySize(32, 32);
+    this.player.body.setSize(28, 28);
+    this.player.body.setOffset(2, 2);
+    this.player.isGrounded = false;
+    this.player.isJumping = false;
+    this.player.jumpHoldTime = 0;
+    this.player.alive = true;
+
+    // Particles
+    this.particles = [];
+    this.trailParticles = [];
+    this.floatingScorePopups = [];
+
+    // Obstacles and orbs
+    this.obstacles = [];
+    this.orbs = [];
+    this.spawnTimer = 2.0;
+    this.minSpawnInterval = 1.5;
+    this.maxSpawnInterval = 3.0;
+    this.lastObstacleX = 0;
+
+    // UI
+    this.distanceText = this.add.text(20, 20, 'Distance: 0', {
+      fontSize: '20px',
+      fill: '#00FFFF',
+      stroke: '#00FFFF',
+      strokeThickness: 2,
+      shadow: { blur: 10, color: '#00FFFF', fill: true }
+    });
+
+    this.scoreText = this.add.text(20, 50, 'Score: 0', {
+      fontSize: '20px',
+      fill: '#FFFF00',
+      stroke: '#FFFF00',
+      strokeThickness: 2,
+      shadow: { blur: 10, color: '#FFFF00', fill: true }
+    });
+
+    this.multiplierText = this.add.text(780, 20, 'x1.0', {
+      fontSize: '24px',
+      fill: '#FF00FF',
+      stroke: '#FF00FF',
+      strokeThickness: 2,
+      shadow: { blur: 10, color: '#FF00FF', fill: true }
+    }).setOrigin(1, 0);
+
+    // Input
+    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    // Screen shake
+    this.screenShakeTimer = 0;
+  }
+
+  createTextures() {
+    // Player texture
+    const playerGraphics = this.add.graphics();
+    playerGraphics.fillStyle(0x00FFFF, 1);
+    playerGraphics.fillRect(0, 0, 32, 32);
+    playerGraphics.lineStyle(2, 0xFFFFFF, 1);
+    playerGraphics.strokeRect(0, 0, 32, 32);
+    playerGraphics.generateTexture('player', 32, 32);
+    playerGraphics.destroy();
+
+    // Spike texture
+    const spikeGraphics = this.add.graphics();
+    spikeGraphics.fillStyle(0xFF0044, 1);
+    spikeGraphics.fillRect(0, 0, 16, 40);
+    spikeGraphics.generateTexture('spike', 16, 40);
+    spikeGraphics.destroy();
+
+    // Wall low texture
+    const wallLowGraphics = this.add.graphics();
+    wallLowGraphics.fillStyle(0xFF00FF, 1);
+    wallLowGraphics.fillRect(0, 0, 32, 64);
+    wallLowGraphics.generateTexture('wall_low', 32, 64);
+    wallLowGraphics.destroy();
+
+    // Wall high texture
+    const wallHighGraphics = this.add.graphics();
+    wallHighGraphics.fillStyle(0xFF00FF, 1);
+    wallHighGraphics.fillRect(0, 0, 32, 96);
+    wallHighGraphics.generateTexture('wall_high', 32, 96);
+    wallHighGraphics.destroy();
+
+    // Orb texture
+    const orbGraphics = this.add.graphics();
+    orbGraphics.fillStyle(0xFFFF00, 1);
+    orbGraphics.fillCircle(12, 12, 12);
+    orbGraphics.lineStyle(2, 0xFFD700, 1);
+    orbGraphics.strokeCircle(12, 12, 12);
+    orbGraphics.generateTexture('orb', 24, 24);
+    orbGraphics.destroy();
+  }
+
+  update(time, delta) {
+    const dt = delta / 1000;
+
+    if (!this.player.alive) {
+      this.updateParticles(dt);
+      return;
+    }
+
+    // Update distance
+    this.distance += this.gameSpeed * dt / 10;
+    this.distanceText.setText(`Distance: ${Math.floor(this.distance)}`);
+
+    // Update speed
+    this.updateGameSpeed();
+
+    // Update background
+    this.updateBackgroundColor();
+
+    // Ground scrolling
+    this.groundSegments.forEach(segment => {
+      segment.x -= this.gameSpeed * dt;
+      if (segment.x <= -100) {
+        segment.x += 1000;
+      }
+    });
+
+    // Player physics
+    this.updatePlayer(dt);
+
+    // Trail effect
+    if (Math.random() < 0.5) {
+      this.trailParticles.push({
+        x: this.player.x - 16,
+        y: this.player.y,
+        vx: -50,
+        vy: Phaser.Math.Between(-20, 20),
+        life: 0.3,
+        maxLife: 0.3,
+        color: 0x00FFFF,
+        size: 4
+      });
+    }
+
+    // Spawn obstacles
+    this.spawnTimer -= dt;
+    if (this.spawnTimer <= 0) {
+      this.spawnObstacle();
+      this.spawnTimer = Phaser.Math.FloatBetween(this.minSpawnInterval, this.maxSpawnInterval);
+    }
+
+    // Update obstacles
+    this.updateObstacles(dt);
+
+    // Update orbs
+    this.updateOrbs(dt);
+
+    // Update particles
+    this.updateParticles(dt);
+
+    // Update floating score popups
+    this.updateFloatingScores(dt);
+
+    // Multiplier decay
+    this.multiplierDecayTimer += dt;
+    if (this.multiplierDecayTimer >= this.multiplierDecayInterval) {
+      this.multiplier = Math.max(1.0, this.multiplier - 0.1);
+      this.multiplierDecayTimer = 0;
+      this.updateMultiplierText();
+    }
+
+    // Screen shake
+    if (this.screenShakeTimer > 0) {
+      this.screenShakeTimer -= dt;
+      this.cameras.main.setScroll(
+        Phaser.Math.Between(-8, 8),
+        Phaser.Math.Between(-8, 8)
+      );
+    } else {
+      this.cameras.main.setScroll(0, 0);
+    }
+  }
+
+  updatePlayer(dt) {
+    // Check if grounded
+    this.player.isGrounded = this.player.body.touching.down || this.player.y >= this.groundY - 16;
+
+    if (this.player.isGrounded) {
+      this.player.y = this.groundY - 16;
+      this.player.body.setVelocityY(0);
+    }
+
+    // Jump mechanics
+    if (Phaser.Input.Keyboard.JustDown(this.spaceKey) && this.player.isGrounded) {
+      this.player.body.setVelocityY(-450);
+      this.player.isJumping = true;
+      this.player.jumpHoldTime = 0;
+      playSound(400, 0.1, 'square');
+    }
+
+    if (this.spaceKey.isDown && this.player.isJumping && this.player.jumpHoldTime < 0.25) {
+      this.player.jumpHoldTime += dt;
+      this.player.body.setVelocityY(this.player.body.velocity.y - 800 * dt);
+    }
+
+    if (Phaser.Input.Keyboard.JustUp(this.spaceKey)) {
+      this.player.isJumping = false;
+    }
+
+    if (!this.player.isGrounded) {
+      this.player.isJumping = false;
+    }
+
+    // Check if fell into gap
+    if (this.player.y > 600) {
+      this.playerDeath();
+    }
+  }
+
+  updateGameSpeed() {
+    const speedTier = Math.floor(this.distance / 100);
+    const newSpeed = this.baseGameSpeed + (speedTier * this.speedIncreaseRate * 50);
+    this.gameSpeed = Math.min(newSpeed, this.maxGameSpeed);
+
+    const speedRatio = (this.gameSpeed - this.baseGameSpeed) / (this.maxGameSpeed - this.baseGameSpeed);
+    this.minSpawnInterval = 1.5 * (1 - speedRatio * 0.5);
+    this.maxSpawnInterval = 3.0 * (1 - speedRatio * 0.5);
+  }
+
+  updateBackgroundColor() {
+    const speedRatio = (this.gameSpeed - this.baseGameSpeed) / (this.maxGameSpeed - this.baseGameSpeed);
+    const startColor = Phaser.Display.Color.HexStringToColor('#1a0033');
+    const endColor = Phaser.Display.Color.HexStringToColor('#003d5c');
+    const color = Phaser.Display.Color.Interpolate.ColorWithColor(startColor, endColor, 100, speedRatio * 100);
+    
+    this.backgroundGradient.clear();
+    this.backgroundGradient.fillGradientStyle(
+      Phaser.Display.Color.GetColor(color.r, color.g, color.b),
+      Phaser.Display.Color.GetColor(color.r, color.g, color.b),
+      Phaser.Display.Color.GetColor(Math.max(0, color.r - 20), Math.max(0, color.g - 20), Math.max(0, color.b - 20)),
+      Phaser.Display.Color.GetColor(Math.max(0, color.r - 20), Math.max(0, color.g - 20), Math.max(0, color.b - 20))
+    );
+    this.backgroundGradient.fillRect(0, 0, 800, 600);
+    this.backgroundGradient.setDepth(-10);
+  }
+
+  spawnObstacle() {
+    const type = this.selectObstacleType();
+    let obstacle;
+
+    if (type === 'gap') {
+      const width = Phaser.Math.Between(80, 120);
+      obstacle = {
+        type: 'gap',
+        x: 900,
+        y: this.groundY,
+        width: width,
+        height: 100,
+        slideUpProgress: 0,
+        sprite: null
+      };
+    } else {
+      let texKey, width, height;
+      if (type === 'spike') {
+        texKey = 'spike';
+        width = 16;
+        height = 40;
+      } else if (type === 'wall_low') {
+        texKey = 'wall_low';
+        width = 32;
+        height = 64;
+      } else {
+        texKey = 'wall_high';
+        width = 32;
+        height = 96;
+      }
+
+      const sprite = this.add.sprite(900, this.groundY + height, texKey);
+      sprite.setDisplaySize(width, height);
+      sprite.setOrigin(0.5, 1);
+      
+      obstacle = {
+        type: type,
+        x: 900,
+        y: this.groundY - height,
+        width: width,
+        height: height,
+        slideUpProgress: 0,
+        sprite: sprite,
+        startY: this.groundY
+      };
+    }
+
+    this.obstacles.push(obstacle);
+    this.lastObstacleX = 900;
+
+    // Spawn orb
+    if (Math.random() < 0.3) {
+      const orbY = Phaser.Math.Between(this.groundY - 200, this.groundY - 100);
+      this.spawnOrb(900 + (obstacle.width / 2), orbY);
+    }
+  }
+
+  selectObstacleType() {
+    const rand = Math.random();
+    if (this.distance < 200) {
+      if (rand < 0.5) return 'spike';
+      else if (rand < 0.8) return 'gap';
+      else return 'wall_low';
+    } else if (this.distance < 500) {
+      if (rand < 0.3) return 'spike';
+      else if (rand < 0.55) return 'gap';
+      else if (rand < 0.85) return 'wall_low';
+      else return 'wall_high';
+    } else {
+      if (rand < 0.25) return 'spike';
+      else if (rand < 0.55) return 'gap';
+      else if (rand < 0.8) return 'wall_low';
+      else return 'wall_high';
+    }
+  }
+
+  updateObstacles(dt) {
+    for (let i = this.obstacles.length - 1; i >= 0; i--) {
+      const obs = this.obstacles[i];
+      
+      // Slide up animation
+      if (obs.slideUpProgress < 1) {
+        obs.slideUpProgress = Math.min(1, obs.slideUpProgress + dt * 5);
+        if (obs.sprite) {
+          obs.sprite.y = obs.startY - (obs.height * obs.slideUpProgress);
+        }
+      }
+
+      // Move left
+      obs.x -= this.gameSpeed * dt;
+      if (obs.sprite) {
+        obs.sprite.x = obs.x;
+      }
+
+      // Collision detection
+      if (obs.type !== 'gap') {
+        if (obs.sprite && this.checkCollision(this.player, obs)) {
+          this.playerDeath();
+        }
+      } else {
+        // Gap collision - check if player is over gap and falling
+        if (this.player.x + 14 > obs.x && this.player.x - 14 < obs.x + obs.width) {
+          if (this.player.y >= this.groundY - 16) {
+            this.playerDeath();
+          }
+        }
+      }
+
+      // Remove if off screen
+      if (obs.x < -200) {
+        if (obs.sprite) obs.sprite.destroy();
+        this.obstacles.splice(i, 1);
+      }
+    }
+  }
+
+  spawnOrb(x, y) {
+    const sprite = this.add.sprite(x, y, 'orb');
+    sprite.setDisplaySize(24, 24);
+    
+    this.orbs.push({
+      x: x,
+      y: y,
+      sprite: sprite,
+      collected: false,
+      pulseTime: 0,
+      floatOffset: 0
+    });
+  }
+
+  updateOrbs(dt) {
+    for (let i = this.orbs.length - 1; i >= 0; i--) {
+      const orb = this.orbs[i];
+      
+      if (orb.collected) continue;
+
+      // Move left
+      orb.x -= this.gameSpeed * dt;
+      
+      // Pulse and float
+      orb.pulseTime += dt * 3;
+      orb.floatOffset = Math.sin(orb.pulseTime) * 10;
+      const scale = 1 + Math.sin(orb.pulseTime) * 0.2;
+      
+      orb.sprite.x = orb.x;
+      orb.sprite.y = orb.y + orb.floatOffset;
+      orb.sprite.setScale(scale);
+
+      // Collision with player
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, orb.x, orb.y + orb.floatOffset);
+      if (dist < 30) {
+        this.collectOrb(orb);
+      }
+
+      // Remove if off screen
+      if (orb.x < -50) {
+        orb.sprite.destroy();
+        this.orbs.splice(i, 1);
+      }
+    }
+  }
+
+  collectOrb(orb) {
+    orb.collected = true;
+    orb.sprite.destroy();
+
+    // Increase multiplier
+    this.multiplier = Math.min(this.maxMultiplier, this.multiplier + 0.5);
+    this.multiplierDecayTimer = 0;
+
+    // Add score
+    const points = Math.floor(100 * this.multiplier);
+    this.score += points;
+    this.scoreText.setText(`Score: ${this.score}`);
+
+    // Update multiplier text with pulse
+    this.updateMultiplierText();
+    this.tweens.add({
+      targets: this.multiplierText,
+      scale: 1.5,
+      duration: 100,
+      yoyo: true
+    });
+
+    // Floating score popup
+    const popup = this.add.text(orb.x, orb.y, `+${points}`, {
+      fontSize: '20px',
+      fill: '#FFFF00',
+      stroke: '#FFFF00',
+      strokeThickness: 2
+    }).setOrigin(0.5);
+    
+    this.floatingScorePopups.push({
+      text: popup,
+      life: 1.0,
+      maxLife: 1.0
+    });
+
+    // Particle burst
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      this.particles.push({
+        x: orb.x,
+        y: orb.y,
+        vx: Math.cos(angle) * 200,
+        vy: Math.sin(angle) * 200,
+        life: 0.5,
+        maxLife: 0.5,
+        color: 0xFFFF00,
+        size: 6
+      });
+    }
+
+    playSound(600, 0.15, 'sine');
+  }
+
+  updateMultiplierText() {
+    this.multiplierText.setText(`x${this.multiplier.toFixed(1)}`);
+  }
+
+  updateParticles(dt) {
+    // Trail particles
+    for (let i = this.trailParticles.length - 1; i >= 0; i--) {
+      const p = this.trailParticles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      
+      if (p.life <= 0) {
+        this.trailParticles.splice(i, 1);
+      }
+    }
+
+    // Other particles
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 500 * dt; // Gravity
+      p.life -= dt;
+      
+      if (p.life <= 0) {
+        this.particles.splice(i, 1);
+      }
+    }
+
+    // Render particles
+    const graphics = this.add.graphics();
+    
+    this.trailParticles.forEach(p => {
+      const alpha = p.life / p.maxLife;
+      graphics.fillStyle(p.color, alpha);
+      graphics.fillCircle(p.x, p.y, p.size);
+    });
+
+    this.particles.forEach(p => {
+      const alpha = p.life / p.maxLife;
+      graphics.fillStyle(p.color, alpha);
+      graphics.fillCircle(p.x, p.y, p.size);
+    });
+
+    graphics.setDepth(100);
+    this.time.delayedCall(50, () => graphics.destroy());
+  }
+
+  updateFloatingScores(dt) {
+    for (let i = this.floatingScorePopups.length - 1; i >= 0; i--) {
+      const popup = this.floatingScorePopups[i];
+      popup.life -= dt;
+      popup.text.y -= 50 * dt;
+      popup.text.setAlpha(popup.life / popup.maxLife);
+      
+      if (popup.life <= 0) {
+        popup.text.destroy();
+        this.floatingScorePopups.splice(i, 1);
+      }
+    }
+  }
+
+  checkCollision(player, obstacle) {
+    const px = player.x;
+    const py = player.y;
+    const pw = 28;
+    const ph = 28;
+
+    const ox = obstacle.x;
+    const oy = obstacle.y;
+    const ow = obstacle.width;
+    const oh = obstacle.height;
+
+    return px - pw/2 < ox + ow/2 &&
+           px + pw/2 > ox - ow/2 &&
+           py - ph/2 < oy + oh/2 &&
+           py + ph/2 > oy - oh/2;
+  }
+
+  playerDeath() {
+    if (!this.player.alive) return;
+    
+    this.player.alive = false;
+    this.player.setVisible(false);
+
+    // Screen shake
+    this.screenShakeTimer = 0.3;
+
+    // Death particles
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      this.particles.push({
+        x: this.player.x,
+        y: this.player.y,
+        vx: Math.cos(angle) * 300,
+        vy: Math.sin(angle) * 300 - 200,
+        life: 1.0,
+        maxLife: 1.0,
+        color: 0x00FFFF,
+        size: 8
+      });
+    }
+
+    playSound(200, 0.3, 'sawtooth');
+
+    // Update session best
+    this.sessionBest = Math.max(this.sessionBest, Math.floor(this.distance));
+
+    // Transition to game over
+    this.time.delayedCall(1500, () => {
+      this.scene.start('GameOver', {
+        distance: Math.floor(this.distance),
+        score: this.score,
+        sessionBest: this.sessionBest
+      });
+    });
+  }
+}
+
+class GameOverScene extends Phaser.Scene {
+  constructor() {
+    super({ key: 'GameOver' });
+  }
+
+  init(data) {
+    this.finalDistance = data.distance;
+    this.finalScore = data.score;
+    this.sessionBest = data.sessionBest;
+  }
+
+  create() {
+    const centerX = this.cameras.main.width / 2;
+    const centerY = this.cameras.main.height / 2;
+
+    this.add.text(centerX, centerY - 150, 'GAME OVER', {
+      fontSize: '48px',
+      fill: '#FF0044',
+      stroke: '#FF0044',
+      strokeThickness: 4,
+      shadow: { blur: 20, color: '#FF0044', fill: true }
+    }).setOrigin(0.5);
+
+    this.add.text(centerX, centerY - 50, `Distance: ${this.finalDistance}`, {
+      fontSize: '32px',
+      fill: '#00FFFF',
+      stroke: '#00FFFF',
+      strokeThickness: 2,
+      shadow: { blur: 10, color: '#00FFFF', fill: true }
+    }).setOrigin(0.5);
+
+    this.add.text(centerX, centerY, `Score: ${this.finalScore}`, {
+      fontSize: '32px',
+      fill: '#FFFF00',
+      stroke: '#FFFF00',
+      strokeThickness: 2,
+      shadow: { blur: 10, color: '#FFFF00', fill: true }
+    }).setOrigin(0.5);
+
+    this.add.text(centerX, centerY + 50, `Session Best: ${this.sessionBest}`, {
+      fontSize: '24px',
+      fill: '#FF00FF',
+      stroke: '#FF00FF',
+      strokeThickness: 2,
+      shadow: { blur: 10, color: '#FF00FF', fill: true }
+    }).setOrigin(0.5);
+
+    this.add.text(centerX, centerY + 120, 'Press SPACE to Restart', {
+      fontSize: '24px',
+      fill: '#FFFFFF',
+      stroke: '#FFFFFF',
+      strokeThickness: 2
+    }).setOrigin(0.5);
+
+    this.input.keyboard.once('keydown-SPACE', () => {
+      this.scene.start('Play');
+    });
+  }
+}
+</script>
+</body>
+</html>

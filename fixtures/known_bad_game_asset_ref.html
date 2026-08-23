@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head><title>Bad Game - Asset Ref</title></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
+<script>
+class MainScene extends Phaser.Scene {
+    constructor() {
+        super('MainScene');
+    }
+    preload() {
+        this.load.image('player', 'player.png');
+    }
+    create() {
+        this.player = this.add.image(100, 100, 'player');
+    }
+    update(time, delta) {
+        const dt = delta / 1000;
+        this.player.x += 10 * dt;
+    }
+}
+
+new Phaser.Game({
+    type: Phaser.AUTO,
+    width: 400,
+    height: 300,
+    scene: [MainScene],
+});
+</script>
+</body>
+</html>
