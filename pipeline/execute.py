@@ -11,6 +11,7 @@ from pipeline.schemas import ExecutionReport
 VENDOR_DIR = Path(__file__).parent / "vendor"
 CUSTOM_PHASER = VENDOR_DIR / "phaser.custom.min.js"
 FULL_PHASER = VENDOR_DIR / "phaser.min.js"
+MRAID_JS = VENDOR_DIR / "mraid.js"
 
 # Use custom build if available, fallback to full build
 if CUSTOM_PHASER.exists():
@@ -19,6 +20,9 @@ if CUSTOM_PHASER.exists():
 else:
     PHASER_JS = FULL_PHASER.read_text(encoding="utf-8")
     print(f"[execute] Using full Phaser build ({FULL_PHASER.stat().st_size / 1024:.1f} KB)")
+
+# Read MRAID wrapper
+MRAID_WRAPPER = MRAID_JS.read_text(encoding="utf-8") if MRAID_JS.exists() else ""
 
 INPUT_WAIT_MS = 500
 POST_INPUT_WAIT_MS = 1500
@@ -43,6 +47,13 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
         html = html.replace("</head>", f"<script>{PHASER_JS}</script></head>")
     else:
         html = html.replace("<body>", f"<body><script>{PHASER_JS}</script>")
+    
+    # Inject MRAID wrapper if available
+    if MRAID_WRAPPER:
+        if "</head>" in html:
+            html = html.replace("</head>", f"<script>{MRAID_WRAPPER}</script></head>")
+        else:
+            html = html.replace("<body>", f"<body><script>{MRAID_WRAPPER}</script>")
     
     game_path = out_dir / "game.html"
     game_path.write_text(html, encoding="utf-8")
@@ -117,6 +128,45 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                     if game_over:
                         console_errors.append("Semantic validation: game over immediately")
                         semantic_ok = False
+                    
+                    # MRAID validation
+                    mraid_ok = True
+                    try:
+                        mraid_exists = page.evaluate("() => typeof mraid !== 'undefined'")
+                        if not mraid_exists:
+                            console_errors.append("MRAID validation: mraid not exposed")
+                            mraid_ok = False
+                        else:
+                            # Check mraid.getVersion()
+                            version = page.evaluate("() => mraid.getVersion()")
+                            if version != "3.0":
+                                console_errors.append(f"MRAID validation: version {version}, expected 3.0")
+                                mraid_ok = False
+                            
+                            # Check mraid.getState()
+                            state = page.evaluate("() => mraid.getState()")
+                            if state != "default" and state != "loading" and state != "ready":
+                                console_errors.append(f"MRAID validation: unexpected state {state}")
+                                mraid_ok = False
+                            
+                            # Check mraid.open exists
+                            has_open = page.evaluate("() => typeof mraid.open === 'function'")
+                            if not has_open:
+                                console_errors.append("MRAID validation: mraid.open not available")
+                                mraid_ok = False
+                            
+                            # Check CTA button exists and has handler
+                            has_cta = page.evaluate("() => window.__GAME__ && window.__GAME__.scene && window.__GAME__.scene.scenes.some(s => s.ctaButton)")
+                            if not has_cta:
+                                console_errors.append("MRAID validation: CTA button not found on scene")
+                                mraid_ok = False
+                    except Exception as exc:
+                        console_errors.append(f"MRAID validation error: {exc}")
+                        mraid_ok = False
+                    
+                    if not mraid_ok:
+                        semantic_ok = False
+                        
             except Exception as exc:
                 console_errors.append(f"Semantic validation error: {exc}")
                 semantic_ok = False

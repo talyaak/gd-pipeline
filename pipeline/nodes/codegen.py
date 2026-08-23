@@ -32,6 +32,13 @@ methods, and make the described controls and win/lose condition actually work.
 array), to avoid ReferenceError: Cannot access '<Class>' before initialization.
 - Expose the Phaser.Game instance as `window.__GAME__` immediately after creation for \
 semantic validation (e.g. `window.__GAME__ = game;`).
+- Create a visible CTA button in the game over / end screen with text like "INSTALL NOW" \
+or "PLAY FULL VERSION". The CTA button must have a `pointerdown` handler that calls \
+`mraid.open("https://example.com")` if `mraid` is available, otherwise \
+`window.open("https://example.com", "_blank")`. Store the CTA button reference on the \
+scene as `this.ctaButton` for MRAID wrapper injection.
+- Call `mraid.ready()` when the game initializes (after Phaser.Game creation) if `mraid` \
+is available.
 """
 
 REWORK_PROMPT = PROMPT + """
@@ -53,6 +60,11 @@ Code review feedback (only relevant if execution evidence above is clean):
 
 Previous attempt's code, for reference:
 {previous_html}
+
+Remember: The game MUST include MRAID integration:
+- CTA button with mraid.open() handler
+- mraid.ready() call on initialization
+- window.__GAME__ exposure
 """
 
 
