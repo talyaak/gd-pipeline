@@ -90,9 +90,43 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
             page.screenshot(path=str(before_path))
             before_bytes = before_path.read_bytes()
 
+            # bounding_box() is in page/viewport coordinates, not canvas-relative —
+            # a canvas centered via CSS (as many generated games are) sits well away
+            # from (0, 0), so every coordinate below must be offset by box["x"]/["y"].
+            # Clicking box["width"]/2 directly (the previous behavior) missed the
+            # canvas entirely on any non-flush-to-origin layout.
+            origin_x = box["x"] if box else 0
+            origin_y = box["y"] if box else 0
+            w = box["width"] if box else 400
+            h = box["height"] if box else 300
+            cx = origin_x + w / 2
+            cy = origin_y + h / 2
+
             page.keyboard.press("Space")
             page.wait_for_timeout(INPUT_WAIT_MS)
-            page.mouse.click(box["width"] / 2 if box else 200, box["height"] / 2 if box else 150)
+            page.mouse.click(cx, cy)
+            page.wait_for_timeout(INPUT_WAIT_MS)
+
+            # A single center click only exercises tap-a-button games. Other common
+            # mechanics need different gestures, none of which a single click covers:
+            #   - select-A-then-select-B swap (most match-3 games): two discrete
+            #     clicks at different points, each its own pointerdown.
+            #   - continuous drag (slide/sort/drag-to-target): one pointerdown, several
+            #     pointermoves, then pointerup, all without an intervening click.
+            # Probe both rather than guessing which one the generated game uses.
+            page.mouse.click(origin_x + w * 0.35, origin_y + h * 0.5)
+            page.wait_for_timeout(150)
+            page.mouse.click(origin_x + w * 0.55, origin_y + h * 0.5)
+            page.wait_for_timeout(INPUT_WAIT_MS)
+
+            drag_start_x = origin_x + w * 0.3
+            drag_end_x = origin_x + w * 0.7
+            page.mouse.move(drag_start_x, cy)
+            page.mouse.down()
+            for step in range(1, 6):
+                page.mouse.move(drag_start_x + (drag_end_x - drag_start_x) * step / 5, cy)
+                page.wait_for_timeout(30)
+            page.mouse.up()
             page.wait_for_timeout(POST_INPUT_WAIT_MS)
 
             after_path = out_dir / "verify_after.png"
@@ -171,7 +205,7 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                 console_errors.append(f"Semantic validation error: {exc}")
                 semantic_ok = False
 
-            duration_ms = LOAD_WAIT_MS + INPUT_WAIT_MS + POST_INPUT_WAIT_MS
+            duration_ms = LOAD_WAIT_MS + 3 * INPUT_WAIT_MS + POST_INPUT_WAIT_MS + 300
 
             browser.close()
     finally:
@@ -185,4 +219,5 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
         screenshot_before_path=str(before_path),
         screenshot_after_path=str(after_path),
         duration_ms=duration_ms,
+        final_html=html,
     )

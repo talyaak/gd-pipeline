@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from pipeline.validate import check_html_game
+import pytest
+
+from pipeline.validate import SyntaxCheckUnavailable, check_html_game
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -45,3 +47,10 @@ def test_static_validation_cannot_catch_runtime_errors():
     # Real M1 output that throws a class-ordering ReferenceError in-browser; static regex can't see it.
     issues = check_html_game(_read("known_bad_game_console_error.html"))
     assert issues == []
+
+
+def test_missing_node_raises_instead_of_silently_passing(monkeypatch):
+    # A missing `node` executable must never be indistinguishable from "syntax check passed".
+    monkeypatch.setattr("pipeline.validate.shutil.which", lambda _name: None)
+    with pytest.raises(SyntaxCheckUnavailable):
+        check_html_game(_read("known_good_game.html"))

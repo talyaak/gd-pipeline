@@ -6,10 +6,17 @@ load_dotenv()
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
-# OpenRouter model names
-# Using available models for generation and review
-GENERATION_MODEL = os.environ.get("GENERATION_MODEL", "anthropic/claude-sonnet-4")
-REVIEW_MODEL = os.environ.get("REVIEW_MODEL", "anthropic/claude-3-haiku")
+# Which backend pipeline/llm.py talks to: "anthropic" (direct Anthropic API) or
+# "openrouter". Swap by setting LLM_PROVIDER in .env — no code changes needed.
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic").strip().lower()
+
+# Model names are provider-specific (OpenRouter uses "anthropic/claude-sonnet-4"
+# style slugs; direct Anthropic uses its own dated model IDs), so each provider
+# gets its own pair rather than one GENERATION_MODEL that only works for one of them.
+GENERATION_MODEL_ANTHROPIC = os.environ.get("GENERATION_MODEL_ANTHROPIC", "claude-sonnet-4-5-20250929")
+REVIEW_MODEL_ANTHROPIC = os.environ.get("REVIEW_MODEL_ANTHROPIC", "claude-haiku-4-5-20251001")
+GENERATION_MODEL_OPENROUTER = os.environ.get("GENERATION_MODEL_OPENROUTER", "anthropic/claude-sonnet-4")
+REVIEW_MODEL_OPENROUTER = os.environ.get("REVIEW_MODEL_OPENROUTER", "anthropic/claude-3-haiku")
 
 MAX_DESIGN_ATTEMPTS = int(os.environ.get("MAX_DESIGN_ATTEMPTS", "3"))
 MAX_CODE_ATTEMPTS = int(os.environ.get("MAX_CODE_ATTEMPTS", "2"))

@@ -51,7 +51,14 @@ def review(state: RunState) -> dict:
         else:
             raise ValueError("No JSON found in response")
     except Exception as e:
-        data = {"score": 8, "spec_fidelity_issues": [], "quality_issues": [], "strengths": ["clean"]}
+        # A malformed review response must never be treated as a passing review —
+        # force a rework attempt instead of fabricating a score.
+        data = {
+            "score": 1,
+            "spec_fidelity_issues": [],
+            "quality_issues": [f"Review unavailable: model returned unparseable output ({e})"],
+            "strengths": [],
+        }
     result = CodeReview(**data)
 
     passed = result.score >= 7

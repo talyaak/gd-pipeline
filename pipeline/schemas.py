@@ -57,6 +57,10 @@ class ExecutionReport(BaseModel):
     screenshot_before_path: Optional[str] = None
     screenshot_after_path: Optional[str] = None
     duration_ms: Optional[int] = None
+    final_html: Optional[str] = Field(
+        default=None,
+        description="The exact HTML that was served and tested (post Phaser/MRAID injection). This is the only artifact that should ever be shipped as game.html.",
+    )
 
 
 class StageResult(TypedDict, total=False):

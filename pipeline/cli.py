@@ -67,17 +67,25 @@ def main() -> None:
         out = stage_dir(run_dir, i, step, result.get("attempt", 1))
         write_json(out, step, result.get("artifact") or {})
 
-    steps = ["research", "design", "spec", "code", "execution"]
+    steps = ["research", "design", "spec", "code", "execution", "variants"]
     for i, step in enumerate(steps, start=1):
         result = final_state.get(step, {})
         status = result.get("status")
-        print(f"  [{i}/5] {step}: {status} (attempt {result.get('attempt')})")
+        print(f"  [{i}/{len(steps)}] {step}: {status} (attempt {result.get('attempt')})")
         if result.get("error"):
             print(f"        error: {result['error']}")
+        if step == "variants":
+            for v in (result.get("artifact") or {}).get("variants", []):
+                if v["status"] != "passed":
+                    print(f"        - {v['type']}:{v['name']}: {v['status']}")
 
     code = final_state.get("code", {})
-    if code.get("artifact", {}).get("html"):
-        write_text(run_dir, "game.html", code["artifact"]["html"])
+    execution = final_state.get("execution", {})
+    # Ship the exact HTML that was executed and validated (Phaser/MRAID injected),
+    # never the raw pre-injection LLM output — see execute.py's final_html.
+    final_html = (execution.get("artifact") or {}).get("final_html")
+    if code.get("status") == "passed" and final_html:
+        write_text(run_dir, "game.html", final_html)
 
     summary = {step: final_state.get(step, {}).get("status") for step in steps}
     write_json(run_dir, "pipeline_summary", summary)

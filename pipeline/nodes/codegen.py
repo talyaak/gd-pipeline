@@ -32,11 +32,16 @@ methods, and make the described controls and win/lose condition actually work.
 array), to avoid ReferenceError: Cannot access '<Class>' before initialization.
 - Expose the Phaser.Game instance as `window.__GAME__` immediately after creation for \
 semantic validation (e.g. `window.__GAME__ = game;`).
-- Create a visible CTA button in the game over / end screen with text like "INSTALL NOW" \
-or "PLAY FULL VERSION". The CTA button must have a `pointerdown` handler that calls \
-`mraid.open("https://example.com")` if `mraid` is available, otherwise \
-`window.open("https://example.com", "_blank")`. Store the CTA button reference on the \
-scene as `this.ctaButton` for MRAID wrapper injection.
+- Create the CTA button (text like "INSTALL NOW" or "PLAY FULL VERSION") inside `create()`, \
+at the same time as the rest of the scene — NOT lazily inside your game-over/win/lose \
+function. Store it as `this.ctaButton` immediately in `create()` and call `.setVisible(false)` \
+on it there; only call `.setVisible(true)` on it when the game reaches its end screen. \
+`this.ctaButton` must be a real, already-constructed Phaser game object from the moment \
+`create()` returns — validation checks for `this.ctaButton` existing while the game is still \
+in progress, before any win/lose state is reached, so creating it only when the game ends \
+will fail validation even though the button itself works correctly once shown. The CTA \
+button must have a `pointerdown` handler that calls `mraid.open("https://example.com")` if \
+`mraid` is available, otherwise `window.open("https://example.com", "_blank")`.
 - Call `mraid.ready()` when the game initializes (after Phaser.Game creation) if `mraid` \
 is available.
 """
@@ -62,6 +67,8 @@ Previous attempt's code, for reference:
 {previous_html}
 
 Remember: The game MUST include MRAID integration:
+- `this.ctaButton` created in create() (hidden via setVisible(false)), not created lazily \
+inside the game-over function — shown via setVisible(true) only when the game ends
 - CTA button with mraid.open() handler
 - mraid.ready() call on initialization
 - window.__GAME__ exposure
@@ -105,7 +112,14 @@ def codegen(state: RunState) -> dict:
     html = _strip_fences(raw.content if hasattr(raw, "content") else str(raw))
 
     error = None
-    if not html.lstrip().lower().startswith("<!doctype html"):
+    finish_reason = getattr(raw, "response_metadata", {}).get("finish_reason")
+    if finish_reason == "length":
+        # The model hit CODEGEN_MAX_TOKENS mid-generation. The output is truncated —
+        # it may still happen to parse/execute (e.g. cut off inside a trailing comment),
+        # but treating it as complete would be exactly the silently-broken-artifact
+        # failure mode this pipeline exists to catch.
+        error = f"Generation truncated: hit max_tokens ({CODEGEN_MAX_TOKENS}) before finishing (finish_reason=length)"
+    elif not html.lstrip().lower().startswith("<!doctype html"):
         error = "Generated output does not start with <!DOCTYPE html>"
 
     out_dir = stage_dir(Path(state["run_dir"]), 4, "code", attempt)
