@@ -6,3 +6,10 @@ __pycache__/
 output/
 *.egg-info/
 .pytest_cache/
+.venv-linux/
+.hermes_cron_prompt.md
+.hermes_cron_setup.sh
+HERMES_STEERING.md
+.hermes_view_chat.sh
+.hermes_live_chat.md
+.venv-linux/
