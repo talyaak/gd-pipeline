@@ -67,6 +67,9 @@ def check_html_game(html: str) -> list[str]:
         if api in script:
             issues.append(f"Uses network API '{api}' — no external network access allowed")
 
+    # Check for mraid.ready() calls - creative must not call mraid.ready() themselves
+    if re.search(r'\.ready\(', script) or 'mraid.ready' in script:
+        issues.append("Calls mraid.ready() — creative code must not call mraid.ready() themselves; gate gameplay on mraid.getState() !== 'loading' and mraid.isViewable()")
     node_issues = _check_js_syntax(script)
     issues.extend(node_issues)
 
