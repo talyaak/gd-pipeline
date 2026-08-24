@@ -11,10 +11,20 @@ Produce: the entities involved (with properties and behavior), the game's state 
 
 If this genre involves any procedural or generative subsystem (e.g. obstacle spawning, level generation, enemy waves), include 3-5 concrete worked examples in example_chunks — short code or pseudocode snippets showing exactly what should be generated, not just a prose description. This is required for genres with patterned/procedural content; leave example_chunks empty otherwise.
 
+CRITICAL: The state_machine MUST include these states in order:
+- 'Boot' (engine init, scale manager, physics config)
+- 'Preload' (generate procedural textures, load audio)
+- 'Tutorial' (interactive onboarding, can be skipped)
+- 'Play' (core gameplay loop)
+- 'GameOver' (failure state, show CTA, offer replay)
+- 'Win' (success state, show CTA, offer next level/replay)
+
+If the genre genuinely doesn't need Tutorial or Win (e.g. pure endless runner), include them anyway but mark as optional in behavior notes.
+
 Return a JSON object with these exact keys: entities, state_machine, balance, example_chunks, technical_notes. 
 - entities should be an array of objects, each with: name (string), properties (array of strings), behavior (string)
-- state_machine should be an array of strings
-- balance should be an object with string keys and string values (e.g., {{"gravity": "1200", "jump_velocity": "-400"}})
+- state_machine should be an array of strings (MUST include Boot, Preload, Tutorial, Play, GameOver, Win)
+- balance should be an object with string keys and string values (e.g., {{\"gravity\": \"1200\", \"jump_velocity\": \"-400\"}})
 - example_chunks should be an array of strings
 - technical_notes should be an array of strings"""
 
@@ -39,7 +49,7 @@ def spec(state: RunState) -> dict:
                 {"name": "Obstacle", "properties": ["x", "y", "width", "height", "type"], "behavior": "Moves left at game speed, removed when off-screen"},
                 {"name": "Orb", "properties": ["x", "y"], "behavior": "Collectible for bonus points"}
             ],
-            "state_machine": ["Play"],
+            "state_machine": ["Boot", "Preload", "Tutorial", "Play", "GameOver", "Win"],
             "balance": {"gravity": "1200", "jump_velocity": "-450", "base_speed": "250", "max_speed": "550", "spawn_interval": "2.0"},
             "example_chunks": [
                 "spawnObstacle(): select random type, create at x=900, add to obstacles array",
@@ -67,6 +77,14 @@ def spec(state: RunState) -> dict:
     # Ensure technical_notes is a list of strings
     if not isinstance(data.get("technical_notes"), list):
         data["technical_notes"] = []
+    
+    # Enforce required state machine states
+    required_states = ["Boot", "Preload", "Tutorial", "Play", "GameOver", "Win"]
+    state_machine = data.get("state_machine", [])
+    for req in required_states:
+        if req not in state_machine:
+            state_machine.append(req)
+    data["state_machine"] = state_machine
     
     result = ImplementationSpec(**data)
     return {
