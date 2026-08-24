@@ -1,5 +1,5 @@
 from pipeline.llm import get_review_llm
-from pipeline.retry import invoke_with_retry
+from pipeline.retry import invoke_with_retry, PipelineError, NODE_TIMEOUTS, NODE_MAX_ATTEMPTS
 from pipeline.schemas import GenreAnalysis, RunState
 import json
 
@@ -14,7 +14,25 @@ Return a JSON object with these exact keys: core_mechanics, juice, progression, 
 
 def research(state: RunState) -> dict:
     llm = get_review_llm()
-    raw = invoke_with_retry(lambda: llm.invoke(PROMPT.format(brief=state["brief"])))
+    try:
+        raw = invoke_with_retry(
+            lambda: llm.invoke(PROMPT.format(brief=state["brief"])),
+            node="research",
+            timeout_seconds=NODE_TIMEOUTS.get("research", 60),
+            max_attempts=NODE_MAX_ATTEMPTS.get("research", 2),
+        )
+    except PipelineError as pe:
+        # Return structured error state
+        return {
+            "research": {
+                "status": "failed_needs_rework",
+                "attempt": pe.attempt,
+                "artifact": None,
+                "review": None,
+                "error": f"[{pe.category.value}] {pe.message}",
+            }
+        }
+    
     # Parse JSON from response
     content = raw.content if hasattr(raw, "content") else str(raw)
     # Try to extract JSON

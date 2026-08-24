@@ -17,7 +17,25 @@ class MainScene extends Phaser.Scene {
         
         // MRAID CTA button
         if (typeof mraid !== 'undefined') {
-            mraid.ready();
+            // Per MRAID spec: listen for ready event, don't call ready()
+            if (mraid.getState() === 'loading') {
+                mraid.addEventListener('ready', () => {
+                    // Bridge is ready, now gate on viewable
+                    if (mraid.isViewable()) {
+                        startGameplay();
+                    } else {
+                        mraid.addEventListener('viewableChange', (viewable) => {
+                            if (viewable) startGameplay();
+                        });
+                    }
+                });
+            } else if (mraid.isViewable()) {
+                startGameplay();
+            } else {
+                mraid.addEventListener('viewableChange', (viewable) => {
+                    if (viewable) startGameplay();
+                });
+            }
         }
         this.ctaButton = this.add.rectangle(200, 150, 200, 50, 0x00aa00).setInteractive();
         this.ctaText = this.add.text(200, 150, 'INSTALL NOW', {fontSize: '24px', fill: '#ffffff'}).setOrigin(0.5);
@@ -28,6 +46,13 @@ class MainScene extends Phaser.Scene {
                 window.open('https://example.com', '_blank');
             }
         });
+
+        // Gameplay start function
+        function startGameplay() {
+            // Game starts immediately (already running)
+            // This is where you'd unpause game loop if gating on MRAID
+            console.log('MRAID: Gameplay started (ready + viewable)');
+        }
     }
     update(time, delta) {
         const dt = delta / 1000;

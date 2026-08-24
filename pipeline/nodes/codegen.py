@@ -42,8 +42,15 @@ in progress, before any win/lose state is reached, so creating it only when the 
 will fail validation even though the button itself works correctly once shown. The CTA \
 button must have a `pointerdown` handler that calls `mraid.open("https://example.com")` if \
 `mraid` is available, otherwise `window.open("https://example.com", "_blank")`.
-- Call `mraid.ready()` when the game initializes (after Phaser.Game creation) if `mraid` \
-is available.
+- Never call `mraid.ready()` yourself — that is fired BY the host bridge, not something \
+creative code invokes (a real ad network's bridge may not even expose a callable `.ready`, \
+so calling it can throw and crash the ad on load). Instead, gate your game's start on the \
+bridge telling you it's ready and visible: if `typeof mraid !== 'undefined'`, wait for both \
+`mraid.addEventListener('ready', ...)` (or `mraid.getState() !== 'loading'` if it already \
+fired before you attached the listener) AND `mraid.isViewable()` being true (listen for \
+`mraid.addEventListener('viewableChange', (viewable) => ...)` and start/pause the Phaser \
+game loop accordingly) before starting gameplay. If `mraid` is undefined, start immediately \
+as normal — MRAID is not guaranteed to be present outside an ad network placement.
 """
 
 REWORK_PROMPT = PROMPT + """
@@ -70,7 +77,8 @@ Remember: The game MUST include MRAID integration:
 - `this.ctaButton` created in create() (hidden via setVisible(false)), not created lazily \
 inside the game-over function — shown via setVisible(true) only when the game ends
 - CTA button with mraid.open() handler
-- mraid.ready() call on initialization
+- Gameplay start gated on `mraid.addEventListener('ready', ...)` + `mraid.isViewable()` \
+(via `viewableChange`) when `mraid` is present — never call `mraid.ready()` yourself
 - window.__GAME__ exposure
 """
 

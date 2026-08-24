@@ -1,9 +1,20 @@
-// MRAID 3.0 Compliant Wrapper for Playable Ads
-// Implements the full MRAID 3.0 specification for ad network compatibility
-// Supports: Google Ads, Unity Ads, AppLovin, IronSource, Vungle, Mintegral
-
+// Local MRAID 3.0 simulator — used only when no host-provided `mraid` exists yet.
+//
+// In a real ad network placement (Google Ads, Unity Ads, AppLovin, ironSource,
+// Vungle, Mintegral, ...), the network's own WebView SDK injects its own real
+// `window.mraid` implementation before this creative's scripts run — that real
+// bridge is what actually talks to the native host. This file must never
+// overwrite that; it only fills in `window.mraid` when nothing has claimed
+// it yet (e.g. previewing the creative directly, or under this pipeline's own
+// browser-execution validation harness), so the creative's `mraid.*` calls have
+// something to run against instead of throwing on an undefined `mraid`.
 (function() {
   'use strict';
+
+  // A real host bridge has already claimed window.mraid — never clobber it.
+  if (typeof window.mraid !== 'undefined') {
+    return;
+  }
 
   // MRAID State
   const MRAID_VERSION = '3.0';
@@ -34,7 +45,13 @@
   let maxSize = { width: 0, height: 0 };
   let supports = ['sms', 'tel', 'calendar', 'storePicture', 'inlineVideo', 'audioVideo', 'location', 'accelerometer', 'gyroscope', 'compass', 'orientation', 'proximity', 'screenOrientation'];
 
-  // Bridging to native
+  // No real native host to talk to here (see file header) — these calls are
+  // deliberately no-ops in the common case. The window.webkit/android checks
+  // below are a best-effort hook for local WebView test harnesses that expose
+  // a bridge under one of these names; they are NOT how any real ad network's
+  // SDK exposes its bridge, so this function has no effect inside a real
+  // placement (where window.mraid is the host's own object and this file's
+  // guard above means this code never runs at all).
   function bridge(method, args) {
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mraid) {
       window.webkit.messageHandlers.mraid.postMessage({ method, args });
@@ -72,7 +89,11 @@
   const mraid = {
     // Version & Capabilities
     getVersion: () => MRAID_VERSION,
-    getPlacementType: () => 'interstitial', // or 'banner', 'rewarded'
+    getPlacementType: () => {
+      // Check for URL parameter override first
+      const params = new URLSearchParams(window.location.search);
+      return params.get('placement') || 'interstitial';
+    },
     getState: () => state,
     isViewable: () => viewable,
 
@@ -80,14 +101,10 @@
     addEventListener,
     removeEventListener,
 
-    // Lifecycle
-    ready: () => {
-      if (state === 'loading') {
-        state = 'default';
-        fireEvent('ready');
-      }
-    },
-
+    // Lifecycle - NO ready() method. Per MRAID spec, ready is fired BY the bridge.
+    // Creative code MUST NOT call mraid.ready(). It should listen:
+    // mraid.addEventListener('ready', cb) or check mraid.getState() !== 'loading'
+    
     // Viewability
     _setViewable: (v) => {
       const wasViewable = viewable;
@@ -210,11 +227,21 @@
   // Expose globally
   window.mraid = mraid;
 
-  // Auto-ready when DOM is ready
+  // Auto-initialize when DOM is ready - fire ready event automatically
+  // This simulates the host bridge firing ready after it initializes
+  function autoInit() {
+    if (state === 'loading') {
+      state = 'default';
+      fireEvent('ready');
+      // Simulate viewable for local testing
+      mraid._setViewable(true);
+    }
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => mraid.ready());
+    document.addEventListener('DOMContentLoaded', autoInit);
   } else {
-    mraid.ready();
+    autoInit();
   }
 
   // Notify native that JS is loaded
