@@ -9,6 +9,7 @@ from pipeline.nodes.research import research
 from pipeline.nodes.review import review
 from pipeline.nodes.spec import spec
 from pipeline.nodes.validate_execute import validate_execute
+from pipeline.nodes.visual_spec import visual_spec
 from pipeline.nodes.variant_gen import variant_gen
 from pipeline.schemas import RunState
 
@@ -53,6 +54,7 @@ def build_graph(checkpointer=None, human_review_gdd_enabled: bool | None = None)
     graph.add_node("research", research)
     graph.add_node("design", design)
     graph.add_node("spec", spec)
+    graph.add_node("visual_spec", visual_spec)
     graph.add_node("codegen", codegen)
     graph.add_node("validate_execute", validate_execute)
     graph.add_node("review", review)
@@ -69,7 +71,8 @@ def build_graph(checkpointer=None, human_review_gdd_enabled: bool | None = None)
     else:
         graph.add_edge("design", "spec")
 
-    graph.add_edge("spec", "codegen")
+    graph.add_edge("spec", "visual_spec")
+    graph.add_edge("visual_spec", "codegen")
     graph.add_edge("codegen", "validate_execute")
     graph.add_conditional_edges(
         "validate_execute", _after_validate_execute, {"review": "review", "codegen": "codegen", "give_up": "give_up"}
