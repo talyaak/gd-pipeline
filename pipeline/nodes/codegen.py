@@ -26,8 +26,8 @@ after the closing </html> tag — no markdown fences, no commentary.
 - Generate ALL textures procedurally at runtime via graphics.generateTexture(). Never call 
 this.load.image, this.load.audio, this.load.spritesheet, or reference any image/audio file 
 by path or extension (.png, .jpg, .mp3, .wav, etc.) anywhere in the code.
-- Use the Web Audio API directly (new AudioContext(), oscillators) for any sound. No audio 
-files.
+- Use the Web Audio API directly (new AudioContext(), oscillators) for any sound. No audio files.
+- Audio must start muted: create AudioContext in suspended state or mute initial audio, then unmute/resume only after first user interaction (pointerdown, keyup, etc.).
 - The delta-time variable in update(time, delta) must be named exactly 'dt' (e.g. 
 `const dt = delta / 1000;`). Never use 'deltaTime', 'elapsed', or 'elapsedTime'.
 - Implement a Phaser.Game with at least one Phaser.Scene that has create() and update() 
