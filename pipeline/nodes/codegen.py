@@ -4,6 +4,7 @@ from pathlib import Path
 from config import CODEGEN_MAX_TOKENS
 from pipeline.llm import get_generation_llm
 from pipeline.output import stage_dir, write_text
+from pipeline.retry import invoke_with_retry, PipelineError, NODE_TIMEOUTS, NODE_MAX_ATTEMPTS
 from pipeline.schemas import RunState
 
 PROMPT = """You are a game programmer. Write ONE complete, self-contained HTML file that 
@@ -116,7 +117,25 @@ def codegen(state: RunState) -> dict:
             previous_html=(prior_code.get("artifact") or {}).get("html", ""),
         )
 
-    raw = llm.invoke(prompt)
+    try:
+        raw = invoke_with_retry(
+            lambda: llm.invoke(prompt),
+            node="codegen",
+            timeout_seconds=NODE_TIMEOUTS.get("codegen", 180),
+            max_attempts=NODE_MAX_ATTEMPTS.get("codegen", 3),
+        )
+    except PipelineError as pe:
+        # Return structured error state
+        return {
+            "code": {
+                "status": "failed_needs_rework",
+                "attempt": attempt,
+                "artifact": {"html": ""},
+                "review": None,
+                "error": f"[{pe.category.value}] {pe.message}",
+            }
+        }
+
     html = _strip_fences(raw.content if hasattr(raw, "content") else str(raw))
 
     error = None
