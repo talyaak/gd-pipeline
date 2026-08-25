@@ -12,4 +12,13 @@ output/
 HERMES_STEERING.md
 .hermes_view_chat.sh
 .hermes_live_chat.md
-.venv-linux/
+.hermes_live_chat_watch.sh
+# Build artifacts
+build/
+generated_game.html
+pipeline/vendor/node_modules/
+TASK_SUMMARY.md
+# Claude Code settings
+.claude/
+# Generated game files
+generated_game_standalone.html
