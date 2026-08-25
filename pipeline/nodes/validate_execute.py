@@ -11,11 +11,11 @@ MAX_GZIP_SIZE_KB = 500
 
 
 def validate_execute(state: RunState) -> dict:
-    code = state["code"]
-    attempt = code["attempt"]
-    html = code["artifact"]["html"]
+    code = state.get("code", {})
+    attempt = code.get("attempt", 0)
+    html = code.get("artifact", {}).get("html", "")
 
-    out_dir = stage_dir(Path(state["run_dir"]), 5, "execution", attempt)
+    out_dir = stage_dir(Path(state.get("run_dir", "")), 5, "execution", attempt)
 
     static_issues = check_html_game(html)
     if static_issues:
