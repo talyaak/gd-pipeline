@@ -70,6 +70,15 @@ def check_html_game(html: str) -> list[str]:
     # Check for mraid.ready() calls - creative must not call mraid.ready() themselves
     if re.search(r'\.ready\(', script) or 'mraid.ready' in script:
         issues.append("Calls mraid.ready() — creative code must not call mraid.ready() themselves; gate gameplay on mraid.getState() !== 'loading' and mraid.isViewable()")
+    # Check for muted-until-interaction audio policy
+    # Audio must start muted and only unmute/resume after first user interaction
+    # Check for AudioContext resume() calls
+    if re.search(r"\.resume\s*\(", script):
+        issues.append("Audio may start unmuted: AudioContext.resume() found. If this call is not guarded by user interaction (pointerdown, keyup, etc.), audio must start muted.")
+    # Check for audio element play() calls
+    if re.search(r"\.play\s*\(", script):
+        issues.append("Audio may start unmuted: HTMLAudioElement.play() found. If this call is not guarded by user interaction (pointerdown, keyup, etc.), audio must start muted.")
+
     node_issues = _check_js_syntax(script)
     issues.extend(node_issues)
 
