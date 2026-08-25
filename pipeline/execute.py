@@ -173,8 +173,8 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                         else:
                             # Check mraid.getVersion()
                             version = page.evaluate("() => mraid.getVersion()")
-                            if version != "3.0":
-                                console_errors.append(f"MRAID validation: version {version}, expected 3.0")
+                            if version not in ["2.0", "3.0"]:
+                                console_errors.append(f"MRAID validation: version {version}, expected 2.0 or 3.0")
                                 mraid_ok = False
                             
                             # Check mraid.getState()
@@ -200,10 +200,10 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                     
                     if not mraid_ok:
                         semantic_ok = False
-                        
+
             except Exception as exc:
-                console_errors.append(f"Semantic validation error: {exc}")
-                semantic_ok = False
+                            console_errors.append(f"Semantic validation error: {exc}")
+                            semantic_ok = False
 
             duration_ms = LOAD_WAIT_MS + 3 * INPUT_WAIT_MS + POST_INPUT_WAIT_MS + 300
 

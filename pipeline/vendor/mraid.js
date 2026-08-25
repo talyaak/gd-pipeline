@@ -88,7 +88,11 @@
   // Core API
   const mraid = {
     // Version & Capabilities
-    getVersion: () => MRAID_VERSION,
+    getVersion: () => {
+      // Check for URL parameter override first
+      const params = new URLSearchParams(window.location.search);
+      return params.get('mraidVersion') || MRAID_VERSION;
+    },
     getPlacementType: () => {
       // Check for URL parameter override first
       const params = new URLSearchParams(window.location.search);
