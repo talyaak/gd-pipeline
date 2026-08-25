@@ -1,0 +1,13 @@
+{
+  "name": "phaser-custom-build",
+  "version": "1.0.0",
+  "description": "Custom Phaser 3 build with only required modules",
+  "main": "index.js",
+  "scripts": {
+    "build": "node pipeline/vendor/build_phaser_custom.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0",
+    "phaser": "^3.80.1"
+  }
+}
