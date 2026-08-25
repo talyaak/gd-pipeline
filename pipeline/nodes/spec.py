@@ -15,12 +15,12 @@ If this genre involves any procedural or generative subsystem (e.g. obstacle spa
 CRITICAL: The state_machine MUST include these states in order:
 - 'Boot' (engine init, scale manager, physics config)
 - 'Preload' (generate procedural textures, load audio)
-- 'Tutorial' (interactive onboarding, can be skipped)
+- 'Tutorial' (interactive onboarding - required for all genres, must be substantive)
 - 'Play' (core gameplay loop)
 - 'GameOver' (failure state, show CTA, offer replay)
 - 'Win' (success state, show CTA, offer next level/replay)
 
-If the genre genuinely doesn't need Tutorial or Win (e.g. pure endless runner), include them anyway but mark as optional in behavior notes.
+Tutorial phase is mandatory for all genres and must provide meaningful onboarding - do not mark as optional.
 
 Return a JSON object with these exact keys: entities, state_machine, balance, example_chunks, technical_notes. 
 - entities should be an array of objects, each with: name (string), properties (array of strings), behavior (string)
