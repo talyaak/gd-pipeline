@@ -205,7 +205,7 @@ def invoke_with_retry(
 NODE_TIMEOUTS = {
     "research": 60,
     "design": 60,
-    "spec": 60,
+    "spec": 120,
     "codegen": 180,
     "validate_execute": 120,
     "review": 60,
