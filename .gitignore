@@ -13,6 +13,7 @@ HERMES_STEERING.md
 .hermes_view_chat.sh
 .hermes_live_chat.md
 .hermes_live_chat_watch.sh
+PRIORITY_REVISION_DRAFT.md
 # Build artifacts
 build/
 generated_game.html
