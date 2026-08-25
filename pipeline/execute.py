@@ -12,6 +12,7 @@ VENDOR_DIR = Path(__file__).parent / "vendor"
 CUSTOM_PHASER = VENDOR_DIR / "phaser.custom.min.js"
 FULL_PHASER = VENDOR_DIR / "phaser.min.js"
 MRAID_JS = VENDOR_DIR / "mraid.js"
+PARTICLE_JS = VENDOR_DIR / "particle.js"
 
 # Use custom build if available, fallback to full build
 if CUSTOM_PHASER.exists():
@@ -23,6 +24,8 @@ else:
 
 # Read MRAID wrapper
 MRAID_WRAPPER = MRAID_JS.read_text(encoding="utf-8") if MRAID_JS.exists() else ""
+# Read particle.js
+PARTICLE_JS_CONTENT = PARTICLE_JS.read_text(encoding="utf-8") if PARTICLE_JS.exists() else ""
 
 INPUT_WAIT_MS = 500
 POST_INPUT_WAIT_MS = 1500
@@ -54,6 +57,12 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
             html = html.replace("</head>", f"<script>{MRAID_WRAPPER}</script></head>")
         else:
             html = html.replace("<body>", f"<body><script>{MRAID_WRAPPER}</script>")
+    # Inject particle.js if available
+    if PARTICLE_JS_CONTENT:
+        if "</head>" in html:
+            html = html.replace("</head>", f"<script>{PARTICLE_JS_CONTENT}</script></head>")
+        else:
+            html = html.replace("<body>", f"<body><script>{PARTICLE_JS_CONTENT}</script>")
     
     game_path = out_dir / "game.html"
     game_path.write_text(html, encoding="utf-8")

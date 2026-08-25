@@ -83,12 +83,12 @@ def visual_spec(state: RunState) -> dict:
                         }
                     },
                     "juice_prescriptions": [
-                        "this.add.particles('image').createEmitter({x: 100, y: 100, speed: 100, quantity: 20, lifespan: 500}); // Particle burst",
-                        "this.cameras.main.shake(100, 0.01); // Screen shake",
-                        "this.time.delayedCall(50); // Hit pause (50ms freeze)",
-                        "this.tweens.add({targets: sprite, scaleX: 1.2, yoyo: true, duration: 50}); // Visual feedback pulse",
-                        "// Audio feedback: this.sound.play('sfx_name'); // Play sound effect"
-                    ]
+                                            "// Particle burst: var emitter = new ParticleEmitter({x: 100, y: 100, speed: 100, startSize: 5, endSize: 2, life: 500}); emitter.burst(20);",
+                                            "// Screen shake: this.cameras.main.shake(100, 0.01);",
+                                            "// Hit pause: this.time.delayedCall(50); // 50ms freeze",
+                                            "// Visual feedback pulse: this.tweens.add({targets: sprite, scaleX: 1.2, yoyo: true, duration: 50});",
+                                            "// Audio feedback: // this.sound.play('sfx_name'); // Play sound effect (Web Audio API)"
+                                        ]
                 },
                 "review": None,
                 "error": None,
@@ -140,12 +140,12 @@ def visual_spec(state: RunState) -> dict:
                 }
             },
             "juice_prescriptions": [
-                "this.add.particles('image').createEmitter({x: 100, y: 100, speed: 100, quantity: 20, lifespan: 500}); // Particle burst",
-                "this.cameras.main.shake(100, 0.01); // Screen shake",
-                "this.time.delayedCall(50); // Hit pause (50ms freeze)",
-                "this.tweens.add({targets: sprite, scaleX: 1.2, yoyo: true, duration: 50}); // Visual feedback pulse",
-                "// Audio feedback: this.sound.play('sfx_name'); // Play sound effect"
-            ]
+                        "// Particle burst: var emitter = new ParticleEmitter({x: 100, y: 100, speed: 100, startSize: 5, endSize: 2, life: 500}); emitter.burst(20);",
+                        "// Screen shake: this.cameras.main.shake(100, 0.01);",
+                        "// Hit pause: this.time.delayedCall(50); // 50ms freeze",
+                        "// Visual feedback pulse: this.tweens.add({targets: sprite, scaleX: 1.2, yoyo: true, duration: 50});",
+                        "// Audio feedback: // this.sound.play('sfx_name'); // Play sound effect (Web Audio API)"
+                    ]
         }
     
     # Validate required keys
