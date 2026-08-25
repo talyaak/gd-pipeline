@@ -22,7 +22,7 @@ Visual Specification:
 Hard requirements:
 - Output a single HTML file starting with <!DOCTYPE html>. Nothing before it, nothing 
 after the closing </html> tag — no markdown fences, no commentary.
-- Phaser 3 is PRELOADED as a global `Phaser` variable. Do NOT include any <script src=\"...\"> tags for Phaser or any other external library. Write only your game code.
+- Phaser 3 is PRELOADED as a global `Phaser` variable (available as `window.Phaser`). Do NOT include any <script src=\\\"...\\\"> tags for Phaser or any other external library. If you see an error about external script tags, REMOVE them entirely - do not replace them with other loading methods.
 - Generate ALL textures procedurally at runtime via graphics.generateTexture(). Never call 
 this.load.image, this.load.audio, this.load.spritesheet, or reference any image/audio file 
 by path or extension (.png, .jpg, .mp3, .wav, etc.) anywhere in the code.
