@@ -106,13 +106,13 @@ def spec(state: RunState) -> dict:
     if not isinstance(data.get("technical_notes"), list):
         data["technical_notes"] = []
    
-    # Enforce required state machine states
+    # Enforce required state machine states in order
         required_states = ["Boot", "Preload", "Tutorial", "Play", "GameOver", "Win"]
         state_machine = data.get("state_machine", [])
-        for req in required_states:
-            if req not in state_machine:
-                state_machine.append(req)
-        data["state_machine"] = state_machine
+        # Keep extra states that are not in required list, preserving their original order
+        extra_states = [s for s in state_machine if s not in required_states]
+        # Use the required states in the correct order
+        data["state_machine"] = required_states + extra_states
 
         # Ensure timing fields exist with sensible defaults
         if "target_session_seconds" not in data or not isinstance(data["target_session_seconds"], int):
