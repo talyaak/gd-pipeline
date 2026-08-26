@@ -1,9 +1,10 @@
 from pathlib import Path
+import asyncio
 import gzip
 import json
 import re
 
-from pipeline.execute import run_execution_report
+from pipeline.execute import run_execution_report, async_run_execution_report
 from pipeline.output import stage_dir, write_text, write_json
 from pipeline.schemas import RunState
 from pipeline.validate import check_html_game
@@ -230,16 +231,16 @@ def _generate_variants(base_html: str, spec_artifact: dict, variant_types: list[
     return variants
 
 
-def variant_gen(state: RunState) -> dict:
+async def variant_gen(state: RunState) -> dict:
     """Generate deterministic variants from a validated game."""
     code = state["code"]
     spec = state["spec"]["artifact"]
-    
+
     if code["status"] != "passed":
         return {"variants": {"status": "skipped", "reason": "base game not passed"}}
-    
+
     base_html = code["artifact"]["html"]
-    
+
     # Define variant configurations
     variant_configs = [
         {"type": "palette", "name": "neon"},
@@ -251,56 +252,60 @@ def variant_gen(state: RunState) -> dict:
         {"type": "cta", "name": "play"},
         {"type": "theme", "name": "particle_trails"},
     ]
-    
+
     variants = _generate_variants(base_html, spec, variant_configs)
-    
-    # Validate and save each variant
-    results = []
-    for i, variant in enumerate(variants):
-        out_dir = stage_dir(Path(state["run_dir"]), 6, "variants", 1)
-        variant_dir = out_dir / f"variant_{i}_{variant['type']}_{variant['name']}"
-        variant_dir.mkdir(parents=True, exist_ok=True)
-        
-        # A transformation that changed nothing is not a successful variant, even
-        # if the (unchanged) base game still runs fine.
-        if variant["no_op"]:
-            results.append({
+
+    # Validate and save each variant in parallel with semaphore limiting concurrency
+    # Max 4 concurrent browsers to avoid resource exhaustion
+    semaphore = asyncio.Semaphore(4)
+
+    async def validate_variant(i: int, variant: dict) -> dict:
+        async with semaphore:
+            out_dir = stage_dir(Path(state["run_dir"]), 6, "variants", 1)
+            variant_dir = out_dir / f"variant_{i}_{variant['type']}_{variant['name']}"
+            variant_dir.mkdir(parents=True, exist_ok=True)
+
+            # A transformation that changed nothing is not a successful variant, even
+            # if the (unchanged) base game still runs fine.
+            if variant["no_op"]:
+                write_text(variant_dir, "game.html", variant["html"])
+                write_json(variant_dir, "errors.json", {"no_op": True})
+                return {
+                    **variant,
+                    "status": "failed_noop",
+                    "errors": [f"{variant['type']}:{variant['name']} transformation matched nothing in the base game — html is unchanged"],
+                }
+
+            # Static validation
+            static_issues = check_html_game(variant["html"])
+            if static_issues:
+                write_text(variant_dir, "game.html", variant["html"])
+                write_json(variant_dir, "errors.json", {"static": static_issues})
+                return {
+                    **variant,
+                    "status": "failed_static",
+                    "errors": static_issues,
+                }
+
+            # Execution validation (async)
+            report = await async_run_execution_report(variant["html"], variant_dir)
+            runtime_ok = report.loaded and not report.console_errors and report.canvas_rendered
+
+            result = {
                 **variant,
-                "status": "failed_noop",
-                "errors": [f"{variant['type']}:{variant['name']} transformation matched nothing in the base game — html is unchanged"],
-            })
-            write_text(variant_dir, "game.html", variant["html"])
-            write_json(variant_dir, "errors.json", {"no_op": True})
-            continue
+                "status": "passed" if runtime_ok else "failed_runtime",
+                "execution": report.model_dump(),
+            }
 
-        # Static validation
-        static_issues = check_html_game(variant["html"])
-        if static_issues:
-            results.append({
-                **variant,
-                "status": "failed_static",
-                "errors": static_issues,
-            })
-            write_text(variant_dir, "game.html", variant["html"])
-            write_json(variant_dir, "errors.json", {"static": static_issues})
-            continue
-        
-        # Execution validation. run_execution_report already writes the exact
-        # tested (Phaser/MRAID-injected) HTML to variant_dir/game.html — that is
-        # the canonical artifact; never overwrite it with the raw pre-injection html.
-        report = run_execution_report(variant["html"], variant_dir)
-        runtime_ok = report.loaded and not report.console_errors and report.canvas_rendered
+            write_json(variant_dir, "execution.json", report.model_dump())
+            return result
 
-        results.append({
-            **variant,
-            "status": "passed" if runtime_ok else "failed_runtime",
-            "execution": report.model_dump(),
-        })
+    # Run all validations in parallel
+    tasks = [validate_variant(i, variant) for i, variant in enumerate(variants)]
+    results = await asyncio.gather(*tasks)
 
-        write_json(variant_dir, "execution.json", report.model_dump())
-    
     passed_count = sum(1 for r in results if r["status"] == "passed")
-    
+
     return {
         "variants": {
             "status": "passed" if passed_count > 0 else "failed",
