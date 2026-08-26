@@ -2,6 +2,7 @@ from pipeline.llm import get_generation_llm
 from pipeline.retry import invoke_with_retry, PipelineError, NODE_TIMEOUTS, NODE_MAX_ATTEMPTS
 from pipeline.schemas import ImplementationSpec, RunState
 import json
+# TODO: Consider moving prompt to external file for easier editing.
 
 PROMPT = """You are a technical game designer turning a Game Design Document into an implementation spec for a coder who will build the game in Phaser 3, as a single HTML file.
 
