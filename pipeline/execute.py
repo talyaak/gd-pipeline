@@ -31,6 +31,8 @@ PARTICLE_JS_CONTENT = PARTICLE_JS.read_text(encoding="utf-8") if PARTICLE_JS.exi
 INPUT_WAIT_MS = 500
 POST_INPUT_WAIT_MS = 1500
 LOAD_WAIT_MS = 2000
+OBSERVATION_PERIOD_MS = 20000  # 20 seconds observation after inputs
+OBSERVATION_INTERVAL_MS = 500   # Check every 500ms during observation
 
 
 def _serve_dir(directory: Path):
@@ -44,14 +46,14 @@ def _serve_dir(directory: Path):
 
 def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
     out_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Inject vendored Phaser into the HTML before serving
     # Insert before </head> or at the start of <body> if no </head>
     if "</head>" in html:
         html = html.replace("</head>", f"<script>{PHASER_JS}</script></head>")
     else:
         html = html.replace("<body>", f"<body><script>{PHASER_JS}</script>")
-    
+
     # Inject MRAID wrapper if available
     if MRAID_WRAPPER:
         if "</head>" in html:
@@ -64,7 +66,7 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
             html = html.replace("</head>", f"<script>{PARTICLE_JS_CONTENT}</script></head>")
         else:
             html = html.replace("<body>", f"<body><script>{PARTICLE_JS_CONTENT}</script>")
-    
+
     game_path = out_dir / "game.html"
     game_path.write_text(html, encoding="utf-8")
 
@@ -130,14 +132,6 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
             page.wait_for_timeout(INPUT_WAIT_MS)
             page.mouse.click(cx, cy)
             page.wait_for_timeout(INPUT_WAIT_MS)
-
-            # A single center click only exercises tap-a-button games. Other common
-            # mechanics need different gestures, none of which a single click covers:
-            #   - select-A-then-select-B swap (most match-3 games): two discrete
-            #     clicks at different points, each its own pointerdown.
-            #   - continuous drag (slide/sort/drag-to-target): one pointerdown, several
-            #     pointermoves, then pointerup, all without an intervening click.
-            # Probe both rather than guessing which one the generated game uses.
             page.mouse.click(origin_x + w * 0.35, origin_y + h * 0.5)
             page.wait_for_timeout(150)
             page.mouse.click(origin_x + w * 0.55, origin_y + h * 0.5)
@@ -152,6 +146,122 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                 page.wait_for_timeout(30)
             page.mouse.up()
             page.wait_for_timeout(POST_INPUT_WAIT_MS)
+
+            # Extended observation period to measure engagement and completion
+            engagement_start_time = None
+            engagement_end_time = None
+            total_engagement_ms = 0
+            completion_detected = False
+            win_state_detected = False
+
+            # Observe for extended period to measure engagement
+            observation_end = time.time() + (OBSERVATION_PERIOD_MS / 1000)
+            while time.time() < observation_end:
+                # Check game state to determine if we're in an active play state
+                try:
+                    game_state_info = page.evaluate("""() => {
+                        const game = window.__GAME__;
+                        if (!game) return { state: 'unknown', reason: 'no game' };
+                        
+                        // Check for common state properties
+                        if (game.state !== undefined) {
+                            return { state: game.state, reason: 'game.state' };
+                        }
+                        
+                        // Check for scene-based states (Phaser)
+                        if (game.scene && game.scene.scenes) {
+                            const activeScenes = game.scene.scenes.filter(s => s.visible && s.active);
+                            if (activeScenes.length > 0) {
+                                // Map common scene names to states
+                                const sceneNames = activeScenes.map(s => s.settings.key.toLowerCase());
+                                if (sceneNames.some(name => ['play', 'game', 'level'].includes(name))) {
+                                    return { state: 'playing', reason: 'phaser scene' };
+                                }
+                                if (sceneNames.some(name => ['menu', 'main', 'start'].includes(name))) {
+                                    return { state: 'menu', reason: 'phaser scene' };
+                                }
+                                if (sceneNames.some(name => ['gameover', 'game over', 'over'].includes(name))) {
+                                    return { state: 'gameover', reason: 'phaser scene' };
+                                }
+                                if (sceneNames.some(name => ['win', 'won', 'victory', 'success'].includes(name))) {
+                                    return { state: 'win', reason: 'phaser scene' };
+                                }
+                                return { state: activeScenes[0].settings.key.toLowerCase(), reason: 'phaser scene' };
+                            }
+                        }
+                        
+                        // Check registry for game over flag (common in many games)
+                        if (game.registry && typeof game.registry.get === 'function') {
+                            try {
+                                const gameOver = game.registry.get('gameOver');
+                                if (gameOver === true) {
+                                    return { state: 'gameover', reason: 'registry.gameOver' };
+                                }
+                            } catch(e) {/* ignore */ }
+                        }
+                        
+                        // Check for score increasing as a sign of active play
+                        if (game.registry && typeof game.registry.get === 'function') {
+                            try {
+                                const score = game.registry.get('score');
+                                if (typeof score === 'number' && score > 0) {
+                                    return { state: 'playing', reason: 'score > 0' };
+                                }
+                            } catch(e) {/* ignore */ }
+                        }
+                        
+                        return { state: 'unknown', reason: 'no recognizable state' };
+                    }""")
+                    
+                    current_state = game_state_info.get('state', 'unknown')
+                    
+                    # Track engagement: consider 'playing' states as engaged
+                    is_engaged = current_state in ['playing', 'play', 'game', 'level']
+                    
+                    if is_engaged and engagement_start_time is None:
+                        engagement_start_time = time.time()
+                    
+                    if not is_engaged and engagement_start_time is not None and engagement_end_time is None:
+                        engagement_end_time = time.time()
+                        
+                    # Check for completion states
+                    if current_state in ['win', 'won', 'victory', 'success']:
+                        win_state_detected = True
+                        completion_detected = True
+                    elif current_state in ['gameover', 'game over', 'over'] and engagement_start_time is not None:
+                        # Game over after having played = completed a session
+                        completion_detected = True
+                        
+                except Exception as e:
+                    # If we can't read game state, assume we're still engaged if we were before
+                    pass
+                
+                page.wait_for_timeout(OBSERVATION_INTERVAL_MS)
+            
+            # If we started engagement but never ended it, set end time to now
+            if engagement_start_time is not None and engagement_end_time is None:
+                engagement_end_time = time.time()
+            
+            # Calculate total engagement time
+            if engagement_start_time is not None and engagement_end_time is not None:
+                total_engagement_ms = int((engagement_end_time - engagement_start_time) * 1000)
+            
+            # For completion rate, if we detected a win state, it's 1.0
+            # If we detected game over after playing, it's also 1.0 (completed a session)
+            # Otherwise, we could calculate based on engagement time vs expected session time
+            completion_rate = None
+            if win_state_detected:
+                completion_rate = 1.0
+            elif completion_detected:
+                completion_rate = 1.0
+            else:
+                # Fallback: calculate based on engagement time vs reasonable session time
+                # Use target session seconds from typical range (30s) as baseline
+                target_session_ms = 30 * 1000  # 30 seconds
+                if total_engagement_ms > 0:
+                    completion_rate = min(total_engagement_ms / target_session_ms, 1.0)
+                else:
+                    completion_rate = 0.0
 
             after_path = out_dir / "verify_after.png"
             page.screenshot(path=str(after_path))
@@ -172,21 +282,21 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                     if not scene_active:
                         console_errors.append("Semantic validation: no active gameplay scene")
                         semantic_ok = False
-                    
-                    # Check score registry
-                    has_score = page.evaluate("() => window.__GAME__.registry.has('score')")
-                    if has_score:
-                        score_val = page.evaluate("() => window.__GAME__.registry.get('score')")
-                        if not isinstance(score_val, (int, float)) or score_val < 0:
-                            console_errors.append("Semantic validation: invalid score value")
+                    else:
+                        # Check score registry
+                        has_score = page.evaluate("() => window.__GAME__.registry.has('score')")
+                        if has_score:
+                            score_val = page.evaluate("() => window.__GAME__.registry.get('score')")
+                            if not isinstance(score_val, (int, float)) or score_val < 0:
+                                console_errors.append("Semantic validation: invalid score value")
+                                semantic_ok = False
+
+                        # Check not game over immediately
+                        game_over = page.evaluate("() => window.__GAME__.registry.get('gameOver') === true")
+                        if game_over:
+                            console_errors.append("Semantic validation: game over immediately")
                             semantic_ok = False
-                    
-                    # Check not game over immediately
-                    game_over = page.evaluate("() => window.__GAME__.registry.get('gameOver') === true")
-                    if game_over:
-                        console_errors.append("Semantic validation: game over immediately")
-                        semantic_ok = False
-                    
+
                     # MRAID validation
                     mraid_ok = True
                     try:
@@ -200,19 +310,19 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                             if version not in ["2.0", "3.0"]:
                                 console_errors.append(f"MRAID validation: version {version}, expected 2.0 or 3.0")
                                 mraid_ok = False
-                            
+
                             # Check mraid.getState()
                             state = page.evaluate("() => mraid.getState()")
                             if state != "default" and state != "loading" and state != "ready":
                                 console_errors.append(f"MRAID validation: unexpected state {state}")
                                 mraid_ok = False
-                            
+
                             # Check mraid.open exists
                             has_open = page.evaluate("() => typeof mraid.open === 'function'")
                             if not has_open:
                                 console_errors.append("MRAID validation: mraid.open not available")
                                 mraid_ok = False
-                            
+
                             # Check CTA button exists and has handler
                             has_cta = page.evaluate("() => window.__GAME__ && window.__GAME__.scene && window.__GAME__.scene.scenes.some(s => s.ctaButton)")
                             if not has_cta:
@@ -221,15 +331,15 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                     except Exception as exc:
                         console_errors.append(f"MRAID validation error: {exc}")
                         mraid_ok = False
-                    
+
                     if not mraid_ok:
                         semantic_ok = False
 
             except Exception as exc:
-                            console_errors.append(f"Semantic validation error: {exc}")
-                            semantic_ok = False
+                console_errors.append(f"Semantic validation error: {exc}")
+                semantic_ok = False
 
-            duration_ms = LOAD_WAIT_MS + 3 * INPUT_WAIT_MS + POST_INPUT_WAIT_MS + 300
+            duration_ms = LOAD_WAIT_MS + 3 * INPUT_WAIT_MS + POST_INPUT_WAIT_MS + POST_INPUT_WAIT_MS + OBSERVATION_PERIOD_MS
 
             # Measure time-to-first-interaction
             time_to_first_interaction_ms = None
@@ -253,5 +363,7 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
         screenshot_after_path=str(after_path),
         duration_ms=duration_ms,
         time_to_first_interaction_ms=time_to_first_interaction_ms,
+        engagement_duration_ms=total_engagement_ms if total_engagement_ms > 0 else None,
+        completion_rate=completion_rate,
         final_html=html,
     )
