@@ -1,6 +1,7 @@
 import http.server
 import socketserver
 import threading
+import time
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -77,6 +78,20 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                            if route.request.url.startswith("http") and "127.0.0.1" not in route.request.url
                            else route.continue_())
             page = context.new_page()
+
+            # Track time-to-first-interaction
+            page.add_init_script("""
+                window.__tti_start = performance.now();
+                window.__tti_recorded = null;
+                function recordTTI() {
+                    if (window.__tti_recorded === null) {
+                        window.__tti_recorded = performance.now() - window.__tti_start;
+                    }
+                }
+                // Track meaningful interactions: pointerdown (click/tap), keyup (keyboard)
+                document.addEventListener('pointerdown', recordTTI, { once: true, capture: true });
+                document.addEventListener('keyup', recordTTI, { once: true, capture: true });
+            """)
 
             console_errors: list[str] = []
             page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
@@ -216,6 +231,15 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
 
             duration_ms = LOAD_WAIT_MS + 3 * INPUT_WAIT_MS + POST_INPUT_WAIT_MS + 300
 
+            # Measure time-to-first-interaction
+            time_to_first_interaction_ms = None
+            try:
+                tti = page.evaluate("() => window.__tti_recorded")
+                if tti is not None:
+                    time_to_first_interaction_ms = int(tti)
+            except Exception:
+                pass
+
             browser.close()
     finally:
         httpd.shutdown()
@@ -228,5 +252,6 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
         screenshot_before_path=str(before_path),
         screenshot_after_path=str(after_path),
         duration_ms=duration_ms,
+        time_to_first_interaction_ms=time_to_first_interaction_ms,
         final_html=html,
     )

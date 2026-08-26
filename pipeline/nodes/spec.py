@@ -22,12 +22,20 @@ CRITICAL: The state_machine MUST include these states in order:
 
 Tutorial phase is mandatory for all genres and must provide meaningful onboarding - do not mark as optional.
 
-Return a JSON object with these exact keys: entities, state_machine, balance, example_chunks, technical_notes. 
+SESSION TIMING REQUIREMENTS (critical for playable ad retention):
+- target_session_seconds: Total session length (tutorial + core loop). Target 15-40s. Default 30s.
+- tutorial_duration_seconds: Tutorial/onboarding duration. Target 3-8s. Default 5s.
+- time_to_first_interaction_target_seconds: Time to first meaningful interaction. MUST be under 4s for good retention. Default 4s.
+
+Return a JSON object with these exact keys: entities, state_machine, balance, example_chunks, technical_notes, target_session_seconds, tutorial_duration_seconds, time_to_first_interaction_target_seconds.
 - entities should be an array of objects, each with: name (string), properties (array of strings), behavior (string)
 - state_machine should be an array of strings (MUST include Boot, Preload, Tutorial, Play, GameOver, Win)
-- balance should be an object with string keys and string values (e.g., {{\"gravity\": \"1200\", \"jump_velocity\": \"-400\"}})
+- balance should be an object with string keys and string values (e.g., {"gravity": "1200", "jump_velocity": "-400"})
 - example_chunks should be an array of strings
-- technical_notes should be an array of strings"""
+- technical_notes should be an array of strings
+- target_session_seconds should be an integer (15-40)
+- tutorial_duration_seconds should be an integer (3-8)
+- time_to_first_interaction_target_seconds should be an integer (<=4)"""
 
 def spec(state: RunState) -> dict:
     gdd = state["design"]["artifact"]
@@ -72,7 +80,10 @@ def spec(state: RunState) -> dict:
                 "spawnObstacle(): select random type, create at x=900, add to obstacles array",
                 "updateObstacles(dt): move each left by speed*dt, check collision with player, remove if x < -200"
             ],
-            "technical_notes": [ "use Phaser 3", "procedural textures only", "Web Audio API for sound", "delta-time variable must be 'dt'" ]
+            "technical_notes": [ "use Phaser 3", "procedural textures only", "Web Audio API for sound", "delta-time variable must be 'dt'" ],
+            "target_session_seconds": 30,
+            "tutorial_duration_seconds": 5,
+            "time_to_first_interaction_target_seconds": 4,
         }
 
     # Normalize data to match schema expectations
@@ -96,14 +107,33 @@ def spec(state: RunState) -> dict:
         data["technical_notes"] = []
    
     # Enforce required state machine states
-    required_states = ["Boot", "Preload", "Tutorial", "Play", "GameOver", "Win"]
-    state_machine = data.get("state_machine", [])
-    for req in required_states:
-        if req not in state_machine:
-            state_machine.append(req)
-    data["state_machine"] = state_machine
-   
-    # --- JUICE CONTRACT IMPLEMENTATION ---
+        required_states = ["Boot", "Preload", "Tutorial", "Play", "GameOver", "Win"]
+        state_machine = data.get("state_machine", [])
+        for req in required_states:
+            if req not in state_machine:
+                state_machine.append(req)
+        data["state_machine"] = state_machine
+
+        # Ensure timing fields exist with sensible defaults
+        if "target_session_seconds" not in data or not isinstance(data["target_session_seconds"], int):
+            data["target_session_seconds"] = 30
+        else:
+            # Clamp to valid range
+            data["target_session_seconds"] = max(15, min(40, data["target_session_seconds"]))
+
+        if "tutorial_duration_seconds" not in data or not isinstance(data["tutorial_duration_seconds"], int):
+            data["tutorial_duration_seconds"] = 5
+        else:
+            # Clamp to valid range
+            data["tutorial_duration_seconds"] = max(3, min(8, data["tutorial_duration_seconds"]))
+
+        if "time_to_first_interaction_target_seconds" not in data or not isinstance(data["time_to_first_interaction_target_seconds"], int):
+            data["time_to_first_interaction_target_seconds"] = 4
+        else:
+            # Clamp to valid range (must be <= 4 for retention)
+            data["time_to_first_interaction_target_seconds"] = max(1, min(4, data["time_to_first_interaction_target_seconds"]))
+
+        # --- JUICE CONTRACT IMPLEMENTATION ---
     # Extract juice from design if available and add appropriate snippets to example_chunks
     try:
         design_artifact = state.get("design", {}).get("artifact", {})
