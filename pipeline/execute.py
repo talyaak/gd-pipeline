@@ -2,6 +2,7 @@ import http.server
 import socketserver
 import threading
 import time
+import asyncio
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -367,3 +368,13 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
         completion_rate=completion_rate,
         final_html=html,
     )
+
+
+async def async_run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
+    """Async wrapper for run_execution_report to enable parallel execution.
+    
+    Runs the synchronous run_execution_report in a thread pool executor
+    to allow multiple browser instances to run concurrently.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, run_execution_report, html, out_dir)
