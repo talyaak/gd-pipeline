@@ -54,6 +54,12 @@ fired before you attached the listener) AND `mraid.isViewable()` being true (lis
 `mraid.addEventListener('viewableChange', (viewable) => ...)` and start/pause the Phaser 
 game loop accordingly) before starting gameplay. If `mraid` is undefined, start immediately 
 as normal — MRAID is not guaranteed to be present outside an ad network placement.
+- Track elapsed time using the 'dt' parameter in your update() method. Use this to implement 
+session timing: ensure the tutorial phase lasts approximately {tutorial_duration_seconds} 
+seconds, then transition to the core gameplay loop. Ensure the total session lasts 
+approximately {target_session_seconds} seconds (tutorial + core loop), then automatically 
+transition to the GameOver state. Encourage the first meaningful interaction (pointerdown/keyup) 
+to occur within {time_to_first_interaction_target_seconds} seconds for optimal retention.
 """
 
 REWORK_PROMPT = PROMPT + """
