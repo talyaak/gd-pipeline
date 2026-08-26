@@ -38,6 +38,18 @@ class ImplementationSpec(BaseModel):
     technical_notes: list[str] = Field(
         description="Constraints for the coder: must use Phaser 3, procedural textures via graphics.generateTexture(), Web Audio API only, no external asset files, delta time variable must be named 'dt'"
     )
+    target_session_seconds: int = Field(
+        default=30,
+        description="Target total session length in seconds (tutorial + core loop). Typical range: 15-40s for playable ads."
+    )
+    tutorial_duration_seconds: int = Field(
+        default=5,
+        description="Target tutorial/onboarding duration in seconds. Should be substantive but brief. Typical range: 3-8s."
+    )
+    time_to_first_interaction_target_seconds: int = Field(
+        default=4,
+        description="Target time-to-first-interaction in seconds. Must be under 4s for good retention per industry benchmarks."
+    )
 
 
 class CodeReview(BaseModel):
@@ -57,6 +69,10 @@ class ExecutionReport(BaseModel):
     screenshot_before_path: Optional[str] = None
     screenshot_after_path: Optional[str] = None
     duration_ms: Optional[int] = None
+    time_to_first_interaction_ms: Optional[int] = Field(
+        default=None,
+        description="Measured time from page load to first meaningful user interaction (pointerdown/keyup). None if not measured."
+    )
     final_html: Optional[str] = Field(
         default=None,
         description="The exact HTML that was served and tested (post Phaser/MRAID injection). This is the only artifact that should ever be shipped as game.html.",
