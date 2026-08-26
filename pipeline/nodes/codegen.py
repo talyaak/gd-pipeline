@@ -23,9 +23,7 @@ Hard requirements:
 - Output a single HTML file starting with <!DOCTYPE html>. Nothing before it, nothing 
 after the closing </html> tag — no markdown fences, no commentary.
 - Phaser 3 is PRELOADED as a global `Phaser` variable (available as `window.Phaser`). Do NOT include any <script src="..."> tags for Phaser or any other external library. If you see an error about external script tags, REMOVE them entirely - do not replace them with other loading methods.
-- A procedural particle library is available as `window.ParticleEngine` (also exposed as `window.Vector2`, `window.Particle`, and `window.ParticleEmitter` for convenience). Use this for particle effects instead of implementing your own particle system.
-- Generate ALL textures procedurally at runtime via graphics.generateTexture(). Never call
-this.load.image, this.load.audio, this.load.spritesheet, or reference any image/audio file 
+- A procedural particle library is available as `window.ParticleEngine` (also exposed as `window.Vector2`, `window.Particle`, and `window.ParticleEmitter` for convenience). Use this for particle effects instead of implementing your own particle system.\n- Use the procedural UI classes from `window.UIKit` (Button, ProgressBar, Popup) for all UI elements, configuring them with the visual specification provided.\n- Generate ALL textures procedurally at runtime via graphics.generateTexture(). Never call\nthis.load.image, this.load.audio, this.load.spritesheet, or reference any image/audio file 
 by path or extension (.png, .jpg, .mp3, .wav, etc.) anywhere in the code.
 - Use the Web Audio API directly (new AudioContext(), oscillators) for any sound. No audio files.
 - Audio must start muted: create AudioContext in suspended state or mute initial audio, then unmute/resume only after first user interaction (pointerdown, keyup, etc.).
