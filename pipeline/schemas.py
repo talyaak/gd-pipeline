@@ -73,9 +73,17 @@ class ExecutionReport(BaseModel):
         default=None,
         description="Measured time from page load to first meaningful user interaction (pointerdown/keyup). None if not measured."
     )
+    engagement_duration_ms: Optional[int] = Field(
+        default=None,
+        description="Measured time the game remained in an active playable state (e.g., PLAYING state) before completing or stopping. None if not measured."
+    )
+    completion_rate: Optional[float] = Field(
+        default=None,
+        description="Fraction of target session completed (0.0 to 1.0). For example, 0.75 means 75% of the target session was completed. None if not measured."
+    )
     final_html: Optional[str] = Field(
         default=None,
-        description="The exact HTML that was served and tested (post Phaser/MRAID injection). This is the only artifact that should ever be shipped as game.html.",
+        description="The exact HTML that was served and tested (post Phaser/MRAID injection). This is the only artifact that should ever be shipped as game.html."
     )
 
 
