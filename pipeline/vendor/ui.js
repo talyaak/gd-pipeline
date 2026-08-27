@@ -250,6 +250,10 @@
       this.bg.removeAllListeners();
       this.label.removeAllListeners();
     }
+    setVisible(visible) {
+      if (this.bg) this.bg.setVisible(visible);
+      if (this.label) this.label.setVisible(visible);
+    }
   }
 
   // ProgressBar class
@@ -362,6 +366,11 @@
       this.bg.destroy();
       this.fill.destroy();
       this.label.destroy();
+    }
+    setVisible(visible) {
+      if (this.bg) this.bg.setVisible(visible);
+      if (this.fill) this.fill.setVisible(visible);
+      if (this.label) this.label.setVisible(visible);
     }
   }
 
@@ -589,6 +598,18 @@
       if (this.messageText) this.messageText.destroy();
       this.container.removeAll(true);
       this.container.destroy();
+    }
+    setVisible(visible) {
+      if (this.background) this.background.setVisible(visible);
+      if (this.container) this.container.setVisible(visible);
+      if (this.popupBg) this.popupBg.setVisible(visible);
+      if (this.popupBorder) this.popupBorder.setVisible(visible);
+      if (this.titleText) this.titleText.setVisible(visible);
+      if (this.messageText) this.messageText.setVisible(visible);
+      this.buttonObjects.forEach(button => {
+        if (button.bg) button.bg.setVisible(visible);
+        if (button.label) button.label.setVisible(visible);
+      });
     }
   }
 

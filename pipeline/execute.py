@@ -220,6 +220,10 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                             } catch(e) {/* ignore */ }
                         }
                         
+                        // Check for session time increasing as a sign of active play
+                        if (game.sessionTime !== undefined && game.sessionTime > 0) {
+                            return { state: 'playing', reason: 'sessionTime > 0' };
+                        }
                         return { state: 'unknown', reason: 'no recognizable state' };
                     }""")
                     

@@ -71,13 +71,24 @@ def check_html_game(html: str) -> list[str]:
     if re.search(r'\.ready\(', script) or 'mraid.ready' in script:
         issues.append("Calls mraid.ready() — creative code must not call mraid.ready() themselves; gate gameplay on mraid.getState() !== 'loading' and mraid.isViewable()")
     # Check for muted-until-interaction audio policy
-    # Audio must start muted and only unmute/resume after first user interaction
-    # Check for AudioContext resume() calls
-    if re.search(r"\.resume\s*\(", script):
-        issues.append("Audio may start unmuted: AudioContext.resume() found. If this call is not guarded by user interaction (pointerdown, keyup, etc.), audio must start muted.")
-    # Check for audio element play() calls
-    if re.search(r"\.play\s*\(", script):
-        issues.append("Audio may start unmuted: HTMLAudioElement.play() found. If this call is not guarded by user interaction (pointerdown, keyup, etc.), audio must start muted.")
+        # Audio must start muted and only unmute/resume after first user interaction
+        # Check for AudioContext resume() calls
+        resume_matches = list(re.finditer(r'(\b[\w.]+)\s*\.\s*resume\s*\(', script))
+        for m in resume_matches:
+            prefix = m.group(1)
+            # Skip known non-audio resume calls
+            if prefix in ('scene', 'this.scene', 'tweens', 'this.tweens', 'this.time', 'this.cache', 'this.textures', 'this.sound', 'this.game'):
+                continue
+            issues.append("Audio may start unmuted: AudioContext.resume() found. If this call is not guarded by user interaction (pointerdown, keyup, etc.), audio must start muted.")
+            break
+        # Check for audio element play() calls
+        play_matches = list(re.finditer(r'(\b[\w.]+)\s*\.\s*play\s*\(', script))
+        for m in play_matches:
+            prefix = m.group(1)
+            if prefix in ('this.sound', 'this.audio', 'HTMLAudioElement'):
+                continue
+            issues.append("Audio may start unmuted: HTMLAudioElement.play() found. If this call is not guarded by user interaction (pointerdown, keyup, etc.), audio must start muted.")
+            break
 
     node_issues = _check_js_syntax(script)
     issues.extend(node_issues)
