@@ -16,6 +16,7 @@ FULL_PHASER = VENDOR_DIR / "phaser.min.js"
 MRAID_JS = VENDOR_DIR / "mraid.js"
 PARTICLE_JS = VENDOR_DIR / "particle.js"
 UI_JS = VENDOR_DIR / "ui.js"
+ART_JS = VENDOR_DIR / "art.js"
 
 # Use custom build if available, fallback to full build
 if CUSTOM_PHASER.exists():
@@ -31,6 +32,8 @@ MRAID_WRAPPER = MRAID_JS.read_text(encoding="utf-8") if MRAID_JS.exists() else "
 PARTICLE_JS_CONTENT = PARTICLE_JS.read_text(encoding="utf-8") if PARTICLE_JS.exists() else ""
 # Read ui.js
 UI_JS_CONTENT = UI_JS.read_text(encoding="utf-8") if UI_JS.exists() else ""
+# Read art.js
+ART_JS_CONTENT = ART_JS.read_text(encoding="utf-8") if ART_JS.exists() else ""
 
 INPUT_WAIT_MS = 500
 POST_INPUT_WAIT_MS = 1500
@@ -76,6 +79,12 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
             html = html.replace("</head>", f"<script>{UI_JS_CONTENT}</script></head>")
         else:
             html = html.replace("<body>", f"<body><script>{UI_JS_CONTENT}</script>")
+    # Inject art.js if available
+    if ART_JS_CONTENT:
+        if "</head>" in html:
+            html = html.replace("</head>", f"<script>{ART_JS_CONTENT}</script></head>")
+        else:
+            html = html.replace("<body>", f"<body><script>{ART_JS_CONTENT}</script>")
 
     game_path = out_dir / "game.html"
     game_path.write_text(html, encoding="utf-8")
@@ -292,7 +301,7 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                     semantic_ok = False
                 else:
                     # Check scene is active
-                    scene_active = page.evaluate("() => window.__GAME__.scene.isActive('Play') || window.__GAME__.scene.isActive('GameScene') || window.__GAME__.scene.isActive('MainScene')")
+                    scene_active = page.evaluate("() => window.__GAME__.scene.isActive('Play') || window.__GAME__.scene.isActive('GameScene') || window.__GAME__.scene.isActive('MainScene') || window.__GAME__.scene.isActive('PlayScene')")
                     if not scene_active:
                         console_errors.append("Semantic validation: no active gameplay scene")
                         semantic_ok = False
