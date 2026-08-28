@@ -40,7 +40,7 @@ Return a JSON object with these exact keys: entities, state_machine, balance, ex
 
 def spec(state: RunState) -> dict:
     gdd = state["design"]["artifact"]
-    llm = get_generation_llm(temperature=0.3)
+    llm = get_generation_llm(temperature=0.3, node="spec")
     try:
         raw = invoke_with_retry(
             lambda: llm.invoke(PROMPT.format(gdd=gdd)),

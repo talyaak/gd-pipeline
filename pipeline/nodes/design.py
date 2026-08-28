@@ -41,7 +41,7 @@ def design(state: RunState) -> dict:
             previous_gdd=prior_design.get("artifact"),
         )
 
-    llm = get_generation_llm(temperature=0.7)
+    llm = get_generation_llm(temperature=0.7, node="design")
     raw = invoke_with_retry(lambda: llm.invoke(prompt))
     content = raw.content if hasattr(raw, "content") else str(raw)
     try:

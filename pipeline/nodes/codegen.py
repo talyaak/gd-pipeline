@@ -91,7 +91,7 @@ def codegen(state: RunState) -> dict:
     prior_code = state.get("code") or {}
     prior_execution = state.get("execution") or {}
     attempt = prior_code.get("attempt", 0) + 1
-    llm = get_generation_llm(temperature=0.3, max_tokens=CODEGEN_MAX_TOKENS)
+    llm = get_generation_llm(temperature=0.3, max_tokens=CODEGEN_MAX_TOKENS, node="codegen")
 
     # Extract timing fields from impl_spec with defaults
     tutorial_duration_seconds = impl_spec.get("tutorial_duration_seconds", 5)
