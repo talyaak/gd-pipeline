@@ -193,16 +193,16 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                             if (activeScenes.length > 0) {
                                 // Map common scene names to states
                                 const sceneNames = activeScenes.map(s => s.settings.key.toLowerCase());
-                                if (sceneNames.some(name => ['play', 'game', 'level'].includes(name))) {
+                                if (sceneNames.some(name => /play|game|level/.test(name))) {
                                     return { state: 'playing', reason: 'phaser scene' };
                                 }
-                                if (sceneNames.some(name => ['menu', 'main', 'start'].includes(name))) {
+                                if (sceneNames.some(name => /menu|main|start/.test(name))) {
                                     return { state: 'menu', reason: 'phaser scene' };
                                 }
-                                if (sceneNames.some(name => ['gameover', 'game over', 'over'].includes(name))) {
+                                if (sceneNames.some(name => /gameover|game over|over/.test(name))) {
                                     return { state: 'gameover', reason: 'phaser scene' };
                                 }
-                                if (sceneNames.some(name => ['win', 'won', 'victory', 'success'].includes(name))) {
+                                if (sceneNames.some(name => /win|won|victory|success/.test(name))) {
                                     return { state: 'win', reason: 'phaser scene' };
                                 }
                                 return { state: activeScenes[0].settings.key.toLowerCase(), reason: 'phaser scene' };
@@ -233,6 +233,30 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                         if (game.sessionTime !== undefined && game.sessionTime > 0) {
                             return { state: 'playing', reason: 'sessionTime > 0' };
                         }
+
+                        // Fallback: check active scene for common properties
+                        if (game.scene && game.scene.scenes) {
+                            const activeScenes = game.scene.scenes.filter(s => s.visible && s.active);
+                            if (activeScenes.length > 0) {
+                                const scene = activeScenes[0];
+                                
+                                // Check for score on scene
+                                if (scene.score !== undefined && typeof scene.score === 'number' && scene.score > 0) {
+                                    return { state: 'playing', reason: 'scene.score > 0' };
+                                }
+                                
+                                // Check for sessionTime on scene
+                                if (scene.sessionTime !== undefined && typeof scene.sessionTime === 'number' && scene.sessionTime > 0) {
+                                    return { state: 'playing', reason: 'scene.sessionTime > 0' };
+                                }
+                                
+                                // Check for gameOver on scene
+                                if (scene.gameOver !== undefined && scene.gameOver === true) {
+                                    return { state: 'gameover', reason: 'scene.gameOver' };
+                                }
+                            }
+                        }
+
                         return { state: 'unknown', reason: 'no recognizable state' };
                     }""")
                     
