@@ -13,7 +13,7 @@ Return a JSON object with these exact keys: core_mechanics, juice, progression, 
 
 
 def research(state: RunState) -> dict:
-    llm = get_review_llm()
+    llm = get_review_llm(node="research")
     try:
         raw = invoke_with_retry(
             lambda: llm.invoke(PROMPT.format(brief=state["brief"])),

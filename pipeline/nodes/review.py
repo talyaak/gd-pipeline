@@ -36,7 +36,7 @@ def review(state: RunState) -> dict:
         loaded = exec_artifact["loaded"]
         canvas_rendered = exec_artifact["canvas_rendered"]
         input_response_detected = exec_artifact["input_response_detected"]
-        llm = get_review_llm()
+        llm = get_review_llm(node="review")
         prompt = PROMPT.format(gdd=gdd, spec=impl_spec, loaded=loaded, canvas_rendered=canvas_rendered, input_response=input_response_detected, html=code["artifact"]["html"])
         raw = invoke_with_retry(lambda: llm.invoke(prompt))
         try:

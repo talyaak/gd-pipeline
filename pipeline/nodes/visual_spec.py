@@ -39,7 +39,7 @@ def visual_spec(state: RunState) -> dict:
     design_artifact = state.get("design", {}).get("artifact", {})
     spec_artifact = state.get("spec", {}).get("artifact", {})
     
-    llm = get_generation_llm(temperature=0.3)
+    llm = get_generation_llm(temperature=0.3, node="visual_spec")
     try:
         raw = llm.invoke(PROMPT.format(
             design=json.dumps(design_artifact, indent=2),
