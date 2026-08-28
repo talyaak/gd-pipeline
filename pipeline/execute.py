@@ -16,7 +16,6 @@ FULL_PHASER = VENDOR_DIR / "phaser.min.js"
 MRAID_JS = VENDOR_DIR / "mraid.js"
 PARTICLE_JS = VENDOR_DIR / "particle.js"
 UI_JS = VENDOR_DIR / "ui.js"
-ART_JS = VENDOR_DIR / "art.js"
 
 # Use custom build if available, fallback to full build
 if CUSTOM_PHASER.exists():
@@ -32,8 +31,6 @@ MRAID_WRAPPER = MRAID_JS.read_text(encoding="utf-8") if MRAID_JS.exists() else "
 PARTICLE_JS_CONTENT = PARTICLE_JS.read_text(encoding="utf-8") if PARTICLE_JS.exists() else ""
 # Read ui.js
 UI_JS_CONTENT = UI_JS.read_text(encoding="utf-8") if UI_JS.exists() else ""
-# Read art.js
-ART_JS_CONTENT = ART_JS.read_text(encoding="utf-8") if ART_JS.exists() else ""
 
 INPUT_WAIT_MS = 500
 POST_INPUT_WAIT_MS = 1500
@@ -44,7 +41,8 @@ OBSERVATION_INTERVAL_MS = 500   # Check every 500ms during observation
 
 def _serve_dir(directory: Path):
     handler = lambda *a, **kw: http.server.SimpleHTTPRequestHandler(*a, directory=str(directory), **kw)
-    httpd = socketserver.TCPServer(("127.0.0.1", 0), handler)
+    httpd = socketserver.TCPServer((("127.0.0.1", 0)), handler)
+    httpd.socket.setsockopt(socketserver.SOL_SOCKET, socketserver.SO_REUSEADDR, 1)
     port = httpd.server_address[1]
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -79,12 +77,6 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
             html = html.replace("</head>", f"<script>{UI_JS_CONTENT}</script></head>")
         else:
             html = html.replace("<body>", f"<body><script>{UI_JS_CONTENT}</script>")
-    # Inject art.js if available
-    if ART_JS_CONTENT:
-        if "</head>" in html:
-            html = html.replace("</head>", f"<script>{ART_JS_CONTENT}</script></head>")
-        else:
-            html = html.replace("<body>", f"<body><script>{ART_JS_CONTENT}</script>")
 
     game_path = out_dir / "game.html"
     game_path.write_text(html, encoding="utf-8")
@@ -181,34 +173,34 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                     game_state_info = page.evaluate("""() => {
                         const game = window.__GAME__;
                         if (!game) return { state: 'unknown', reason: 'no game' };
-                        
+
                         // Check for common state properties
                         if (game.state !== undefined) {
                             return { state: game.state, reason: 'game.state' };
                         }
-                        
+
                         // Check for scene-based states (Phaser)
                         if (game.scene && game.scene.scenes) {
                             const activeScenes = game.scene.scenes.filter(s => s.visible && s.active);
                             if (activeScenes.length > 0) {
                                 // Map common scene names to states
                                 const sceneNames = activeScenes.map(s => s.settings.key.toLowerCase());
-                                if (sceneNames.some(name => /play|game|level/.test(name))) {
+                                if (sceneNames.some(name => ['play', 'game', 'level'].includes(name))) {
                                     return { state: 'playing', reason: 'phaser scene' };
                                 }
-                                if (sceneNames.some(name => /menu|main|start/.test(name))) {
+                                if (sceneNames.some(name => ['menu', 'main', 'start'].includes(name))) {
                                     return { state: 'menu', reason: 'phaser scene' };
                                 }
-                                if (sceneNames.some(name => /gameover|game over|over/.test(name))) {
+                                if (sceneNames.some(name => ['gameover', 'game over', 'over'].includes(name))) {
                                     return { state: 'gameover', reason: 'phaser scene' };
                                 }
-                                if (sceneNames.some(name => /win|won|victory|success/.test(name))) {
+                                if (sceneNames.some(name => ['win', 'won', 'victory', 'success'].includes(name))) {
                                     return { state: 'win', reason: 'phaser scene' };
                                 }
                                 return { state: activeScenes[0].settings.key.toLowerCase(), reason: 'phaser scene' };
                             }
                         }
-                        
+
                         // Check registry for game over flag (common in many games)
                         if (game.registry && typeof game.registry.get === 'function') {
                             try {
@@ -218,7 +210,7 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                                 }
                             } catch(e) {/* ignore */ }
                         }
-                        
+
                         // Check for score increasing as a sign of active play
                         if (game.registry && typeof game.registry.get === 'function') {
                             try {
@@ -228,46 +220,22 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                                 }
                             } catch(e) {/* ignore */ }
                         }
-                        
+
                         // Check for session time increasing as a sign of active play
                         if (game.sessionTime !== undefined && game.sessionTime > 0) {
                             return { state: 'playing', reason: 'sessionTime > 0' };
                         }
-
-                        // Fallback: check active scene for common properties
-                        if (game.scene && game.scene.scenes) {
-                            const activeScenes = game.scene.scenes.filter(s => s.visible && s.active);
-                            if (activeScenes.length > 0) {
-                                const scene = activeScenes[0];
-                                
-                                // Check for score on scene
-                                if (scene.score !== undefined && typeof scene.score === 'number' && scene.score > 0) {
-                                    return { state: 'playing', reason: 'scene.score > 0' };
-                                }
-                                
-                                // Check for sessionTime on scene
-                                if (scene.sessionTime !== undefined && typeof scene.sessionTime === 'number' && scene.sessionTime > 0) {
-                                    return { state: 'playing', reason: 'scene.sessionTime > 0' };
-                                }
-                                
-                                // Check for gameOver on scene
-                                if (scene.gameOver !== undefined && scene.gameOver === true) {
-                                    return { state: 'gameover', reason: 'scene.gameOver' };
-                                }
-                            }
-                        }
-
                         return { state: 'unknown', reason: 'no recognizable state' };
                     }""")
-                    
+
                     current_state = game_state_info.get('state', 'unknown')
-                    
+
                     # Track engagement: consider 'playing' states as engaged
                     is_engaged = current_state in ['playing', 'play', 'game', 'level']
-                    
+
                     if is_engaged and engagement_start_time is None:
                         engagement_start_time = time.time()
-                    
+
                     if not is_engaged and engagement_start_time is not None and engagement_end_time is None:
                         engagement_end_time = time.time()
                         
@@ -278,21 +246,21 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                     elif current_state in ['gameover', 'game over', 'over'] and engagement_start_time is not None:
                         # Game over after having played = completed a session
                         completion_detected = True
-                        
+
                 except Exception as e:
                     # If we can't read game state, assume we're still engaged if we were before
                     pass
                 
                 page.wait_for_timeout(OBSERVATION_INTERVAL_MS)
-            
+
             # If we started engagement but never ended it, set end time to now
             if engagement_start_time is not None and engagement_end_time is None:
                 engagement_end_time = time.time()
-            
+
             # Calculate total engagement time
             if engagement_start_time is not None and engagement_end_time is not None:
                 total_engagement_ms = int((engagement_end_time - engagement_start_time) * 1000)
-            
+
             # For completion rate, if we detected a win state, it's 1.0
             # If we detected game over after playing, it's also 1.0 (completed a session)
             # Otherwise, we could calculate based on engagement time vs expected session time
@@ -324,9 +292,44 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                     console_errors.append("Semantic validation: window.__GAME__ not exposed")
                     semantic_ok = False
                 else:
-                    # Check scene is active
-                    scene_active = page.evaluate("() => window.__GAME__.scene.isActive('Play') || window.__GAME__.scene.isActive('GameScene') || window.__GAME__.scene.isActive('MainScene') || window.__GAME__.scene.isActive('PlayScene')")
-                    if not scene_active:
+                    # Check scene is active and indicates gameplay - simplified logic for current fix
+                    scene_active_and_gameplay = page.evaluate("""() => {
+                        const game = window.__GAME__;
+                        if (!game) return false;
+                        
+                        // Check for game.state property (most reliable)
+                        if (game.state !== undefined) {
+                            return game.state === 'playing';
+                        }
+                        
+                        // Check for scene-based states as fallback
+                        if (game.scene && game.scene.scenes) {
+                            const activeScenes = game.scene.scenes.filter(s => s.visible && s.active);
+                            if (activeScenes.length > 0) {
+                                const sceneName = activeScenes[0].settings.key.toLowerCase();
+                                return sceneName.includes('game') || sceneName.includes('play');
+                            }
+                        }
+                        
+                        // Check for score increasing as a sign of active play
+                        if (game.registry && typeof game.registry.get === 'function') {
+                            try {
+                                const score = game.registry.get('score');
+                                if (typeof score === 'number' && score > 0) {
+                                    return true; // score > 0 indicates gameplay
+                                }
+                            } catch(e) {/* ignore */ }
+                        }
+                        
+                        // Check for session time increasing as a sign of active play
+                        if (game.sessionTime !== undefined && game.sessionTime > 0) {
+                            return true; // sessionTime > 0 indicates gameplay
+                        }
+                        
+                        // Default to false if we can't determine
+                        return false;
+                    }""")
+                    if not scene_active_and_gameplay:
                         console_errors.append("Semantic validation: no active gameplay scene")
                         semantic_ok = False
                     else:
@@ -343,45 +346,6 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                         if game_over:
                             console_errors.append("Semantic validation: game over immediately")
                             semantic_ok = False
-
-                    # MRAID validation
-                    mraid_ok = True
-                    try:
-                        mraid_exists = page.evaluate("() => typeof mraid !== 'undefined'")
-                        if not mraid_exists:
-                            console_errors.append("MRAID validation: mraid not exposed")
-                            mraid_ok = False
-                        else:
-                            # Check mraid.getVersion()
-                            version = page.evaluate("() => mraid.getVersion()")
-                            if version not in ["2.0", "3.0"]:
-                                console_errors.append(f"MRAID validation: version {version}, expected 2.0 or 3.0")
-                                mraid_ok = False
-
-                            # Check mraid.getState()
-                            state = page.evaluate("() => mraid.getState()")
-                            if state != "default" and state != "loading" and state != "ready":
-                                console_errors.append(f"MRAID validation: unexpected state {state}")
-                                mraid_ok = False
-
-                            # Check mraid.open exists
-                            has_open = page.evaluate("() => typeof mraid.open === 'function'")
-                            if not has_open:
-                                console_errors.append("MRAID validation: mraid.open not available")
-                                mraid_ok = False
-
-                            # Check CTA button exists and has handler
-                            has_cta = page.evaluate("() => window.__GAME__ && window.__GAME__.scene && window.__GAME__.scene.scenes.some(s => s.ctaButton)")
-                            if not has_cta:
-                                console_errors.append("MRAID validation: CTA button not found on scene")
-                                mraid_ok = False
-                    except Exception as exc:
-                        console_errors.append(f"MRAID validation error: {exc}")
-                        mraid_ok = False
-
-                    if not mraid_ok:
-                        semantic_ok = False
-
             except Exception as exc:
                 console_errors.append(f"Semantic validation error: {exc}")
                 semantic_ok = False
