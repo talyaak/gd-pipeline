@@ -1,18 +1,25 @@
 from langgraph.types import interrupt
 
+from config import HUMAN_REVIEW_GDD
 from pipeline.schemas import RunState
 
 
 def human_review_gdd(state: RunState) -> dict:
-    decision = interrupt(
-        {
-            "kind": "gdd_approval",
-            "gdd": state["design"]["artifact"],
-        }
-    )
-    approved = bool(decision.get("approved"))
+    if not HUMAN_REVIEW_GDD:
+        # Automatically approve GDD when human review is disabled
+        approved = True
+        feedback = None
+    else:
+        decision = interrupt(
+            {
+                "kind": "gdd_approval",
+                "gdd": state["design"]["artifact"],
+            }
+        )
+        approved = bool(decision.get("approved"))
+        feedback = decision.get("feedback") if not approved else None
     return {
-        "human_feedback": decision.get("feedback") if not approved else None,
+        "human_feedback": feedback,
         "design": {
             **state["design"],
             "status": "passed" if approved else "failed_needs_rework",
