@@ -102,6 +102,16 @@ def categorize_error(exc: Exception, node: str = "") -> PipelineError:
             node=node,
         )
     
+    # Authentication errors
+    if "authentication failed" in msg.lower() or "no api key" in msg.lower() or "authorization credentials" in msg.lower():
+        return PipelineError(
+            category=ErrorCategory.UNKNOWN,
+            message=f"Authentication error: {exc}",
+            recoverable=False,
+            hint="Set ANTHROPIC_API_KEY or OPENROUTER_API_KEY environment variable",
+            node=node,
+        )
+
     return PipelineError(
         category=ErrorCategory.UNKNOWN,
         message=f"Unclassified error: {exc}",
