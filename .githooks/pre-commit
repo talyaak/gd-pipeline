@@ -1,0 +1,55 @@
+#!/bin/bash
+# Mechanically blocks committing P4-designated files unless pipeline/gate_check.py
+# has stamped .pipeline_gate_state.json with the EXACT current HEAD commit hash.
+#
+# Why this exists: three separate cycles satisfied the P3.5 "does the pipeline
+# actually produce a playable game" gate via prose-based self-assessment, and
+# each found a different way to be technically defensible while substantively
+# wrong (a mid-pipeline artifact, and twice, evidence that was real but stale
+# relative to the code being gated - once missed by a human-built LLM judge
+# checking the same evidence). This hook removes the judgment call: P0-P3 bug
+# fixes commit freely regardless of this file's contents, but a P4 file cannot
+# land unless the gate was freshly verified against the exact commit it's
+# landing on top of. Any other commit moves HEAD and silently invalidates an
+# old stamp - that is the intended behavior, not a bug to work around.
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+STATE_FILE="$REPO_ROOT/.pipeline_gate_state.json"
+
+# Paths considered P4 work. Extend this list as new P4 items land.
+P4_PATTERN='^pipeline/vendor/(art|ui)\.js$'
+
+staged_files=$(git diff --cached --name-only --diff-filter=ACM)
+
+p4_touched=$(echo "$staged_files" | grep -E "$P4_PATTERN" || true)
+
+if [ -z "$p4_touched" ]; then
+    # Nothing P4-related in this commit - let it through unconditionally.
+    exit 0
+fi
+
+echo "This commit touches P4-designated file(s):"
+echo "$p4_touched" | sed 's/^/  /'
+echo ""
+
+if [ ! -f "$STATE_FILE" ]; then
+    echo "BLOCKED: no $STATE_FILE found. Run 'python pipeline/gate_check.py' and get a"
+    echo "genuine PASS before committing P4 work. See CRITIQUE_REPORT.md's P3.5 section."
+    exit 1
+fi
+
+current_head=$(git rev-parse HEAD)
+stamped_head=$(python3 -c "import json; print(json.load(open('$STATE_FILE')).get('commit_hash',''))" 2>/dev/null || echo "")
+
+if [ "$stamped_head" != "$current_head" ]; then
+    echo "BLOCKED: $STATE_FILE is stamped for commit ${stamped_head:0:12}, but HEAD is"
+    echo "now ${current_head:0:12} - something else was committed since the gate was"
+    echo "last verified, which invalidates it. Re-run 'python pipeline/gate_check.py'"
+    echo "on the current HEAD and get a fresh PASS before committing P4 work."
+    exit 1
+fi
+
+echo "Gate stamp matches current HEAD (${current_head:0:12}) - P4 commit allowed."
+exit 0
