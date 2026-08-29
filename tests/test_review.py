@@ -23,7 +23,7 @@ def _base_state(run_dir: Path) -> dict:
 
 
 def test_malformed_review_response_fails_instead_of_fabricating_pass(tmp_path, monkeypatch):
-    monkeypatch.setattr("pipeline.nodes.review.get_review_llm", lambda: _FakeLLM("not json at all"))
+    monkeypatch.setattr("pipeline.nodes.review.get_review_llm", lambda node: _FakeLLM("not json at all"))
     result = review(_base_state(tmp_path))
     assert result["code"]["status"] == "failed_needs_rework"
     assert result["code"]["review"]["score"] < 7
@@ -33,7 +33,7 @@ def test_malformed_review_response_fails_instead_of_fabricating_pass(tmp_path, m
 def test_valid_review_response_still_passes(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "pipeline.nodes.review.get_review_llm",
-        lambda: _FakeLLM('{"score": 9, "spec_fidelity_issues": [], "quality_issues": [], "strengths": ["clean"]}'),
+        lambda node: _FakeLLM('{"score": 9, "spec_fidelity_issues": [], "quality_issues": [], "strengths": ["clean"]}'),
     )
     result = review(_base_state(tmp_path))
     assert result["code"]["status"] == "passed"

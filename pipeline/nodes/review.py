@@ -38,12 +38,14 @@ def review(state: RunState) -> dict:
         input_response_detected = exec_artifact["input_response_detected"]
         llm = get_review_llm(node="review")
         prompt = PROMPT.format(gdd=gdd, spec=impl_spec, loaded=loaded, canvas_rendered=canvas_rendered, input_response=input_response_detected, html=code["artifact"]["html"])
-        raw = invoke_with_retry(lambda: llm.invoke(prompt))
+        raw = invoke_with_retry(lambda: llm.invoke(prompt), node="review")
+        # LLM invoke returns an object with .content attribute (e.g., SimpleNamespace or BaseMessage)
+        raw_content = raw.content if hasattr(raw, "content") else str(raw)
         try:
-            start = raw.find("{")
-            end = raw.rfind("}") + 1
+            start = raw_content.find("{")
+            end = raw_content.rfind("}") + 1
             if start >= 0 and end > start:
-                json_str = raw[start:end]
+                json_str = raw_content[start:end]
                 data = json.loads(json_str)
             else:
                 raise ValueError("No JSON found in response")

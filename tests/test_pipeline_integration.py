@@ -58,12 +58,12 @@ def test_full_pipeline_repairs_a_first_attempt_failure(tmp_path, monkeypatch):
     )
     review_value = CodeReview(score=8, spec_fidelity_issues=[], quality_issues=[], strengths=["clean"])
 
-    monkeypatch.setattr("pipeline.nodes.research.get_review_llm", lambda: _FakeLLM(structured_value=research_value))
+    monkeypatch.setattr("pipeline.nodes.research.get_review_llm", lambda node: _FakeLLM(structured_value=research_value))
     monkeypatch.setattr("pipeline.nodes.design.get_generation_llm", lambda **kw: _FakeLLM(structured_value=design_value))
     monkeypatch.setattr("pipeline.nodes.spec.get_generation_llm", lambda **kw: _FakeLLM(structured_value=spec_value))
     codegen_llm = _FakeLLM(plain_values=[bad_html, good_html])
     monkeypatch.setattr("pipeline.nodes.codegen.get_generation_llm", lambda **kw: codegen_llm)
-    monkeypatch.setattr("pipeline.nodes.review.get_review_llm", lambda: _FakeLLM(structured_value=review_value))
+    monkeypatch.setattr("pipeline.nodes.review.get_review_llm", lambda node: _FakeLLM(structured_value=review_value))
 
     run_dir = tmp_path / "run"
     graph = build_graph(human_review_gdd_enabled=False)

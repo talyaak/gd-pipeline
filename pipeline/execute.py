@@ -1,4 +1,5 @@
 import http.server
+import socket
 import socketserver
 import threading
 import time
@@ -42,7 +43,7 @@ OBSERVATION_INTERVAL_MS = 500   # Check every 500ms during observation
 def _serve_dir(directory: Path):
     handler = lambda *a, **kw: http.server.SimpleHTTPRequestHandler(*a, directory=str(directory), **kw)
     httpd = socketserver.TCPServer((("127.0.0.1", 0)), handler)
-    httpd.socket.setsockopt(socketserver.SOL_SOCKET, socketserver.SO_REUSEADDR, 1)
+    httpd.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     port = httpd.server_address[1]
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
