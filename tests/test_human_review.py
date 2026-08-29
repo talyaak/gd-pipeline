@@ -47,11 +47,11 @@ def _patch_llms(monkeypatch, design_value, good_html):
     )
     review_value = CodeReview(score=9, spec_fidelity_issues=[], quality_issues=[], strengths=["clean"])
 
-    monkeypatch.setattr("pipeline.nodes.research.get_review_llm", lambda: _FakeLLM(structured_value=research_value))
+    monkeypatch.setattr("pipeline.nodes.research.get_review_llm", lambda node: _FakeLLM(structured_value=research_value))
     monkeypatch.setattr("pipeline.nodes.design.get_generation_llm", lambda **kw: _FakeLLM(structured_value=design_value))
     monkeypatch.setattr("pipeline.nodes.spec.get_generation_llm", lambda **kw: _FakeLLM(structured_value=spec_value))
     monkeypatch.setattr("pipeline.nodes.codegen.get_generation_llm", lambda **kw: _FakeLLM(plain_values=[good_html]))
-    monkeypatch.setattr("pipeline.nodes.review.get_review_llm", lambda: _FakeLLM(structured_value=review_value))
+    monkeypatch.setattr("pipeline.nodes.review.get_review_llm", lambda node: _FakeLLM(structured_value=review_value))
 
 
 @pytest.mark.slow
@@ -107,7 +107,7 @@ def test_gdd_rejection_triggers_rework_with_feedback(tmp_path, monkeypatch):
     )
     review_value = CodeReview(score=9, spec_fidelity_issues=[], quality_issues=[], strengths=["clean"])
 
-    monkeypatch.setattr("pipeline.nodes.research.get_review_llm", lambda: _FakeLLM(structured_value=research_value))
+    monkeypatch.setattr("pipeline.nodes.research.get_review_llm", lambda node: _FakeLLM(structured_value=research_value))
     design_llm = _FakeLLM()
     design_calls = {"n": 0}
 
@@ -118,7 +118,7 @@ def test_gdd_rejection_triggers_rework_with_feedback(tmp_path, monkeypatch):
     monkeypatch.setattr("pipeline.nodes.design.get_generation_llm", _get_design_llm)
     monkeypatch.setattr("pipeline.nodes.spec.get_generation_llm", lambda **kw: _FakeLLM(structured_value=spec_value))
     monkeypatch.setattr("pipeline.nodes.codegen.get_generation_llm", lambda **kw: _FakeLLM(plain_values=[good_html]))
-    monkeypatch.setattr("pipeline.nodes.review.get_review_llm", lambda: _FakeLLM(structured_value=review_value))
+    monkeypatch.setattr("pipeline.nodes.review.get_review_llm", lambda node: _FakeLLM(structured_value=review_value))
 
     run_dir = tmp_path / "run"
     checkpoint_path = str(tmp_path / "checkpoint.sqlite")

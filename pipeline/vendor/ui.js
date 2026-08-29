@@ -254,6 +254,11 @@
       if (this.bg) this.bg.setVisible(visible);
       if (this.label) this.label.setVisible(visible);
     }
+    setDepth(depth) {
+      if (this.bg) this.bg.setDepth(depth);
+      if (this.label) this.label.setDepth(depth + 1);
+      return this;
+    }
   }
 
   // ProgressBar class
