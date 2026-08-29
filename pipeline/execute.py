@@ -7,6 +7,7 @@ import asyncio
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
+import os
 
 from pipeline.schemas import ExecutionReport
 
@@ -113,7 +114,11 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
 
             loaded = True
             try:
-                page.goto(f"http://127.0.0.1:{port}/game.html", timeout=15000)
+                placement_type = os.environ.get('PLACEMENT_TYPE', 'interstitial')
+                url = f"http://127.0.0.1:{port}/game.html"
+                if placement_type:
+                    url += f"?placement={placement_type}"
+                page.goto(url, timeout=15000)
             except Exception as exc:
                 loaded = False
                 console_errors.append(f"navigation failed: {exc}")
