@@ -25,7 +25,7 @@ SESSION TIMING REQUIREMENTS (critical for playable ad retention):
 Return a JSON object with these exact keys: entities, state_machine, balance, example_chunks, technical_notes, target_session_seconds, tutorial_duration_seconds, time_to_first_interaction_target_seconds.
 - entities should be an array of objects, each with: name (string), properties (array of strings), behavior (string)
 - state_machine should be an array of strings (MUST include Boot, Preload, Tutorial, Play, GameOver, Win)
-- balance should be an object with string keys and string values (e.g., {\"gravity\": \"1200\", \"jump_velocity\": \"-400\"})
+- balance should be an object with string keys and string values (e.g., {{\"gravity\": \"1200\", \"jump_velocity\": \"-400\"}})
 - example_chunks should be an array of strings
 - technical_notes should be an array of strings
 - target_session_seconds should be an integer (15-40)
