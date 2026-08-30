@@ -87,6 +87,8 @@ def test_resume_after_simulated_process_restart(tmp_path, monkeypatch):
 
 
 @pytest.mark.slow
+# This test is known to hang in some environments; investigate root cause.
+# The issue may be related to langgraph interrupt/resume behavior with multiple interrupts.
 def test_gdd_rejection_triggers_rework_with_feedback(tmp_path, monkeypatch):
     good_html = (FIXTURES / "known_good_game.html").read_text(encoding="utf-8")
     bad_design = GameDesignDocument(
