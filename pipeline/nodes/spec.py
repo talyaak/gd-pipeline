@@ -2,41 +2,11 @@ from pipeline.llm import get_generation_llm
 from pipeline.retry import invoke_with_retry, PipelineError, NODE_TIMEOUTS, NODE_MAX_ATTEMPTS
 from pipeline.schemas import ImplementationSpec, RunState
 import json
-# TODO: Consider moving prompt to external file for easier editing.
+import os
 
-PROMPT = """You are a technical game designer turning a Game Design Document into an implementation spec for a coder who will build the game in Phaser 3, as a single HTML file.
-
-Game Design Document:
-{gdd}
-
-Produce: the entities involved (with properties and behavior), the game's state machine (ordered list of states), a balance table of tunable numeric values, and technical notes for the coder. The coder MUST: use Phaser 3 (Phaser is preloaded as a global variable, no CDN script tags), generate all textures procedurally via graphics.generateTexture() (no image files), use the Web Audio API for any sound (no audio files), and name the delta-time variable exactly 'dt' (never 'deltaTime' or 'elapsed').
-
-If this genre involves any procedural or generative subsystem (e.g. obstacle spawning, level generation, enemy waves), include 3-5 concrete worked examples in example_chunks — short code or pseudocode snippets showing exactly what should be generated, not just a prose description. This is required for genres with patterned/procedural content; leave example_chunks empty otherwise.
-
-CRITICAL: The state_machine MUST include these states in order:
-- 'Boot' (engine init, scale manager, physics config)
-- 'Preload' (generate procedural textures, load audio)
-- 'Tutorial' (interactive onboarding - required for all genres, must be substantive)
-- 'Play' (core gameplay loop)
-- 'GameOver' (failure state, show CTA, offer replay)
-- 'Win' (success state, show CTA, offer next level/replay)
-
-Tutorial phase is mandatory for all genres and must provide meaningful onboarding - do not mark as optional.
-
-SESSION TIMING REQUIREMENTS (critical for playable ad retention):
-- target_session_seconds: Total session length (tutorial + core loop). Target 15-40s. Default 30s.
-- tutorial_duration_seconds: Tutorial/onboarding duration. Target 3-8s. Default 5s.
-- time_to_first_interaction_target_seconds: Time to first meaningful interaction. MUST be under 4s for good retention. Default 4s.
-
-Return a JSON object with these exact keys: entities, state_machine, balance, example_chunks, technical_notes, target_session_seconds, tutorial_duration_seconds, time_to_first_interaction_target_seconds.
-- entities should be an array of objects, each with: name (string), properties (array of strings), behavior (string)
-- state_machine should be an array of strings (MUST include Boot, Preload, Tutorial, Play, GameOver, Win)
-- balance should be an object with string keys and string values (e.g., {{"gravity": "1200", "jump_velocity": "-400"}})
-- example_chunks should be an array of strings
-- technical_notes should be an array of strings
-- target_session_seconds should be an integer (15-40)
-- tutorial_duration_seconds should be an integer (3-8)
-- time_to_first_interaction_target_seconds should be an integer (<=4)"""
+# Prompt moved to external file for easier editing.
+with open(os.path.join(os.path.dirname(__file__), 'spec_prompt.txt'), 'r') as f:
+    PROMPT = f.read()
 
 def spec(state: RunState) -> dict:
     gdd = state["design"]["artifact"]
