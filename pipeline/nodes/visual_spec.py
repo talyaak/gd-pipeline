@@ -21,7 +21,7 @@ Create a visual specification that includes:
 5. Juice prescriptions: specific code snippets for implementing juice/feedback techniques
 
 Return a JSON object with these exact keys:
-- color_palette: object mapping color names to hex strings (e.g., {"primary": "#ff0000", "background": "#000000"})
+- color_palette: object mapping color names to hex strings (e.g., {{"primary": "#ff0000", "background": "#000000"}})
 - shape_language: string, either "rounded" or "sharp"
 - particle_style: string describing the particle style
 - ui_kit: object with UI specification:
