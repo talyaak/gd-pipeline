@@ -83,20 +83,31 @@ def _all_run_dirs_newest_first() -> list[Path]:
 
 
 def _print_output_folder_context(run_dirs: list[Path], limit: int = 8) -> None:
+    # Retrieve-on-demand, not front-loaded: one line per run with a verdict
+    # and the single stage that failed (if any) - enough to spot a repeating
+    # pattern across runs without dumping every stage's status for all of
+    # them into every failure message. Full detail for any specific run is
+    # one command away, named explicitly, not pre-fetched speculatively.
     print("")
-    print(f"Recent runs in {OUTPUT_DIR} (newest first, showing up to {limit}):")
+    print(f"Recent runs in {OUTPUT_DIR} (newest first, up to {limit} - for full detail on any")
+    print(f"one, run: cat output/<run_name>/pipeline_summary.json):")
     for d in run_dirs[:limit]:
         summary_path = d / "pipeline_summary.json"
         has_top_level_html = (d / "game.html").exists()
-        if summary_path.exists():
+        if not summary_path.exists():
+            verdict = "IN-PROGRESS-OR-KILLED (no pipeline_summary.json)"
+        else:
             try:
                 summary = json.loads(summary_path.read_text(encoding="utf-8"))
-                stage_str = ", ".join(f"{k}={v}" for k, v in summary.items())
+                failed = {k: v for k, v in summary.items() if v != "passed"}
+                if not failed:
+                    verdict = "ALL-PASSED" if has_top_level_html else "PASSED-BUT-NO-TOP-LEVEL-HTML (inconsistent, worth a look)"
+                else:
+                    first_failed_stage = next(iter(failed))
+                    verdict = f"FAILED at '{first_failed_stage}' ({failed[first_failed_stage]})"
             except json.JSONDecodeError:
-                stage_str = "(pipeline_summary.json unreadable)"
-        else:
-            stage_str = "(no pipeline_summary.json - run likely still in progress or killed mid-run)"
-        print(f"  {d.name}: top_level_game_html={has_top_level_html}  {stage_str}")
+                verdict = "UNREADABLE pipeline_summary.json"
+        print(f"  {d.name}: {verdict}")
 
 
 def main() -> int:
