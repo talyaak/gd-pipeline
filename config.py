@@ -19,7 +19,7 @@ GENERATION_MODEL_OPENROUTER = os.environ.get("GENERATION_MODEL_OPENROUTER", "ant
 REVIEW_MODEL_OPENROUTER = os.environ.get("REVIEW_MODEL_OPENROUTER", "anthropic/claude-3-haiku")
 
 MAX_DESIGN_ATTEMPTS = int(os.environ.get("MAX_DESIGN_ATTEMPTS", "3"))
-MAX_CODE_ATTEMPTS = int(os.environ.get("MAX_CODE_ATTEMPTS", "2"))
+MAX_CODE_ATTEMPTS = int(os.environ.get("MAX_CODE_ATTEMPTS", "3"))
 
 OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "output")
 
