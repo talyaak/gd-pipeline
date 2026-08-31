@@ -84,6 +84,35 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
     game_path.write_text(html, encoding="utf-8")
 
     httpd, port = _serve_dir(out_dir)
+    
+    # Wait for server to be ready with a simple health check
+    import urllib.request
+    import urllib.error
+    server_ready = False
+    for _ in range(10):  # Up to ~1 second
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/game.html", timeout=0.5)
+            server_ready = True
+            break
+        except Exception:
+            time.sleep(0.1)
+    
+    if not server_ready:
+        httpd.shutdown()
+        return ExecutionReport(
+            loaded=False,
+            console_errors=["HTTP server failed to start"],
+            canvas_rendered=False,
+            input_response_detected=False,
+            screenshot_before_path=str(out_dir / "verify_before.png"),
+            screenshot_after_path=str(out_dir / "verify_after.png"),
+            duration_ms=0,
+            time_to_first_interaction_ms=None,
+            engagement_duration_ms=None,
+            completion_rate=0.0,
+            final_html=html,
+        )
+    
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(args=["--no-sandbox"])
