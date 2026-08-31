@@ -1,11 +1,14 @@
+import json
 import re
 from pathlib import Path
 
 from config import CODEGEN_MAX_TOKENS
 from pipeline.llm import get_generation_llm
 from pipeline.output import stage_dir, write_text
+from pipeline.patch import apply_edits
 from pipeline.retry import invoke_with_retry, PipelineError, NODE_TIMEOUTS, NODE_MAX_ATTEMPTS
 from pipeline.schemas import RunState
+from pipeline.validate import check_html_game, SyntaxCheckUnavailable
 
 PROMPT = """You are a game programmer. Write ONE complete, self-contained HTML file that 
 implements the game described below in Phaser 3.
@@ -240,10 +243,127 @@ inside the game-over/win/lose function — shown via setVisible(true) only when 
 - Main scene named **'PlayScene'** (includes 'play' for scene validation)
 """
 
+PATCH_PROMPT = """You are fixing a specific, known problem in an already-mostly-working Phaser 3 game. Do NOT rewrite the file — return the SMALLEST set of surgical edits that fixes exactly the issue(s) below, and nothing else.
+
+Game Design Document:
+{gdd}
+
+Implementation Spec:
+{spec}
+
+The exact problem(s) to fix (this is real evidence from running/checking the actual file, not a guess — trust it):
+{evidence}
+
+Current full file:
+{html}
+
+Return ONLY a JSON array of edits, no text before or after it. Each edit is an object with:
+- "old_string": an exact, verbatim substring of the current file above, unique within it (include a few surrounding lines of context if needed to make it unambiguous)
+- "new_string": what to replace it with
+
+Keep edits minimal and targeted — a one-line fix should be a one-line edit, not a surrounding rewrite. Do not touch code unrelated to the cited problem(s)."""
+
+PATCH_MAX_ITERATIONS = 3
+
+
 def _strip_fences(text: str) -> str:
     text = text.strip()
     text = re.sub(r'^```(?:html)?\s*$', '', text, flags=re.MULTILINE)
     return text.strip()
+
+
+def _static_check(html: str) -> list[str]:
+    try:
+        return check_html_game(html)
+    except SyntaxCheckUnavailable as exc:
+        return [f"Could not verify JS syntax: {exc}"]
+
+
+def _build_evidence(prior_execution: dict, exec_artifact: dict, review: dict) -> str:
+    parts = []
+    static_error = prior_execution.get("error")
+    if static_error:
+        parts.append(f"Static/execution error: {static_error}")
+    if exec_artifact:
+        parts.append(
+            "Browser execution evidence — "
+            f"loaded: {exec_artifact.get('loaded', 'unknown')}, "
+            f"canvas rendered: {exec_artifact.get('canvas_rendered', 'unknown')}, "
+            f"input response detected: {exec_artifact.get('input_response_detected', 'unknown')}"
+        )
+        console_errors = exec_artifact.get("console_errors") or []
+        if console_errors:
+            parts.append("Console/semantic-validation errors:\n" + "\n".join(f"- {e}" for e in console_errors))
+    if review:
+        issues = (review.get("spec_fidelity_issues") or []) + (review.get("quality_issues") or [])
+        if issues:
+            parts.append("Code review findings:\n" + "\n".join(f"- {i}" for i in issues))
+    return "\n\n".join(parts) if parts else "(no specific evidence available — general rework needed)"
+
+
+def _request_edits(llm, gdd, impl_spec, html: str, evidence: str) -> list | None:
+    """Ask for a small set of surgical edits. Returns None (never raises) if the
+    model's response can't be turned into usable edits — that's a signal to the
+    caller to fall back, not a hard failure of the whole codegen node."""
+    prompt = PATCH_PROMPT.format(gdd=gdd, spec=impl_spec, evidence=evidence, html=html)
+    try:
+        raw = invoke_with_retry(
+            lambda: llm.invoke(prompt),
+            node="codegen_patch",
+            timeout_seconds=NODE_TIMEOUTS.get("codegen", 180),
+            max_attempts=NODE_MAX_ATTEMPTS.get("codegen", 3),
+        )
+    except PipelineError:
+        return None
+    content = raw.content if hasattr(raw, "content") else str(raw)
+    start = content.find("[")
+    end = content.rfind("]") + 1
+    if start < 0 or end <= start:
+        return None
+    try:
+        edits = json.loads(content[start:end])
+    except (json.JSONDecodeError, ValueError):
+        return None
+    return edits if isinstance(edits, list) else None
+
+
+def _patch_loop(llm, gdd, impl_spec, html: str, evidence: str, max_iterations: int = PATCH_MAX_ITERATIONS) -> tuple[str, bool]:
+    """Try to converge `html` to a statically-clean file via surgical edits against
+    real evidence, self-correcting on edits that fail to apply. Returns
+    (final_html, converged) — converged=False means the caller should fall back
+    to full regeneration; this loop never makes things worse than the input."""
+    for _ in range(max_iterations):
+        edits = _request_edits(llm, gdd, impl_spec, html, evidence)
+        if not edits:
+            return html, False
+        patched_html, apply_errors = apply_edits(html, edits)
+        if patched_html == html and apply_errors:
+            # nothing applied at all — no point burning further iterations
+            return html, False
+        html = patched_html
+        static_issues = _static_check(html)
+        if not static_issues and not apply_errors:
+            return html, True
+        evidence_parts = []
+        if apply_errors:
+            evidence_parts.append("Some of your previous edits failed to apply:\n" + "\n".join(f"- {e}" for e in apply_errors))
+        if static_issues:
+            evidence_parts.append("Remaining static validation issues:\n" + "\n".join(f"- {i}" for i in static_issues))
+        evidence = "\n\n".join(evidence_parts)
+    return html, False
+
+
+def _rework_error_result(attempt: int, pe: PipelineError) -> dict:
+    return {
+        "code": {
+            "status": "failed_needs_rework",
+            "attempt": attempt,
+            "artifact": {"html": ""},
+            "review": None,
+            "error": f"[{pe.category.value}] {pe.message}",
+        }
+    }
+
 
 def codegen(state: RunState) -> dict:
     gdd = state["design"]["artifact"]
@@ -270,57 +390,77 @@ def codegen(state: RunState) -> dict:
     target_session_seconds = impl_spec.get("target_session_seconds", 30)
     time_to_first_interaction_target_seconds = impl_spec.get("time_to_first_interaction_target_seconds", 4)
 
+    raw = None  # set only when a single completion produced `html` directly (attempt 1, or full-regen fallback)
+    surgical_patch_used = False
+
     if attempt == 1:
         prompt = PROMPT.format(
-            gdd=gdd, 
-            spec=impl_spec, 
-            visual_spec=visual_spec,
-            tutorial_duration_seconds=tutorial_duration_seconds,
-            target_session_seconds=target_session_seconds,
-            time_to_first_interaction_target_seconds=time_to_first_interaction_target_seconds
-        )
-    else:
-        exec_artifact = prior_execution.get("artifact") or {}
-        review = prior_code.get("review") or {}
-        prompt = REWORK_PROMPT.format(
             gdd=gdd,
             spec=impl_spec,
             visual_spec=visual_spec,
-            static_issues=prior_execution.get("error") or "(none)",
-            loaded=exec_artifact.get("loaded", "unknown"),
-            console_errors=exec_artifact.get("console_errors", []),
-            canvas_rendered=exec_artifact.get("canvas_rendered", "unknown"),
-            input_response=exec_artifact.get("input_response_detected", "unknown"),
-            review_issues=(review.get("spec_fidelity_issues", []) + review.get("quality_issues", [])) or "(none)",
-            previous_html=(prior_code.get("artifact") or {}).get("html", ""),
             tutorial_duration_seconds=tutorial_duration_seconds,
             target_session_seconds=target_session_seconds,
             time_to_first_interaction_target_seconds=time_to_first_interaction_target_seconds
         )
+        try:
+            raw = invoke_with_retry(
+                lambda: llm.invoke(prompt),
+                node="codegen",
+                timeout_seconds=NODE_TIMEOUTS.get("codegen", 180),
+                max_attempts=NODE_MAX_ATTEMPTS.get("codegen", 3),
+            )
+        except PipelineError as pe:
+            return _rework_error_result(attempt, pe)
+        html = _strip_fences(raw.content if hasattr(raw, "content") else str(raw))
+    else:
+        # Rework: prefer a surgical patch against the exact evidence over throwing
+        # away the previous attempt and regenerating from scratch. This is the
+        # same read-the-real-error-then-fix-just-that-part loop the dev-agent
+        # already uses on itself, applied to the actual generated game code.
+        previous_html = (prior_code.get("artifact") or {}).get("html", "")
+        exec_artifact = prior_execution.get("artifact") or {}
+        review = prior_code.get("review") or {}
 
-    try:
-        raw = invoke_with_retry(
-            lambda: llm.invoke(prompt),
-            node="codegen",
-            timeout_seconds=NODE_TIMEOUTS.get("codegen", 180),
-            max_attempts=NODE_MAX_ATTEMPTS.get("codegen", 3),
-        )
-    except PipelineError as pe:
-        # Return structured error state
-        return {
-            "code": {
-                "status": "failed_needs_rework",
-                "attempt": attempt,
-                "artifact": {"html": ""},
-                "review": None,
-                "error": f"[{pe.category.value}] {pe.message}",
-            }
-        }
+        html = None
+        if previous_html:
+            evidence = _build_evidence(prior_execution, exec_artifact, review)
+            patched_html, converged = _patch_loop(llm, gdd, impl_spec, previous_html, evidence)
+            if converged:
+                html = patched_html
+                surgical_patch_used = True
 
-    html = _strip_fences(raw.content if hasattr(raw, "content") else str(raw))
+        if html is None:
+            # Patching couldn't reach a statically-clean file within its budget
+            # (or there was nothing to patch) — fall back to full regeneration,
+            # never worse than the pre-patch-loop behavior.
+            prompt = REWORK_PROMPT.format(
+                gdd=gdd,
+                spec=impl_spec,
+                visual_spec=visual_spec,
+                static_issues=prior_execution.get("error") or "(none)",
+                loaded=exec_artifact.get("loaded", "unknown"),
+                console_errors=exec_artifact.get("console_errors", []),
+                canvas_rendered=exec_artifact.get("canvas_rendered", "unknown"),
+                input_response=exec_artifact.get("input_response_detected", "unknown"),
+                review_issues=(review.get("spec_fidelity_issues", []) + review.get("quality_issues", [])) or "(none)",
+                previous_html=previous_html,
+                tutorial_duration_seconds=tutorial_duration_seconds,
+                target_session_seconds=target_session_seconds,
+                time_to_first_interaction_target_seconds=time_to_first_interaction_target_seconds
+            )
+            try:
+                raw = invoke_with_retry(
+                    lambda: llm.invoke(prompt),
+                    node="codegen",
+                    timeout_seconds=NODE_TIMEOUTS.get("codegen", 180),
+                    max_attempts=NODE_MAX_ATTEMPTS.get("codegen", 3),
+                )
+            except PipelineError as pe:
+                return _rework_error_result(attempt, pe)
+            html = _strip_fences(raw.content if hasattr(raw, "content") else str(raw))
 
     error = None
-    finish_reason = getattr(raw, "response_metadata", {}).get("finish_reason")
+    finish_reason = getattr(raw, "response_metadata", {}).get("finish_reason") if raw is not None else None
     if finish_reason == "length":
         # The model hit CODEGEN_MAX_TOKENS mid-generation. The output is truncated —
         # it may still happen to parse/execute (e.g. cut off inside a trailing comment),
@@ -340,5 +480,6 @@ def codegen(state: RunState) -> dict:
             "artifact": {"html": html},
             "review": None,
             "error": error,
+            "surgical_patch_used": surgical_patch_used,
         }
     }
