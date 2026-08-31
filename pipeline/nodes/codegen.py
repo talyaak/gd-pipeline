@@ -34,17 +34,12 @@ by path or extension (.png, .jpg, .mp3, .wav, etc.) anywhere in the code.
 - Use the Web Audio API directly (new AudioContext(), oscillators) for any sound. No audio files.
 - Audio must start muted: create AudioContext and create a gain node connected to the destination, set gain to 0 initially. After first user interaction (pointerdown, keyup, etc.), set gain to 1 to unmute. Do not call AudioContext.resume() or HTMLAudioElement.play().
 - On first user interaction (pointerdown, keyup, etc.), if the game is in the start state, transition to the gameplay state.
-- After the tutorial phase, the game should transition to the core gameplay loop, but the game state should remain as a single 'playing' state for simplicity, with a tutorial flag to control tutorial UI.
-- Expose a state property on the game instance (e.g., this.state) that reflects the current gameplay state ('start', 'playing', 'gameover', etc.) for validation purposes.
-- The delta-time variable in update(time, delta) must be named exactly 'dt' (e.g. 
-`const dt = delta / 1000;`). Never use 'deltaTime', 'elapsed', or 'elapsedTime'.
-- Implement a Phaser.Game with at least one Phaser.Scene that has create() and update() 
-methods, and make the described controls and win/lose condition actually work.
-- Delegate every class before it is referenced (e.g. before it appears in a `scene: [[]] 
-array), to avoid ReferenceError: Cannot access '<Class>' before initialization.
-- Expose the Phaser.Game instance as `window.__GAME__` immediately after creation for 
+- Expose the Phaser.Game instance as `window.__GAME__` immediately after creation for
 semantic validation (e.g. `window.__GAME__ = game;`).
-- Create the CTA button (text like \"INSTALL NOW\" or \"PLAY FULL VERSION\") inside `create()`, 
+- **CRITICAL: Initialize score registry for validation**: right after `window.__GAME__ = game;`, call `game.registry.set('score', 0)` and `game.registry.set('gameOver', false)`.
+- **CRITICAL: Track session time on the Game instance**: in your main scene's update(), update `this.game.sessionTime = (this.game.sessionTime || 0) + delta;` so the validator can measure engagement.
+- **CRITICAL: Increment score in registry for validation**: in update(), while player is alive, call `this.game.registry.inc('score', 1)` — this proves active gameplay to the validator.
+- Create the CTA button (text like "INSTALL NOW" or "PLAY FULL VERSION") inside `create()`,
 at the same time as the rest of the scene — NOT lazily inside your game-over/win/lose 
 function. Store it as `this.ctaButton` immediately in `create()` and call `.setVisible(false)` 
 on it there; only call `.setVisible(true)` on it when the game reaches its end screen. 
@@ -63,26 +58,91 @@ fired before you attached the listener) AND `mraid.isViewable()` being true (lis
 `mraid.addEventListener('viewableChange', (viewable) => ...)` and start/pause the Phaser 
 game loop accordingly) before starting gameplay. If `mraid` is undefined, start immediately 
 as normal — MRAID is not guaranteed to be present outside an ad network placement.
-- To support custom close buttons required by some ad networks, set mraid.expandProperties.useCustomClose = true and create a close button (using window.UIKit.Button) positioned in the top-right corner of the expanded ad that calls mraid.close() when clicked. The close button should be hidden initially and shown when the ad is expanded (you can detect expansion via mraid.addEventListener('stateChange', ...) or by checking mraid.getState() === 'expanded').
-- Track elapsed time using the 'dt' parameter in your update() method. Use this to implement 
-session timing: ensure the tutorial phase lasts approximately {tutorial_duration_seconds} 
-seconds, then transition to the core gameplay loop. Ensure the total session lasts 
-approximately {target_session_seconds} seconds (tutorial + core loop), then automatically 
-transition to the GameOver state. Encourage the first meaningful interaction (pointerdown/keyup) 
-to occur within {time_to_first_interaction_target_seconds} seconds for optimal retention.
-- CRITICAL scope note on the 'state' property: `window.__GAME__` is the Phaser.Game instance, 
-not a Scene. Setting `this.state = 'playing'` inside a Scene's create()/update() sets it on 
-that SCENE object, not on the Game object the validator actually reads — `window.__GAME__.state` 
-would stay undefined and validation fails even though the scene-level state is correct. 
-Expose it on the Game instance directly: right after `window.__GAME__ = game;`, also keep it in 
-sync, e.g. by having each scene do `this.game.state = 'playing';` (Phaser scenes have a `.game` 
-reference to their owning Game instance) instead of `this.state = 'playing';`.
 
-Do not economize on any of the requirements above (MRAID gating, muted-audio-until-interaction, 
-window.__GAME__ exposure, the CTA button structure, close-button support) even if a shorter or 
-simpler-looking implementation seems sufficient — these are compliance/trust-boundary 
-requirements, not stylistic preferences, and a "simpler" version that skips one of them will 
-fail validation or break on a real ad network. Apply minimal/no-unnecessary-code thinking to 
+CONCRETE MRAID GATING IMPLEMENTATION (copy this pattern exactly):
+```javascript
+// After window.__GAME__ = game; initialize score registry for validation
+game.registry.set('score', 0);
+game.registry.set('gameOver', false);
+
+if (typeof mraid !== 'undefined') {{
+  // Per MRAID spec: listen for ready event, don't call ready()
+  if (mraid.getState() === 'loading') {{
+    mraid.addEventListener('ready', () => {{
+      // Bridge is ready, now gate on viewable
+      if (mraid.isViewable()) {{
+        startGameplay();
+      }} else {{
+        mraid.addEventListener('viewableChange', (viewable) => {{
+          if (viewable) startGameplay();
+        }});
+      }}
+    }});
+  }} else if (mraid.isViewable()) {{
+    startGameplay();
+  }} else {{
+    mraid.addEventListener('viewableChange', (viewable) => {{
+      if (viewable) startGameplay();
+    }});
+  }}
+}} else {{
+  // No MRAID — game can start immediately
+  startGameplay();
+}}
+
+// Gameplay start function - called when MRAID is ready+viewable (or immediately if no MRAID)
+function startGameplay() {{
+  // Game starts immediately (already running)
+  // This is where you'd unpause game loop if gating on MRAID
+  console.log('MRAID: Gameplay started (ready + viewable)');
+}}
+```
+
+Then in your PlayScene's update(), track session time on the Game instance for validation:
+```javascript
+update(time, delta) {{
+  const dt = delta / 1000;
+  // ... your game logic ...
+
+  // CRITICAL: Update sessionTime on the Game instance (not scene) for validation
+  this.game.sessionTime = (this.game.sessionTime || 0) + delta;
+
+  // CRITICAL: Increment score in registry for validation (proves active gameplay)
+  if (this.player && this.player.alive) {{
+    this.game.registry.inc('score', 1);
+  }}
+}}
+```
+
+Your main gameplay scene MUST be named 'PlayScene' (includes 'play' for scene-based validation fallback):
+```javascript
+class PlayScene extends Phaser.Scene {{
+  constructor() {{
+    super('PlayScene');
+  }}
+  // ...
+}}
+```
+
+- To support custom close buttons required by some ad networks, set mraid.expandProperties.useCustomClose = true and create a close button (using window.UIKit.Button) positioned in the top-right corner of the expanded ad that calls mraid.close() when clicked. The close button should be hidden initially and shown when the ad is expanded (you can detect expansion via mraid.addEventListener('stateChange', ...) or by checking mraid.getState() === 'expanded').
+- Track elapsed time using the 'dt' parameter in your update() method. Use this to implement
+session timing: ensure the tutorial phase lasts approximately {tutorial_duration_seconds}
+seconds, then transition to the core gameplay loop. Ensure the total session lasts
+approximately {target_session_seconds} seconds (tutorial + core loop), then automatically
+transition to the GameOver state. Encourage the first meaningful interaction (pointerdown/keyup)
+to occur within {time_to_first_interaction_target_seconds} seconds for optimal retention.
+- The delta-time variable in update(time, delta) must be named exactly 'dt' (e.g.
+`const dt = delta / 1000;`). Never use 'deltaTime', 'elapsed', or 'elapsedTime'.
+- Implement a Phaser.Game with at least one Phaser.Scene that has create() and update()
+methods, and make the described controls and win/lose condition actually work.
+- Delegate every class before it is referenced (e.g. before it appears in a `scene: [[]]
+array), to avoid ReferenceError: Cannot access '<Class>' before initialization.
+
+Do not economize on any of the requirements above (MRAID gating, muted-audio-until-interaction,
+window.__GAME__ exposure, the CTA button structure, close-button support) even if a shorter or
+simpler-looking implementation seems sufficient — these are compliance/trust-boundary
+requirements, not stylistic preferences, and a "simpler" version that skips one of them will
+fail validation or break on a real ad network. Apply minimal/no-unnecessary-code thinking to
 everything else (game mechanics, visuals, structure), but not to this list.
 
 
@@ -107,12 +167,15 @@ Previous attempt's code, for reference:
 {previous_html}
 
 Remember: The game MUST include MRAID integration:
-- `this.ctaButton` created in create() (hidden via setVisible(false)), not created lazily 
+- `this.ctaButton` created in create() (hidden via setVisible(false)), not created lazily
 inside the game-over/win/lose function — shown via setVisible(true) only when the game ends
 - CTA button with mraid.open() handler
-- Gameplay start gated on `mraid.addEventListener('ready', ...)` + `mraid.isViewable()` 
+- Gameplay start gated on `mraid.addEventListener('ready', ...)` + `mraid.isViewable()`
 (via `viewableChange`) when `mraid` is present — never call `mraid.ready()` yourself
 - window.__GAME__ exposure
+- **game.registry.set('score', 0)** + **game.registry.inc('score', 1)** in update()
+- **this.game.sessionTime** updated in update()
+- Main scene named **'PlayScene'** (includes 'play' for scene validation)
 """
 
 def _strip_fences(text: str) -> str:
