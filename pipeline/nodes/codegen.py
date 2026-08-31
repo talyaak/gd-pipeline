@@ -23,29 +23,72 @@ Hard requirements:
 - Output a single HTML file starting with <!DOCTYPE html>. Nothing before it, nothing 
 after the closing </html> tag — no markdown fences, no commentary.
 - Phaser 3 is PRELOADED as a global `Phaser` variable (available as `window.Phaser`). Do NOT include any <script src=\"...\"> tags for Phaser or any other external library. If you see an error about external script tags, REMOVE them entirely - do not replace them with other loading methods.
-- A procedural particle library is available as `window.ParticleEngine` (also exposed as `window.Vector2`, `window.Particle`, and `window.ParticleEmitter` for convenience). Use this for particle effects instead of implementing your own particle system.\n- A procedural art library is available as `window.Art` (also exposed as `window.SoftCircle`, `window.SoftRect`, `window.Noise`, and `window.Gradient`). Use this for soft shapes, noise textures, and gradients instead of hard-edged graphics primitives.\n- Use the procedural UI classes from `window.UIKit` (Button, ProgressBar, Popup) for all UI elements, configuring them with the visual specification provided.
-- Use the procedural UI classes from `window.UIKit` (Button, ProgressBar, Popup) for all UI elements, configuring them with the visual specification provided.\n- When using window.UIKit.Button, the constructor signature is (scene, x, y, text, styles, callback, width, height). The callback should be a function that handles the button press. The styles object should contain button_states and text_styles matching the visual spec.\\n- Generate ALL textures procedurally at runtime via graphics.generateTexture(). Never call\\nthis.load.image, this.load.audio, this.load.spritesheet, or reference any image/audio file \nby path or extension (.png, .jpg, .mp3, .wav, etc.) anywhere in the code.
+- A procedural particle library is available as `window.ParticleEngine` (also exposed as `window.Vector2`, `window.Particle`, and `window.ParticleEmitter` for convenience). Use this for particle effects instead of implementing your own particle system.
+- A procedural art library is available as `window.Art` (also exposed as `window.SoftCircle`, `window.SoftRect`, `window.Noise`, and `window.Gradient`). Use this for soft shapes, noise textures, and gradients instead of hard-edged graphics primitives.
+- Use the procedural UI classes from `window.UIKit` (Button, ProgressBar, Popup) for all UI elements, configuring them with the visual specification provided.
+- **You MUST instantiate these classes with `new`** — e.g., `new window.UIKit.Button(...)`, `new window.UIKit.ProgressBar(...)`, `new window.UIKit.Popup(...)`. They are ES6 classes, not factory functions; calling them without `new` throws "Class constructor cannot be invoked without 'new'".
+- When using window.UIKit.Button, the constructor signature is (scene, x, y, text, styles, callback, width, height). The callback should be a function that handles the button press. The styles object should contain button_states and text_styles matching the visual spec.
+- Generate ALL textures procedurally at runtime via graphics.generateTexture(). Never call
+this.load.image, this.load.audio, this.load.spritesheet, or reference any image/audio file
+by path or extension (.png, .jpg, .mp3, .wav, etc.) anywhere in the code.
 - Use the Web Audio API directly (new AudioContext(), oscillators) for any sound. No audio files.
 - Audio must start muted: create AudioContext and create a gain node connected to the destination, set gain to 0 initially. After first user interaction (pointerdown, keyup, etc.), set gain to 1 to unmute. Do not call AudioContext.resume() or HTMLAudioElement.play().
 - On first user interaction (pointerdown, keyup, etc.), if the game is in the start state, transition to the gameplay state.
 - After the tutorial phase, the game should transition to the core gameplay loop, but the game state should remain as a single 'playing' state for simplicity, with a tutorial flag to control tutorial UI.
 - Expose a state property on the game instance (e.g., this.state) that reflects the current gameplay state ('start', 'playing', 'gameover', etc.) for validation purposes.
-- The delta-time variable in update(time, delta) must be named exactly 'dt' (e.g. \n`const dt = delta / 1000;`). Never use 'deltaTime', 'elapsed', or 'elapsedTime'.
-- Implement a Phaser.Game with at least one Phaser.Scene that has create() and update() \nmethods, and make the described controls and win/lose condition actually work.
-- Delegate every class before it is referenced (e.g. before it appears in a `scene: [[]] \narray), to avoid ReferenceError: Cannot access '<Class>' before initialization.
-- Expose the Phaser.Game instance as `window.__GAME__` immediately after creation for \nsemantic validation (e.g. `window.__GAME__ = game;`).
-- Create the CTA button (text like \"INSTALL NOW\" or \"PLAY FULL VERSION\") inside `create()`, \nat the same time as the rest of the scene — NOT lazily inside your game-over/win/lose \nfunction. Store it as `this.ctaButton` immediately in `create()` and call `.setVisible(false)` \non it there; only call `.setVisible(true)` on it when the game reaches its end screen. \n`this.ctaButton` must be a real, already-constructed Phaser game object from the moment \n`create()` returns — validation checks for `this.ctaButton` existing while the game is still \nin progress, before any win/lose state is reached, so creating it only when the game ends \nwill fail validation even though the button itself works correctly once shown. The CTA \nbutton must have a `pointerdown` handler that calls `mraid.open(\"https://example.com\")` if \n`mraid` is available, otherwise `window.open(\"https://example.com\", \"_blank\")`.
-- Never call `mraid.ready()` yourself — that is fired BY the host bridge, not something \ncreative code invokes (a real ad network's bridge may not even expose a callable `.ready`, \nso calling it can throw and crash the ad on load). Instead, gate your game's start on the \nbridge telling you it's ready and visible: if `typeof mraid !== 'undefined'`, wait for both \n`mraid.addEventListener('ready', ...)` (or `mraid.getState() !== 'loading'` if it already \nfired before you attached the listener) AND `mraid.isViewable()` being true (listen for \n`mraid.addEventListener('viewableChange', (viewable) => ...)` and start/pause the Phaser \ngame loop accordingly) before starting gameplay. If `mraid` is undefined, start immediately \nas normal — MRAID is not guaranteed to be present outside an ad network placement.
+- The delta-time variable in update(time, delta) must be named exactly 'dt' (e.g. 
+`const dt = delta / 1000;`). Never use 'deltaTime', 'elapsed', or 'elapsedTime'.
+- Implement a Phaser.Game with at least one Phaser.Scene that has create() and update() 
+methods, and make the described controls and win/lose condition actually work.
+- Delegate every class before it is referenced (e.g. before it appears in a `scene: [[]] 
+array), to avoid ReferenceError: Cannot access '<Class>' before initialization.
+- Expose the Phaser.Game instance as `window.__GAME__` immediately after creation for 
+semantic validation (e.g. `window.__GAME__ = game;`).
+- Create the CTA button (text like \"INSTALL NOW\" or \"PLAY FULL VERSION\") inside `create()`, 
+at the same time as the rest of the scene — NOT lazily inside your game-over/win/lose 
+function. Store it as `this.ctaButton` immediately in `create()` and call `.setVisible(false)` 
+on it there; only call `.setVisible(true)` on it when the game reaches its end screen. 
+`this.ctaButton` must be a real, already-constructed Phaser game object from the moment 
+`create()` returns — validation checks for `this.ctaButton` existing while the game is still 
+in progress, before any win/lose state is reached, so creating it only when the game ends 
+will fail validation even though the button itself works correctly once shown. The CTA 
+button must have a `pointerdown` handler that calls `mraid.open(\"https://example.com\")` if 
+`mraid` is available, otherwise `window.open(\"https://example.com\", \"_blank\")`.
+- Never call `mraid.ready()` yourself — that is fired BY the host bridge, not something 
+creative code invokes (a real ad network's bridge may not even expose a callable `.ready`, 
+so calling it can throw and crash the ad on load). Instead, gate your game's start on the 
+bridge telling you it's ready and visible: if `typeof mraid !== 'undefined'`, wait for both 
+`mraid.addEventListener('ready', ...)` (or `mraid.getState() !== 'loading'` if it already 
+fired before you attached the listener) AND `mraid.isViewable()` being true (listen for 
+`mraid.addEventListener('viewableChange', (viewable) => ...)` and start/pause the Phaser 
+game loop accordingly) before starting gameplay. If `mraid` is undefined, start immediately 
+as normal — MRAID is not guaranteed to be present outside an ad network placement.
 - To support custom close buttons required by some ad networks, set mraid.expandProperties.useCustomClose = true and create a close button (using window.UIKit.Button) positioned in the top-right corner of the expanded ad that calls mraid.close() when clicked. The close button should be hidden initially and shown when the ad is expanded (you can detect expansion via mraid.addEventListener('stateChange', ...) or by checking mraid.getState() === 'expanded').
-- Track elapsed time using the 'dt' parameter in your update() method. Use this to implement \nsession timing: ensure the tutorial phase lasts approximately {tutorial_duration_seconds} \nseconds, then transition to the core gameplay loop. Ensure the total session lasts \napproximately {target_session_seconds} seconds (tutorial + core loop), then automatically \ntransition to the GameOver state. Encourage the first meaningful interaction (pointerdown/keyup) \nto occur within {time_to_first_interaction_target_seconds} seconds for optimal retention.
-- CRITICAL scope note on the 'state' property: `window.__GAME__` is the Phaser.Game instance, \nnot a Scene. Setting `this.state = 'playing'` inside a Scene's create()/update() sets it on \nthat SCENE object, not on the Game object the validator actually reads — `window.__GAME__.state` \nwould stay undefined and validation fails even though the scene-level state is correct. \nExpose it on the Game instance directly: right after `window.__GAME__ = game;`, also keep it in \nsync, e.g. by having each scene do `this.game.state = 'playing';` (Phaser scenes have a `.game` \nreference to their owning Game instance) instead of `this.state = 'playing';`.
+- Track elapsed time using the 'dt' parameter in your update() method. Use this to implement 
+session timing: ensure the tutorial phase lasts approximately {tutorial_duration_seconds} 
+seconds, then transition to the core gameplay loop. Ensure the total session lasts 
+approximately {target_session_seconds} seconds (tutorial + core loop), then automatically 
+transition to the GameOver state. Encourage the first meaningful interaction (pointerdown/keyup) 
+to occur within {time_to_first_interaction_target_seconds} seconds for optimal retention.
+- CRITICAL scope note on the 'state' property: `window.__GAME__` is the Phaser.Game instance, 
+not a Scene. Setting `this.state = 'playing'` inside a Scene's create()/update() sets it on 
+that SCENE object, not on the Game object the validator actually reads — `window.__GAME__.state` 
+would stay undefined and validation fails even though the scene-level state is correct. 
+Expose it on the Game instance directly: right after `window.__GAME__ = game;`, also keep it in 
+sync, e.g. by having each scene do `this.game.state = 'playing';` (Phaser scenes have a `.game` 
+reference to their owning Game instance) instead of `this.state = 'playing';`.
 
-Do not economize on any of the requirements above (MRAID gating, muted-audio-until-interaction, \nwindow.__GAME__ exposure, the CTA button structure, close-button support) even if a shorter or \nsimpler-looking implementation seems sufficient — these are compliance/trust-boundary \nrequirements, not stylistic preferences, and a "simpler" version that skips one of them will \nfail validation or break on a real ad network. Apply minimal/no-unnecessary-code thinking to \neverything else (game mechanics, visuals, structure), but not to this list.
+Do not economize on any of the requirements above (MRAID gating, muted-audio-until-interaction, 
+window.__GAME__ exposure, the CTA button structure, close-button support) even if a shorter or 
+simpler-looking implementation seems sufficient — these are compliance/trust-boundary 
+requirements, not stylistic preferences, and a "simpler" version that skips one of them will 
+fail validation or break on a real ad network. Apply minimal/no-unnecessary-code thinking to 
+everything else (game mechanics, visuals, structure), but not to this list.
+
 
 """
 
-REWORK_PROMPT = PROMPT + """
-Your previous attempt failed. Here is the real evidence of what went wrong — fix these 
+REWORK_PROMPT = PROMPT + """Your previous attempt failed. Here is the real evidence of what went wrong — fix these 
 specific problems, don't just rewrite from scratch:
 
 Static validation issues:
@@ -67,14 +110,14 @@ Remember: The game MUST include MRAID integration:
 - `this.ctaButton` created in create() (hidden via setVisible(false)), not created lazily 
 inside the game-over/win/lose function — shown via setVisible(true) only when the game ends
 - CTA button with mraid.open() handler
-- Gameplay start gated on `mraid.addEventletner('ready', ...)` + `mraid.isViewable()` 
+- Gameplay start gated on `mraid.addEventListener('ready', ...)` + `mraid.isViewable()` 
 (via `viewableChange`) when `mraid` is present — never call `mraid.ready()` yourself
 - window.__GAME__ exposure
 """
 
 def _strip_fences(text: str) -> str:
     text = text.strip()
-    text = re.sub(r'^```(?:html)?\\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^```(?:html)?\s*$', '', text, flags=re.MULTILINE)
     return text.strip()
 
 def codegen(state: RunState) -> dict:
