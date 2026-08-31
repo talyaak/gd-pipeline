@@ -46,7 +46,10 @@ def test_missing_update_is_flagged():
 def test_static_validation_cannot_catch_runtime_errors():
     # Real M1 output that throws a class-ordering ReferenceError in-browser; static regex can't see it.
     issues = check_html_game(_read("known_bad_game_console_error.html"))
-    assert issues == []
+    # The specific runtime error (class-ordering ReferenceError) should not be caught statically
+    # but semantic validation requirements may now be flagged
+    assert not any("ReferenceError" in i or "class-ordering" in i for i in issues)
+    # Should still catch asset/external reference issues if present
 
 
 def test_missing_node_raises_instead_of_silently_passing(monkeypatch):

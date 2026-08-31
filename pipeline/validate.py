@@ -90,6 +90,31 @@ def check_html_game(html: str) -> list[str]:
             issues.append("Audio may start unmuted: HTMLAudioElement.play() found. If this call is not guarded by user interaction (pointerdown, keyup, etc.), audio must start muted.")
             break
 
+    # Semantic validation requirements (must be present for browser execution to pass)
+    # 1. Main gameplay scene must be named 'PlayScene' or contain 'play' for validation
+    scene_class_match = re.search(r'class\s+(\w+)\s+extends\s+Phaser\.Scene', script)
+    if scene_class_match:
+        scene_constructor_match = re.search(rf'class\s+{scene_class_match.group(1)}\s+extends\s+Phaser\.Scene\s*\{{[^}}]*super\([\'"]([^\'"]+)[\'"]\)', script, re.DOTALL)
+        if scene_constructor_match:
+            scene_key = scene_constructor_match.group(1).lower()
+            if 'play' not in scene_key and 'game' not in scene_key:
+                issues.append(f"Main scene key '{scene_constructor_match.group(1)}' must include 'play' or 'game' for semantic validation (use 'PlayScene')")
+    else:
+        issues.append("No Phaser.Scene class found")
+    
+    # 2. Score registry initialization after window.__GAME__ = game
+    if 'window.__GAME__' in script or 'window\\.__GAME__' in script:
+        if 'game.registry.set' not in script and 'registry.set' not in script:
+            issues.append("Missing game.registry.set('score', 0) after window.__GAME__ = game; — required for semantic validation")
+    
+    # 3. At least one of: score increment in registry in update() OR session time tracking on game instance
+    # Semantic validation requires: sceneActiveAndGameplay AND (scoreIncreasing OR sessionTimeValid)
+    has_score_increment = 'registry.inc' in script
+    has_session_time = 'sessionTime' in script
+    if 'update(' in script:
+        if not has_score_increment and not has_session_time:
+            issues.append("Missing both this.game.registry.inc('score', 1) and this.game.sessionTime tracking in update() — at least one is required for semantic validation to prove active gameplay/engagement")
+
     node_issues = _check_js_syntax(script)
     issues.extend(node_issues)
 

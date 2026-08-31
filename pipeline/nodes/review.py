@@ -17,6 +17,7 @@ Execution evidence (already verified, not your job to re-check):
 - Loaded cleanly: {loaded}
 - Canvas rendered: {canvas_rendered}
 - Input produced an observable change: {input_response}
+{console_errors_section}
 
 Generated code:
 {html}
@@ -31,13 +32,19 @@ def review(state: RunState) -> dict:
     loaded = False
     canvas_rendered = False
     input_response_detected = False
+    console_errors_section = ""
     raw = None
     if exec_artifact is not None:
         loaded = exec_artifact["loaded"]
         canvas_rendered = exec_artifact["canvas_rendered"]
         input_response_detected = exec_artifact["input_response_detected"]
+        console_errors = exec_artifact.get("console_errors", [])
+        if console_errors:
+            console_errors_section = f"- Console errors: {', '.join(console_errors)}"
+        else:
+            console_errors_section = ""
         llm = get_review_llm(node="review")
-        prompt = PROMPT.format(gdd=gdd, spec=impl_spec, loaded=loaded, canvas_rendered=canvas_rendered, input_response=input_response_detected, html=code["artifact"]["html"])
+        prompt = PROMPT.format(gdd=gdd, spec=impl_spec, loaded=loaded, canvas_rendered=canvas_rendered, input_response=input_response_detected, console_errors_section=console_errors_section, html=code["artifact"]["html"])
         raw = invoke_with_retry(lambda: llm.invoke(prompt), node="review")
         # LLM invoke returns an object with .content attribute (e.g., SimpleNamespace or BaseMessage)
         raw_content = raw.content if hasattr(raw, "content") else str(raw)
