@@ -378,9 +378,16 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                                 console_errors.append("Semantic validation: invalid score value")
                                 semantic_ok = False
 
-                        # Check not game over immediately
+                        # Check not game over immediately — but a game that's over
+                        # *after* real engagement is a working win/lose condition,
+                        # not a bug. The observation loop above already tracked
+                        # exactly this distinction (engagement_start_time is only
+                        # set once genuine play was observed); reuse it instead of
+                        # re-deriving a verdict from a single end-of-test snapshot
+                        # that can't tell "died instantly" from "played a full
+                        # session and correctly ended" apart on its own.
                         game_over = page.evaluate("() => window.__GAME__.registry.get('gameOver') === true")
-                        if game_over:
+                        if game_over and engagement_start_time is None:
                             console_errors.append("Semantic validation: game over immediately")
                             semantic_ok = False
             except Exception as exc:
