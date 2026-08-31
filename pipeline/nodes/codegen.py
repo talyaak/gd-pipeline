@@ -146,6 +146,68 @@ fail validation or break on a real ad network. Apply minimal/no-unnecessary-code
 everything else (game mechanics, visuals, structure), but not to this list.
 
 
+KNOWN GOOD PATTERN — copy this exact structure for the validation-critical parts:
+```html
+<!DOCTYPE html>
+<html>
+<head><title>Your Game Title</title></head>
+<body>
+<script>
+class PlayScene extends Phaser.Scene {{
+    constructor() {{
+        super('PlayScene');  // MUST include 'play' or 'game' for scene validation
+    }}
+    create() {{
+        // ... your setup: procedural textures, player, CTA button (hidden), etc. ...
+        
+        // MRAID gating - gate gameplay on ready + viewable, never call mraid.ready()
+        if (typeof mraid !== 'undefined') {{
+            if (mraid.getState() === 'loading') {{
+                mraid.addEventListener('ready', () => {{
+                    if (mraid.isViewable()) startGameplay();
+                    else mraid.addEventListener('viewableChange', (v) => {{ if (v) startGameplay(); }});
+                }});
+            }} else if (mraid.isViewable()) {{
+                startGameplay();
+            }} else {{
+                mraid.addEventListener('viewableChange', (v) => {{ if (v) startGameplay(); }});
+            }}
+        }} else {{
+            startGameplay();
+        }}
+        
+        function startGameplay() {{
+            console.log('MRAID: Gameplay started (ready + viewable)');
+        }}
+    }}
+    update(time, delta) {{
+        const dt = delta / 1000;
+        // ... your game logic ...
+        
+        // CRITICAL: Update sessionTime on Game instance for validation
+        this.game.sessionTime = (this.game.sessionTime || 0) + delta;
+        
+        // CRITICAL: Increment score in registry for validation
+        if (this.player && this.player.alive) {{
+            this.game.registry.inc('score', 1);
+        }}
+    }}
+}}
+
+var game = new Phaser.Game({{
+    type: Phaser.AUTO,
+    width: 800,
+    height: 600,
+    scene: [PlayScene],
+}});
+window.__GAME__ = game;
+// CRITICAL: Initialize score registry for validation
+game.registry.set('score', 0);
+game.registry.set('gameOver', false);
+</script>
+</body>
+</html>
+```
 """
 
 REWORK_PROMPT = PROMPT + """Your previous attempt failed. Here is the real evidence of what went wrong — fix these 
