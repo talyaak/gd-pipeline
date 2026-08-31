@@ -1,4 +1,8 @@
+from config import MAX_CODE_ATTEMPTS
 from pipeline.graph import _after_review, _after_validate_execute, _give_up
+
+UNDER_LIMIT = MAX_CODE_ATTEMPTS - 1
+AT_LIMIT = MAX_CODE_ATTEMPTS
 
 
 def _state(execution_status, execution_attempt, code_status=None, code_attempt=None):
@@ -13,11 +17,11 @@ def test_validate_execute_passed_routes_to_review():
 
 
 def test_validate_execute_failed_under_limit_routes_to_codegen():
-    assert _after_validate_execute(_state("failed_needs_rework", 1)) == "codegen"
+    assert _after_validate_execute(_state("failed_needs_rework", UNDER_LIMIT)) == "codegen"
 
 
 def test_validate_execute_failed_at_limit_routes_to_give_up():
-    assert _after_validate_execute(_state("failed_needs_rework", 2)) == "give_up"
+    assert _after_validate_execute(_state("failed_needs_rework", AT_LIMIT)) == "give_up"
 
 
 def test_review_passed_routes_to_done():
@@ -26,16 +30,16 @@ def test_review_passed_routes_to_done():
 
 
 def test_review_failed_under_limit_routes_to_codegen():
-    state = _state("passed", 1, code_status="failed_needs_rework", code_attempt=1)
+    state = _state("passed", UNDER_LIMIT, code_status="failed_needs_rework", code_attempt=UNDER_LIMIT)
     assert _after_review(state) == "codegen"
 
 
 def test_review_failed_at_limit_routes_to_give_up():
-    state = _state("passed", 2, code_status="failed_needs_rework", code_attempt=2)
+    state = _state("passed", AT_LIMIT, code_status="failed_needs_rework", code_attempt=AT_LIMIT)
     assert _after_review(state) == "give_up"
 
 
 def test_give_up_marks_code_failed_max_attempts():
-    state = _state("failed_needs_rework", 2, code_status="failed_needs_rework", code_attempt=2)
+    state = _state("failed_needs_rework", AT_LIMIT, code_status="failed_needs_rework", code_attempt=AT_LIMIT)
     result = _give_up(state)
     assert result["code"]["status"] == "failed_max_attempts"
