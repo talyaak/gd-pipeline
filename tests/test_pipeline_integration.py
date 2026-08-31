@@ -26,6 +26,13 @@ class _FakeLLM:
         return _FakeStructured(self._structured_value)
 
     def invoke(self, _prompt):
+        if "Return ONLY a JSON array of edits" in _prompt:
+            # The bad->good fixture pair used by this test is a near-total rewrite
+            # (missing MRAID/CTA structure entirely, not a one-line fix), so a real
+            # model would correctly decline to patch it — an empty edit list makes
+            # codegen's patch loop bail out immediately and fall back to full
+            # regeneration, same as it would for a genuinely unpatchable diff.
+            return SimpleNamespace(content="[]")
         if self._plain_values:
             return SimpleNamespace(content=self._plain_values.pop(0))
         # For structured output path
