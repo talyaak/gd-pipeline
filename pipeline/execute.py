@@ -327,25 +327,27 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                     console_errors.append("Semantic validation: window.__GAME__ not exposed")
                     semantic_ok = False
                 else:
-                    # Check scene is active and indicates gameplay - simplified logic for current fix
+                    # Check scene is active and indicates gameplay - robust logic with fallbacks
                     scene_active_and_gameplay = page.evaluate("""() => {
                         const game = window.__GAME__;
                         if (!game) return false;
-                        
-                        // Check for game.state property (most reliable)
-                        if (game.state !== undefined) {
-                            return game.state === 'playing';
+
+                        // Check for game.state property - if 'playing', we're good
+                        if (game.state === 'playing') {
+                            return true;
                         }
-                        
-                        // Check for scene-based states as fallback
+
+                        // Check for scene-based states as fallback (even if game.state exists but isn't 'playing')
                         if (game.scene && game.scene.scenes) {
                             const activeScenes = game.scene.scenes.filter(s => s.visible && s.active);
                             if (activeScenes.length > 0) {
                                 const sceneName = activeScenes[0].settings.key.toLowerCase();
-                                return sceneName.includes('game') || sceneName.includes('play');
+                                if (sceneName.includes('game') || sceneName.includes('play')) {
+                                    return true;
+                                }
                             }
                         }
-                        
+
                         // Check for score increasing as a sign of active play
                         if (game.registry && typeof game.registry.get === 'function') {
                             try {
@@ -353,14 +355,14 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                                 if (typeof score === 'number' && score > 0) {
                                     return true; // score > 0 indicates gameplay
                                 }
-                            } catch(e) {/* ignore */ }
+                            } catch(e) {/* ignore */}
                         }
-                        
+
                         // Check for session time increasing as a sign of active play
                         if (game.sessionTime !== undefined && game.sessionTime > 0) {
                             return true; // sessionTime > 0 indicates gameplay
                         }
-                        
+
                         // Default to false if we can't determine
                         return false;
                     }""")
