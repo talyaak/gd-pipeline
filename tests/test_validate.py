@@ -52,6 +52,34 @@ def test_static_validation_cannot_catch_runtime_errors():
     # Should still catch asset/external reference issues if present
 
 
+def test_mraid_ready_call_is_flagged():
+    html = (
+        "<!DOCTYPE html><html><script>\n"
+        "new Phaser.Game({});\n"
+        "function update(t, d) {}\n"
+        "mraid.ready();\n"
+        "</script></html>"
+    )
+    issues = check_html_game(html)
+    assert any("ready" in i.lower() for i in issues)
+
+
+def test_comment_explaining_mraid_ready_is_not_flagged():
+    # Real bug: our own codegen prompt's example code includes the explanatory
+    # comment "never call mraid.ready() yourself" — the banned-call regex was
+    # matching that comment text itself, rejecting code that correctly never
+    # actually calls mraid.ready(). Comments must not trigger banned-call checks.
+    html = (
+        "<!DOCTYPE html><html><script>\n"
+        "new Phaser.Game({});\n"
+        "// MRAID gating - gate gameplay on ready + viewable, never call mraid.ready()\n"
+        "function update(t, d) {}\n"
+        "</script></html>"
+    )
+    issues = check_html_game(html)
+    assert not any("ready" in i.lower() for i in issues)
+
+
 def test_missing_node_raises_instead_of_silently_passing(monkeypatch):
     # A missing `node` executable must never be indistinguishable from "syntax check passed".
     monkeypatch.setattr("pipeline.validate.shutil.which", lambda _name: None)

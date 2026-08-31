@@ -32,10 +32,23 @@ def _extract_script_contents(html: str) -> str:
     return "\n".join(scripts)
 
 
+def _strip_js_comments(script: str) -> str:
+    """Best-effort comment removal, used only to keep the regex checks below from
+    false-triggering on comment text (e.g. our own codegen prompt's example code
+    includes the explanatory comment "never call mraid.ready()" — a real,
+    observed case where the banned-call check flagged that comment itself as a
+    violation). Not a real parser; good enough for this heuristic purpose only,
+    never used on anything that gets shipped."""
+    no_block = re.sub(r"/\*.*?\*/", "", script, flags=re.DOTALL)
+    no_line = re.sub(r"//[^\n]*", "", no_block)
+    return no_line
+
+
 def check_html_game(html: str) -> list[str]:
     """Static, deterministic checks. No LLM calls. Returns a list of issue strings (empty = clean)."""
     issues: list[str] = []
-    script = _extract_script_contents(html)
+    raw_script = _extract_script_contents(html)
+    script = _strip_js_comments(raw_script)
 
     if not html.lstrip().lower().startswith("<!doctype html"):
         issues.append("File does not start with <!DOCTYPE html>")
@@ -115,7 +128,11 @@ def check_html_game(html: str) -> list[str]:
         if not has_score_increment and not has_session_time:
             issues.append("Missing both this.game.registry.inc('score', 1) and this.game.sessionTime tracking in update() — at least one is required for semantic validation to prove active gameplay/engagement")
 
-    node_issues = _check_js_syntax(script)
+    # Syntax-check the real code, not the comment-stripped version — my regex-based
+    # comment stripper is a heuristic, not a real parser, and could mangle a string
+    # literal that happens to contain "//" or "/*"; running it through node --check
+    # anyway would report a confusing false error against code the model never wrote.
+    node_issues = _check_js_syntax(raw_script)
     issues.extend(node_issues)
 
     return issues
