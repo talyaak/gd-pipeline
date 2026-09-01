@@ -121,14 +121,14 @@ def validate_execute(state: RunState) -> dict:
     # proxy that a genuinely frozen game can still satisfy (canvas has pixels,
     # a screenshot diff registered, a registry number ticked up) — confirmed by
     # hand on a run that passed all of them and never left its start screen.
+    # A real headless Claude Code agent (genuine Playwright tool access, not
+    # just vision on two static screenshots) opens the game and plays with it.
     # An error running the check itself must never be treated as a pass.
     playability_error = None
     if runtime_ok:
         try:
-            from pipeline.playability import check_playability
-            before_bytes = Path(report.screenshot_before_path).read_bytes()
-            after_bytes = Path(report.screenshot_after_path).read_bytes()
-            playability = check_playability(before_bytes, after_bytes)
+            from pipeline.playability_agent import check_playability_agentic
+            playability = check_playability_agentic(report.final_html or html)
             if not playability.playable:
                 runtime_ok = False
                 playability_error = f"Playability check failed: {playability.reasoning}"

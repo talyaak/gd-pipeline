@@ -73,11 +73,12 @@ def test_full_pipeline_repairs_a_first_attempt_failure(tmp_path, monkeypatch):
     monkeypatch.setattr("pipeline.nodes.review.get_review_llm", lambda node: _FakeLLM(structured_value=review_value))
     # The playability check makes a real (vision) LLM call as the last gate in
     # validate_execute — stub it out so this test stays a pure unit test of the
-    # graph's rework routing, not an integration test of the vision model itself.
+    # graph's rework routing, not an integration test of the agent itself (which
+    # spawns a real subprocess and costs real money).
     from pipeline.schemas import PlayabilityReport
     monkeypatch.setattr(
-        "pipeline.playability.check_playability",
-        lambda before_png, after_png, node="playability": PlayabilityReport(playable=True, reasoning="stubbed for this test"),
+        "pipeline.playability_agent.check_playability_agentic",
+        lambda html, **kw: PlayabilityReport(playable=True, reasoning="stubbed for this test"),
     )
 
     run_dir = tmp_path / "run"

@@ -42,17 +42,12 @@ def _clean_report(**overrides):
     return ExecutionReport(**defaults)
 
 
-def test_playability_failure_fails_an_otherwise_clean_run(tmp_path, monkeypatch):
-    before = tmp_path / "before.png"
-    after = tmp_path / "after.png"
-    before.write_bytes(b"fake")
-    after.write_bytes(b"fake")
-    report = _clean_report(screenshot_before_path=str(before), screenshot_after_path=str(after))
-
+def test_playability_failure_fails_an_otherwise_clean_run(monkeypatch):
+    report = _clean_report()
     monkeypatch.setattr("pipeline.nodes.validate_execute.run_execution_report", lambda html, out_dir: report)
     monkeypatch.setattr(
-        "pipeline.playability.check_playability",
-        lambda before_png, after_png, node="playability": PlayabilityReport(playable=False, reasoning="frozen on start screen"),
+        "pipeline.playability_agent.check_playability_agentic",
+        lambda html, **kw: PlayabilityReport(playable=False, reasoning="frozen on start screen"),
     )
 
     result = validate_execute(_state())
@@ -61,19 +56,14 @@ def test_playability_failure_fails_an_otherwise_clean_run(tmp_path, monkeypatch)
     assert "frozen on start screen" in result["execution"]["error"]
 
 
-def test_playability_error_is_treated_as_failure_not_a_pass(tmp_path, monkeypatch):
-    before = tmp_path / "before.png"
-    after = tmp_path / "after.png"
-    before.write_bytes(b"fake")
-    after.write_bytes(b"fake")
-    report = _clean_report(screenshot_before_path=str(before), screenshot_after_path=str(after))
-
+def test_playability_error_is_treated_as_failure_not_a_pass(monkeypatch):
+    report = _clean_report()
     monkeypatch.setattr("pipeline.nodes.validate_execute.run_execution_report", lambda html, out_dir: report)
 
     def _raise(*a, **kw):
-        raise RuntimeError("vision API unreachable")
+        raise RuntimeError("agent subprocess unreachable")
 
-    monkeypatch.setattr("pipeline.playability.check_playability", _raise)
+    monkeypatch.setattr("pipeline.playability_agent.check_playability_agentic", _raise)
 
     result = validate_execute(_state())
 
@@ -81,14 +71,14 @@ def test_playability_error_is_treated_as_failure_not_a_pass(tmp_path, monkeypatc
     assert "errored" in result["execution"]["error"].lower()
 
 
-def test_playability_not_invoked_when_runtime_already_failed(tmp_path, monkeypatch):
+def test_playability_not_invoked_when_runtime_already_failed(monkeypatch):
     report = _clean_report(console_errors=["some real runtime error"])
     monkeypatch.setattr("pipeline.nodes.validate_execute.run_execution_report", lambda html, out_dir: report)
 
     def _must_not_be_called(*a, **kw):
         raise AssertionError("playability check should not run when runtime checks already failed")
 
-    monkeypatch.setattr("pipeline.playability.check_playability", _must_not_be_called)
+    monkeypatch.setattr("pipeline.playability_agent.check_playability_agentic", _must_not_be_called)
 
     result = validate_execute(_state())
 
@@ -96,17 +86,12 @@ def test_playability_not_invoked_when_runtime_already_failed(tmp_path, monkeypat
     assert "some real runtime error" in result["execution"]["error"]
 
 
-def test_fully_clean_and_playable_passes(tmp_path, monkeypatch):
-    before = tmp_path / "before.png"
-    after = tmp_path / "after.png"
-    before.write_bytes(b"fake")
-    after.write_bytes(b"fake")
-    report = _clean_report(screenshot_before_path=str(before), screenshot_after_path=str(after))
-
+def test_fully_clean_and_playable_passes(monkeypatch):
+    report = _clean_report()
     monkeypatch.setattr("pipeline.nodes.validate_execute.run_execution_report", lambda html, out_dir: report)
     monkeypatch.setattr(
-        "pipeline.playability.check_playability",
-        lambda before_png, after_png, node="playability": PlayabilityReport(playable=True, reasoning="clearly playing"),
+        "pipeline.playability_agent.check_playability_agentic",
+        lambda html, **kw: PlayabilityReport(playable=True, reasoning="clearly playing"),
     )
 
     result = validate_execute(_state())
