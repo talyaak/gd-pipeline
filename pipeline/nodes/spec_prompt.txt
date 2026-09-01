@@ -34,7 +34,7 @@ Return a JSON object with these exact keys: entities, state_machine, mraid_state
 - entities should be an array of objects, each with: name (string), properties (array of strings), behavior (string)
 - state_machine should be an array of strings (MUST include Boot, Preload, Tutorial, Play, GameOver, Win)
 - mraid_state_machine should be an array of strings (MUST include loading, ready, visible, playing, paused, gameover)
-- balance should be an object with string keys and string values (e.g., {\"gravity\": \"1200\", \"jump_velocity\": \"-400\"})
+- balance should be an object with string keys and string values (e.g., {{\"gravity\": \"1200\", \"jump_velocity\": \"-400\"}})
 - example_chunks should be an array of strings
 - technical_notes should be an array of strings
 - target_session_seconds should be an integer (15-40)
