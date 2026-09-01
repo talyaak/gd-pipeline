@@ -78,7 +78,7 @@ def review(state: RunState) -> dict:
             "strengths": [],
         }
         result = CodeReview(**data)
-    passed = result.score >= 6
+    passed = result.score >= 7
     out_dir = stage_dir(Path(state["run_dir"]), 4, "code", code["attempt"])
     write_json(out_dir, "review", result.model_dump())
     return {
