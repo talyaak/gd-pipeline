@@ -104,16 +104,30 @@ def check_html_game(html: str) -> list[str]:
             break
 
     # Semantic validation requirements (must be present for browser execution to pass)
-    # 1. Main gameplay scene must be named 'PlayScene' or contain 'play' for validation
-    scene_class_match = re.search(r'class\s+(\w+)\s+extends\s+Phaser\.Scene', script)
-    if scene_class_match:
-        scene_constructor_match = re.search(rf'class\s+{scene_class_match.group(1)}\s+extends\s+Phaser\.Scene\s*\{{[^}}]*super\([\'"]([^\'"]+)[\'"]\)', script, re.DOTALL)
-        if scene_constructor_match:
-            scene_key = scene_constructor_match.group(1).lower()
-            if 'play' not in scene_key and 'game' not in scene_key:
-                issues.append(f"Main scene key '{scene_constructor_match.group(1)}' must include 'play' or 'game' for semantic validation (use 'PlayScene')")
-    else:
-        issues.append("No Phaser.Scene class found")
+        # 1. Main gameplay scene must be named 'PlayScene' or contain 'play' for validation
+        scene_classes = list(re.finditer(r'class\s+(\w+)\s+extends\s+Phaser\.Scene', script))
+        if scene_classes:
+            found_gameplay_scene = False
+            for match in scene_classes:
+                class_name = match.group(1)
+                pattern = r'class\s+%s\s+extends\s+Phaser\.Scene\s*\{[^}]*super\([\'"]([^\'"]+)[\'"]\)'
+                constructor_match = re.search(pattern % re.escape(class_name), script, re.DOTALL)
+                if constructor_match:
+                    scene_key = constructor_match.group(1).lower()
+                    if 'play' in scene_key or 'game' in scene_key:
+                        found_gameplay_scene = True
+                        break
+            if not found_gameplay_scene:
+                # Report the first scene's key as the issue
+                first_class = scene_classes[0].group(1)
+                pattern = r'class\s+%s\s+extends\s+Phaser\.Scene\s*\{[^}]*super\([\'"]([^\'"]+)[\'"]\)'
+                first_constructor = re.search(pattern % re.escape(first_class), script, re.DOTALL)
+                if first_constructor:
+                    issues.append(f"Main scene key '{first_constructor.group(1)}' must include 'play' or 'game' for semantic validation (use 'PlayScene')")
+                else:
+                    issues.append(f"Main scene class '{first_class}' missing super() call with scene key")
+        else:
+            issues.append("No Phaser.Scene class found")
     
     # 2. Score registry initialization after window.__GAME__ = game
     if 'window.__GAME__' in script or 'window\\.__GAME__' in script:
