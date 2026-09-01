@@ -218,18 +218,18 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                         if (game.scene && game.scene.scenes) {
                             const activeScenes = game.scene.scenes.filter(s => s.visible && s.active);
                             if (activeScenes.length > 0) {
-                                // Map common scene names to states
+                                // Map common scene names to states (substring match for flexibility)
                                 const sceneNames = activeScenes.map(s => s.settings.key.toLowerCase());
-                                if (sceneNames.some(name => ['play', 'game', 'level'].includes(name))) {
+                                if (sceneNames.some(name => name.includes('play') || name.includes('game') || name.includes('level'))) {
                                     return { state: 'playing', reason: 'phaser scene' };
                                 }
-                                if (sceneNames.some(name => ['menu', 'main', 'start'].includes(name))) {
+                                if (sceneNames.some(name => name.includes('menu') || name.includes('main') || name.includes('start'))) {
                                     return { state: 'menu', reason: 'phaser scene' };
                                 }
-                                if (sceneNames.some(name => ['gameover', 'game over', 'over'].includes(name))) {
+                                if (sceneNames.some(name => name.includes('gameover') || name.includes('over'))) {
                                     return { state: 'gameover', reason: 'phaser scene' };
                                 }
-                                if (sceneNames.some(name => ['win', 'won', 'victory', 'success'].includes(name))) {
+                                if (sceneNames.some(name => name.includes('win') || name.includes('won') || name.includes('victory') || name.includes('success'))) {
                                     return { state: 'win', reason: 'phaser scene' };
                                 }
                                 return { state: activeScenes[0].settings.key.toLowerCase(), reason: 'phaser scene' };
