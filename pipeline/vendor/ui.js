@@ -106,7 +106,17 @@
       }
       
       if (color) {
-        this.bg.setFillStyle(parseInt(color.replace('#', '0x'), 16));
+        // Handle both visual spec format (string: "#rrggbb") and codegen format (object: { bg: 0xrrggbb })
+        let fillColor;
+        if (typeof color === 'object' && color.bg !== undefined) {
+          fillColor = color.bg;
+        } else if (typeof color === 'string') {
+          fillColor = parseInt(color.replace('#', '0x'), 16);
+        } else {
+          // Assume it's already a number (0xRRGGBB)
+          fillColor = color;
+        }
+        this.bg.setFillStyle(fillColor);
       }
     }
     
@@ -351,16 +361,27 @@
       const percent = Math.round(this.value * 100);
       this.label.setText(`${percent}%`);
       
-      // Update colors
+      // Update colors - handle both visual spec format (string: "#rrggbb") and codegen format (object: { bg: 0xrrggbb })
       const bgColor = this._getStyle('progress_bar.background');
       const fillColor = this._getStyle('progress_bar.fill');
       const textColor = this._getStyle('progress_bar.text');
       
+      function parseColor(color) {
+        if (typeof color === 'object' && color.bg !== undefined) {
+          return color.bg;
+        } else if (typeof color === 'string') {
+          return parseInt(color.replace('#', '0x'), 16);
+        } else {
+          // Assume it's already a number (0xRRGGBB)
+          return color;
+        }
+      }
+      
       if (bgColor) {
-        this.bg.setFillStyle(parseInt(bgColor.replace('#', '0x'), 16));
+        this.bg.setFillStyle(parseColor(bgColor));
       }
       if (fillColor) {
-        this.fill.setFillStyle(parseInt(fillColor.replace('#', '0x'), 16));
+        this.fill.setFillStyle(parseColor(fillColor));
       }
       if (textColor) {
         this.label.setStyle({ fill: textColor });
