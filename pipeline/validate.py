@@ -83,51 +83,52 @@ def check_html_game(html: str) -> list[str]:
     # Check for mraid.ready() calls - creative must not call mraid.ready() themselves
     if re.search(r'\.ready\(', script) or 'mraid.ready' in script:
         issues.append("Calls mraid.ready() — creative code must not call mraid.ready() themselves; gate gameplay on mraid.getState() !== 'loading' and mraid.isViewable()")
+
     # Check for muted-until-interaction audio policy
-        # Audio must start muted and only unmute/resume after first user interaction
-        # Check for AudioContext resume() calls
-        resume_matches = list(re.finditer(r'(\b[\w.]+)\s*\.\s*resume\s*\(', script))
-        for m in resume_matches:
-            prefix = m.group(1)
-            # Skip known non-audio resume calls
-            if prefix in ('scene', 'this.scene', 'tweens', 'this.tweens', 'this.time', 'this.cache', 'this.textures', 'this.sound', 'this.game'):
-                continue
-            issues.append("Audio may start unmuted: AudioContext.resume() found. If this call is not guarded by user interaction (pointerdown, keyup, etc.), audio must start muted.")
-            break
-        # Check for audio element play() calls
-        play_matches = list(re.finditer(r'(\b[\w.]+)\s*\.\s*play\s*\(', script))
-        for m in play_matches:
-            prefix = m.group(1)
-            if prefix in ('this.sound', 'this.audio', 'HTMLAudioElement'):
-                continue
-            issues.append("Audio may start unmuted: HTMLAudioElement.play() found. If this call is not guarded by user interaction (pointerdown, keyup, etc.), audio must start muted.")
-            break
+    # Audio must start muted and only unmute/resume after first user interaction
+    # Check for AudioContext resume() calls
+    resume_matches = list(re.finditer(r'(\b[\w.]+)\s*\.\s*resume\s*\(', script))
+    for m in resume_matches:
+        prefix = m.group(1)
+        # Skip known non-audio resume calls
+        if prefix in ('scene', 'this.scene', 'tweens', 'this.tweens', 'this.time', 'this.cache', 'this.textures', 'this.sound', 'this.game'):
+            continue
+        issues.append("Audio may start unmuted: AudioContext.resume() found. If this call is not guarded by user interaction (pointerdown, keyup, etc.), audio must start muted.")
+        break
+    # Check for audio element play() calls
+    play_matches = list(re.finditer(r'(\b[\w.]+)\s*\.\s*play\s*\(', script))
+    for m in play_matches:
+        prefix = m.group(1)
+        if prefix in ('this.sound', 'this.audio', 'HTMLAudioElement'):
+            continue
+        issues.append("Audio may start unmuted: HTMLAudioElement.play() found. If this call is not guarded by user interaction (pointerdown, keyup, etc.), audio must start muted.")
+        break
 
     # Semantic validation requirements (must be present for browser execution to pass)
-        # 1. Main gameplay scene must be named 'PlayScene' or contain 'play' for validation
-        scene_classes = list(re.finditer(r'class\s+(\w+)\s+extends\s+Phaser\.Scene', script))
-        if scene_classes:
-            found_gameplay_scene = False
-            for match in scene_classes:
-                class_name = match.group(1)
-                pattern = r'class\s+%s\s+extends\s+Phaser\.Scene\s*\{[^}]*super\([\'"]([^\'"]+)[\'"]\)'
-                constructor_match = re.search(pattern % re.escape(class_name), script, re.DOTALL)
-                if constructor_match:
-                    scene_key = constructor_match.group(1).lower()
-                    if 'play' in scene_key or 'game' in scene_key:
-                        found_gameplay_scene = True
-                        break
-            if not found_gameplay_scene:
-                # Report the first scene's key as the issue
-                first_class = scene_classes[0].group(1)
-                pattern = r'class\s+%s\s+extends\s+Phaser\.Scene\s*\{[^}]*super\([\'"]([^\'"]+)[\'"]\)'
-                first_constructor = re.search(pattern % re.escape(first_class), script, re.DOTALL)
-                if first_constructor:
-                    issues.append(f"Main scene key '{first_constructor.group(1)}' must include 'play' or 'game' for semantic validation (use 'PlayScene')")
-                else:
-                    issues.append(f"Main scene class '{first_class}' missing super() call with scene key")
-        else:
-            issues.append("No Phaser.Scene class found")
+    # 1. Main gameplay scene must be named 'PlayScene' or contain 'play' for validation
+    scene_classes = list(re.finditer(r'class\s+(\w+)\s+extends\s+Phaser\.Scene', script))
+    if scene_classes:
+        found_gameplay_scene = False
+        for match in scene_classes:
+            class_name = match.group(1)
+            pattern = r'class\s+%s\s+extends\s+Phaser\.Scene\s*\{[^}]*super\([\'"]([^\'"]+)[\'"]\)'
+            constructor_match = re.search(pattern % re.escape(class_name), script, re.DOTALL)
+            if constructor_match:
+                scene_key = constructor_match.group(1).lower()
+                if 'play' in scene_key or 'game' in scene_key:
+                    found_gameplay_scene = True
+                    break
+        if not found_gameplay_scene:
+            # Report the first scene's key as the issue
+            first_class = scene_classes[0].group(1)
+            pattern = r'class\s+%s\s+extends\s+Phaser\.Scene\s*\{[^}]*super\([\'"]([^\'"]+)[\'"]\)'
+            first_constructor = re.search(pattern % re.escape(first_class), script, re.DOTALL)
+            if first_constructor:
+                issues.append(f"Main scene key '{first_constructor.group(1)}' must include 'play' or 'game' for semantic validation (use 'PlayScene')")
+            else:
+                issues.append(f"Main scene class '{first_class}' missing super() call with scene key")
+    else:
+        issues.append("No Phaser.Scene class found")
     
     # 2. Score registry initialization after window.__GAME__ = game
     if 'window.__GAME__' in script or 'window\\.__GAME__' in script:
