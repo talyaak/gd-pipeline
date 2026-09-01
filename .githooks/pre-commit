@@ -23,6 +23,35 @@ P4_PATTERN='^pipeline/vendor/(art|ui)\.js$'
 
 staged_files=$(git diff --cached --name-only --diff-filter=ACM)
 
+# Mechanically blocks any commit that drastically shrinks HERMES_CRON_LOG.md -
+# the autonomous cron agent's own durable memory of its prior cycles. This has
+# happened for real, three separate times, from the same root cause: a cycle
+# "prepends" a new entry from its own (possibly truncated) memory of the file
+# instead of re-reading it fresh first, silently dropping everything it didn't
+# remember. An audit caught and restored it each time - after the fact, once
+# it had already landed. This blocks it before it lands instead.
+LOG_FILE="HERMES_CRON_LOG.md"
+if echo "$staged_files" | grep -qx "$LOG_FILE"; then
+    if git cat-file -e "HEAD:$LOG_FILE" 2>/dev/null; then
+        old_lines=$(git show "HEAD:$LOG_FILE" | wc -l)
+        new_lines=$(git show ":$LOG_FILE" | wc -l)
+        if [ "$old_lines" -gt 20 ]; then
+            threshold=$((old_lines * 70 / 100))
+            if [ "$new_lines" -lt "$threshold" ] && [ -z "$ALLOW_LOG_SHRINK" ]; then
+                echo "BLOCKED: $LOG_FILE would shrink from $old_lines to $new_lines lines"
+                echo "(more than 30% smaller). This exact failure mode has happened three"
+                echo "times before: a cycle 'prepending' from its own truncated memory of"
+                echo "the file instead of re-reading it fresh, silently dropping history."
+                echo "Re-read the FULL current file and prepend your new entry to ALL of"
+                echo "it - never regenerate the file from memory. If this shrink is"
+                echo "genuinely intentional (e.g. deliberate archiving), retry with"
+                echo "ALLOW_LOG_SHRINK=1 git commit ..."
+                exit 1
+            fi
+        fi
+    fi
+fi
+
 p4_touched=$(echo "$staged_files" | grep -E "$P4_PATTERN" || true)
 
 if [ -z "$p4_touched" ]; then
