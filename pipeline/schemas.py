@@ -63,6 +63,17 @@ class CodeReview(BaseModel):
     strengths: list[str] = Field(default_factory=list)
 
 
+class PlayabilityReport(BaseModel):
+    """A vision-model verdict on whether the game actually looks/plays like a real
+    game, not just whether it satisfies technical proxies (canvas has pixels, a
+    screenshot diff registered, a registry number changed). Those proxies can all
+    pass on a game that's frozen on its own start screen; this check exists
+    specifically to catch that."""
+
+    playable: bool
+    reasoning: str = Field(description="Specific, literal explanation tied to what's visible in the screenshots")
+
+
 class ExecutionReport(BaseModel):
     """Objective evidence from actually running the generated game in a browser. Populated starting Milestone 3."""
 

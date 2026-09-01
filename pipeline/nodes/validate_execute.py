@@ -116,7 +116,29 @@ def validate_execute(state: RunState) -> dict:
         if timing_violations:
             runtime_ok = False
 
+    # Playability check (only if everything else already passed — this is the
+    # most expensive check, spend it last). Every check above is a technical
+    # proxy that a genuinely frozen game can still satisfy (canvas has pixels,
+    # a screenshot diff registered, a registry number ticked up) — confirmed by
+    # hand on a run that passed all of them and never left its start screen.
+    # An error running the check itself must never be treated as a pass.
+    playability_error = None
+    if runtime_ok:
+        try:
+            from pipeline.playability import check_playability
+            before_bytes = Path(report.screenshot_before_path).read_bytes()
+            after_bytes = Path(report.screenshot_after_path).read_bytes()
+            playability = check_playability(before_bytes, after_bytes)
+            if not playability.playable:
+                runtime_ok = False
+                playability_error = f"Playability check failed: {playability.reasoning}"
+        except Exception as exc:
+            runtime_ok = False
+            playability_error = f"Playability check errored (treated as failure, not a pass): {exc}"
+
     all_errors = []
+    if playability_error:
+        all_errors.append(playability_error)
     if not runtime_ok:
         if report.console_errors:
             all_errors.extend(report.console_errors)
