@@ -101,6 +101,15 @@ function startGameplay() {{
 }}
 ```
 
+COMMON MISTAKES THAT CAUSE REVIEW FAILURES — DO NOT DO THESE:
+- WRONG SCENE NAME: The main gameplay scene MUST be named exactly 'PlayScene' (super('PlayScene')). Do not use 'GameScene', 'MainScene', 'Play', or any other name.
+- HARDCODED SESSION DURATION: Do NOT hardcode 30 seconds or any other duration. Use the template variables {tutorial_duration_seconds} and {target_session_seconds} exactly as provided in the spec.
+- WRONG DELTA-TIME VARIABLE: In update(time, delta), the variable MUST be named 'dt' (const dt = delta / 1000;). Never use 'deltaTime', 'elapsed', or 'elapsedTime'.
+- MISSING SESSION TIME TRACKING: You MUST update this.game.sessionTime in update() for validation: this.game.sessionTime = (this.game.sessionTime || 0) + delta;
+- MISSING SCORE INCREMENT: You MUST increment score in registry while player is alive: this.game.registry.inc('score', 1);
+- CTA BUTTON CREATED LAZILY: The CTA button (this.ctaButton) MUST be created in create() and setVisible(false) there. Only call setVisible(true) when the game ends. Do NOT create it inside the game-over/win/lose function.
+- CALLING MRAID.READY(): Never call mraid.ready() — it is fired by the host bridge. Gate gameplay on mraid.addEventListener('ready', ...) + mraid.isViewable() instead.
+
 Then in your PlayScene's update(), track session time on the Game instance for validation:
 ```javascript
 update(time, delta) {{
