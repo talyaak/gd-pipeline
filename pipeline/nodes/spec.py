@@ -78,33 +78,41 @@ def spec(state: RunState) -> dict:
         data["technical_notes"] = []
    
     # Enforce required state machine states in order
-        required_states = ["Boot", "Preload", "Tutorial", "Play", "GameOver", "Win"]
-        state_machine = data.get("state_machine", [])
-        # Keep extra states that are not in required list, preserving their original order
-        extra_states = [s for s in state_machine if s not in required_states]
-        # Use the required states in the correct order
-        data["state_machine"] = required_states + extra_states
+    required_states = ["Boot", "Preload", "Tutorial", "Play", "GameOver", "Win"]
+    state_machine = data.get("state_machine", [])
+    # Keep extra states that are not in required list, preserving their original order
+    extra_states = [s for s in state_machine if s not in required_states]
+    # Use the required states in the correct order
+    data["state_machine"] = required_states + extra_states
 
-        # Ensure timing fields exist with sensible defaults
-        if "target_session_seconds" not in data or not isinstance(data["target_session_seconds"], int):
-            data["target_session_seconds"] = 30
-        else:
-            # Clamp to valid range
-            data["target_session_seconds"] = max(15, min(40, data["target_session_seconds"]))
+    # Enforce required MRAID state machine states in order
+    required_mraid_states = ["loading", "ready", "visible", "playing", "paused", "gameover"]
+    mraid_state_machine = data.get("mraid_state_machine", [])
+    # Keep extra states that are not in required list, preserving their original order
+    extra_mraid_states = [s for s in mraid_state_machine if s not in required_mraid_states]
+    # Use the required states in the correct order
+    data["mraid_state_machine"] = required_mraid_states + extra_mraid_states
 
-        if "tutorial_duration_seconds" not in data or not isinstance(data["tutorial_duration_seconds"], int):
-            data["tutorial_duration_seconds"] = 5
-        else:
-            # Clamp to valid range
-            data["tutorial_duration_seconds"] = max(3, min(8, data["tutorial_duration_seconds"]))
+    # Ensure timing fields exist with sensible defaults
+    if "target_session_seconds" not in data or not isinstance(data["target_session_seconds"], int):
+        data["target_session_seconds"] = 30
+    else:
+        # Clamp to valid range
+        data["target_session_seconds"] = max(15, min(40, data["target_session_seconds"]))
 
-        if "time_to_first_interaction_target_seconds" not in data or not isinstance(data["time_to_first_interaction_target_seconds"], int):
-            data["time_to_first_interaction_target_seconds"] = 4
-        else:
-            # Clamp to valid range (must be <= 4 for retention)
-            data["time_to_first_interaction_target_seconds"] = max(1, min(4, data["time_to_first_interaction_target_seconds"]))
+    if "tutorial_duration_seconds" not in data or not isinstance(data["tutorial_duration_seconds"], int):
+        data["tutorial_duration_seconds"] = 5
+    else:
+        # Clamp to valid range
+        data["tutorial_duration_seconds"] = max(3, min(8, data["tutorial_duration_seconds"]))
 
-        # --- JUICE CONTRACT IMPLEMENTATION ---
+    if "time_to_first_interaction_target_seconds" not in data or not isinstance(data["time_to_first_interaction_target_seconds"], int):
+        data["time_to_first_interaction_target_seconds"] = 4
+    else:
+        # Clamp to valid range (must be <= 4 for retention)
+        data["time_to_first_interaction_target_seconds"] = max(1, min(4, data["time_to_first_interaction_target_seconds"]))
+
+    # --- JUICE CONTRACT IMPLEMENTATION ---
     # Extract juice from design if available and add appropriate snippets to example_chunks
     try:
         design_artifact = state.get("design", {}).get("artifact", {})

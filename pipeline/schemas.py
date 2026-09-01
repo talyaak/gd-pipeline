@@ -30,6 +30,10 @@ class EntitySpec(BaseModel):
 class ImplementationSpec(BaseModel):
     entities: list[EntitySpec]
     state_machine: list[str] = Field(description="Ordered list of game states, e.g. ['Boot', 'Play', 'GameOver']")
+    mraid_state_machine: list[str] = Field(
+        default_factory=lambda: ["loading", "ready", "visible", "playing", "paused", "gameover"],
+        description="MRAID lifecycle states in order: loading -> ready -> visible -> playing -> paused/gameover. Must match MRAID spec."
+    )
     balance: dict[str, str] = Field(description="Key tunable values as strings, e.g. {'gravity': '800', 'jump_velocity': '-400'}")
     example_chunks: list[str] = Field(
         default_factory=list,
