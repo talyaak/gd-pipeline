@@ -32,5 +32,6 @@ RETRY_BASE_DELAY_SECONDS = float(os.environ.get("RETRY_BASE_DELAY_SECONDS", "2")
 
 # 16000 was cutting off complex genres mid-function (mini-boss/wave-spawning code
 # missing entirely), which the LLM reviewer kept flagging as "truncated". Sonnet
-# supports far higher output; give codegen real headroom.
-CODEGEN_MAX_TOKENS = int(os.environ.get("CODEGEN_MAX_TOKENS", "48000"))
+# supports 8192 output tokens max; 48000 triggered OpenRouter fallback to free models.
+# Use 8192 to stay on the intended model (claude-sonnet-4).
+CODEGEN_MAX_TOKENS = int(os.environ.get("CODEGEN_MAX_TOKENS", "8192"))
