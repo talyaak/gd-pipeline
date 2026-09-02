@@ -226,7 +226,7 @@ NODE_TIMEOUTS = {
     "research": 60,
     "design": 60,
     "spec": 120,
-    "codegen": 180,
+    "codegen": 300,
     "validate_execute": 120,
     "review": 60,
     "variant_gen": 180,
