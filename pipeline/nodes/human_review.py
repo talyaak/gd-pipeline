@@ -1,11 +1,11 @@
 from langgraph.types import interrupt
 
-from config import HUMAN_REVIEW_GDD
+import config as config_module
 from pipeline.schemas import RunState
 
 
 def human_review_gdd(state: RunState) -> dict:
-    if not HUMAN_REVIEW_GDD:
+    if not config_module.HUMAN_REVIEW_GDD:
         # Automatically approve GDD when human review is disabled
         approved = True
         feedback = None

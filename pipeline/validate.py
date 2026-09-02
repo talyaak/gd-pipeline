@@ -91,7 +91,7 @@ def check_html_game(html: str) -> list[str]:
     for m in resume_matches:
         prefix = m.group(1)
         # Skip known non-audio resume calls
-        if prefix in ('scene', 'this.scene', 'tweens', 'this.tweens', 'this.time', 'this.cache', 'this.textures', 'this.sound', 'this.game'):
+        if prefix in ('scene', 'this.scene', 'tweens', 'this.tweens', 'this.time', 'this.cache', 'this.textures', 'this.sound', 'this.game', 'this.physics.world'):
             continue
         issues.append("Audio may start unmuted: AudioContext.resume() found. If this call is not guarded by user interaction (pointerdown, keyup, etc.), audio must start muted.")
         break

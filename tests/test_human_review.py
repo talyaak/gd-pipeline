@@ -6,7 +6,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
 from pipeline.graph import build_graph
-from pipeline.schemas import CodeReview, GameDesignDocument, GenreAnalysis, ImplementationSpec
+from pipeline.schemas import CodeReview, GameDesignDocument, GenreAnalysis, ImplementationSpec, PlayabilityReport
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -46,16 +46,19 @@ def _patch_llms(monkeypatch, design_value, good_html):
         entities=[], state_machine=["Play"], balance={}, example_chunks=[], technical_notes=["use Phaser 3"],
     )
     review_value = CodeReview(score=9, spec_fidelity_issues=[], quality_issues=[], strengths=["clean"])
+    playability_value = PlayabilityReport(playable=True, reasoning="Mocked playability check - test environment")
 
     monkeypatch.setattr("pipeline.nodes.research.get_review_llm", lambda node: _FakeLLM(structured_value=research_value))
     monkeypatch.setattr("pipeline.nodes.design.get_generation_llm", lambda **kw: _FakeLLM(structured_value=design_value))
     monkeypatch.setattr("pipeline.nodes.spec.get_generation_llm", lambda **kw: _FakeLLM(structured_value=spec_value))
     monkeypatch.setattr("pipeline.nodes.codegen.get_generation_llm", lambda **kw: _FakeLLM(plain_values=[good_html]))
     monkeypatch.setattr("pipeline.nodes.review.get_review_llm", lambda node: _FakeLLM(structured_value=review_value))
+    monkeypatch.setattr("pipeline.playability_agent.check_playability_agentic", lambda *args, **kwargs: playability_value)
 
 
 @pytest.mark.slow
 def test_resume_after_simulated_process_restart(tmp_path, monkeypatch):
+    monkeypatch.setattr("config.HUMAN_REVIEW_GDD", True)
     good_html = (FIXTURES / "known_good_game.html").read_text(encoding="utf-8")
     design_value = GameDesignDocument(
         title="Test Game", core_loop="dodge things", controls="Space to jump",
@@ -71,7 +74,7 @@ def test_resume_after_simulated_process_restart(tmp_path, monkeypatch):
     # First "process": run until it hits the human review interrupt, then simulate
     # the process exiting by closing the checkpointer connection.
     with SqliteSaver.from_conn_string(checkpoint_path) as checkpointer:
-        graph = build_graph(checkpointer=checkpointer)
+        graph = build_graph(checkpointer=checkpointer, human_review_gdd_enabled=True)
         state = graph.invoke(initial_input, run_config)
         assert "__interrupt__" in state
         assert state["__interrupt__"][0].value["kind"] == "gdd_approval"
@@ -90,6 +93,7 @@ def test_resume_after_simulated_process_restart(tmp_path, monkeypatch):
 # This test is known to hang in some environments; investigate root cause.
 # The issue may be related to langgraph interrupt/resume behavior with multiple interrupts.
 def test_gdd_rejection_triggers_rework_with_feedback(tmp_path, monkeypatch):
+    monkeypatch.setattr("config.HUMAN_REVIEW_GDD", True)
     good_html = (FIXTURES / "known_good_game.html").read_text(encoding="utf-8")
     bad_design = GameDesignDocument(
         title="Bad Draft", core_loop="dodge things", controls="Space to jump",
@@ -108,6 +112,7 @@ def test_gdd_rejection_triggers_rework_with_feedback(tmp_path, monkeypatch):
         entities=[], state_machine=["Play"], balance={}, example_chunks=[], technical_notes=["use Phaser 3"],
     )
     review_value = CodeReview(score=9, spec_fidelity_issues=[], quality_issues=[], strengths=["clean"])
+    playability_value = PlayabilityReport(playable=True, reasoning="Mocked playability check - test environment")
 
     monkeypatch.setattr("pipeline.nodes.research.get_review_llm", lambda node: _FakeLLM(structured_value=research_value))
     design_llm = _FakeLLM()
@@ -121,13 +126,14 @@ def test_gdd_rejection_triggers_rework_with_feedback(tmp_path, monkeypatch):
     monkeypatch.setattr("pipeline.nodes.spec.get_generation_llm", lambda **kw: _FakeLLM(structured_value=spec_value))
     monkeypatch.setattr("pipeline.nodes.codegen.get_generation_llm", lambda **kw: _FakeLLM(plain_values=[good_html]))
     monkeypatch.setattr("pipeline.nodes.review.get_review_llm", lambda node: _FakeLLM(structured_value=review_value))
+    monkeypatch.setattr("pipeline.playability_agent.check_playability_agentic", lambda *args, **kwargs: playability_value)
 
     run_dir = tmp_path / "run"
     checkpoint_path = str(tmp_path / "checkpoint.sqlite")
     run_config = {"configurable": {"thread_id": "run2"}, "recursion_limit": 50}
 
     with SqliteSaver.from_conn_string(checkpoint_path) as checkpointer:
-        graph = build_graph(checkpointer=checkpointer)
+        graph = build_graph(checkpointer=checkpointer, human_review_gdd_enabled=True)
         state = graph.invoke(
             {"brief": "test genre", "run_id": "run2", "run_dir": str(run_dir)}, run_config
         )
