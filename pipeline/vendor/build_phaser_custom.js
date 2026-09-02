@@ -207,6 +207,14 @@ async function build() {
         const sizeKB = (stats.size / 1024).toFixed(2);
         const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
 
+        // CSP compliance check: ensure no eval or Function constructor
+        const content = fs.readFileSync(OUTPUT_FILE, 'utf8');
+        if (content.includes('eval(') || content.includes('new Function(')) {
+            console.error('❌ CSP violation: eval or Function constructor found in build');
+            process.exit(1);
+        }
+        console.log('✅ CSP compliance check passed');
+
         console.log(`✅ Custom Phaser build complete!`);
         console.log(`   Output: ${OUTPUT_FILE}`);
         console.log(`   Size: ${sizeKB} KB (${sizeMB} MB)`);
