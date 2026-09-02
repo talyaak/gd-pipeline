@@ -1,0 +1,29 @@
+{
+  "title": "Neon Dash",
+  "core_loop": "Player controls a glowing cube that automatically moves forward through a procedurally generated tunnel. Dodge obstacles by moving left/right or jumping while collecting score pickups. Each second survived increases your score multiplier. Death resets the run and displays your final score.",
+  "controls": "A/D or Left/Right Arrow keys to move horizontally between three lanes. Spacebar or W/Up Arrow to jump. Touch/click on left/right thirds of screen for mobile lane switching, tap center to jump.",
+  "mechanics": [
+    "Three-lane horizontal movement system (left, center, right lanes)",
+    "Jump mechanic to vault over low obstacles",
+    "Continuous forward movement with gradual speed increase over time",
+    "Procedural obstacle generation with increasing density",
+    "Score pickups (glowing orbs) that add to multiplier",
+    "Score multiplier that increases every 5 seconds survived (1x -> 2x -> 3x, etc.)",
+    "One-hit death system with instant game over",
+    "High score tracking using localStorage"
+  ],
+  "juice": [
+    "Pulsing neon glow effects on player cube and obstacles using canvas shadows",
+    "Particle burst when collecting score orbs (radiating lines)",
+    "Screen shake on collision with brief slow-motion effect",
+    "Smooth camera follow with slight anticipation",
+    "Color shift of tunnel walls as speed increases (blue -> purple -> red)",
+    "Trail effect behind player cube that intensifies with multiplier",
+    "Floating score popup animations when collecting orbs",
+    "Death explosion with geometric fragments scattering",
+    "Subtle scanline/CRT effect overlay for retro aesthetic",
+    "Pulsing multiplier indicator in corner that grows with combo"
+  ],
+  "mvp_scope": "Single endless tunnel environment with wireframe/geometric aesthetic. Three obstacle types: barriers blocking single lanes, low hurdles requiring jumps, and floating walls requiring specific lane positioning. Procedural generation spawns obstacles at increasing frequency. All graphics use HTML5 Canvas with geometric shapes, gradients, and glow effects. No external assets. Score display, game over screen with restart button, and high score persistence. Responsive design supporting both keyboard and touch input. Target 60fps performance.",
+  "win_lose_condition": "There is no win condition - this is an endless high-score challenge. Lose condition: Colliding with any obstacle instantly ends the run. Goal is to survive as long as possible and achieve the highest score through survival time and collecting orbs with active multipliers."
+}

@@ -1,0 +1,30 @@
+{
+  "title": "Neon Cascade",
+  "core_loop": "The player controls a small triangular ship at the bottom of the screen, continuously firing upward at waves of geometric enemies. Enemies spawn in patterns and release colorful bullet spreads when destroyed or on timed intervals. The player must weave through increasingly dense bullet patterns using precise keyboard movement while maintaining sustained fire. A visible small circular hitbox at the ship's center shows the exact collision point. Destroyed enemies drop power-up orbs that increase fire rate. Survival time increases score, with bonus points for collecting power-ups and destroying enemies. The game ends when the player's hitbox touches any bullet.",
+  "controls": "Arrow keys to move the ship in 8 directions. Hold Shift for focused slow movement (50% speed) to navigate tight bullet gaps. Movement is always active - no shooting button needed, ship fires automatically. Z key to use a screen-clearing bomb (limited to 3 per game, shown as UI indicators).",
+  "mechanics": [
+    "Automatic sustained fire from player ship",
+    "Precise movement with normal/focused speed modes",
+    "Small visible circular hitbox for precise dodging",
+    "Enemy waves spawn in geometric patterns (lines, arcs, grids)",
+    "Enemies fire radial bullet spreads on death or timed intervals",
+    "Power-up drops increase fire rate (stacks up to 5 levels)",
+    "Limited-use bombs clear all on-screen bullets and enemies",
+    "Score multiplier increases with consecutive enemy kills without getting hit",
+    "Bullet patterns include: radial spreads, aimed shots, spiral patterns, and wall formations"
+  ],
+  "juice": [
+    "Screen shake on bomb usage and when hit",
+    "Particle explosions when enemies are destroyed (color-coded by enemy type)",
+    "Bullet trails create elegant pattern visibility",
+    "Player ship pulses when at max power level",
+    "Slow-motion effect (0.3 seconds) when bullets pass very close to hitbox",
+    "Rainbow gradient effects on power-up collection",
+    "Score popup text floats upward on enemy kills",
+    "Background color subtly shifts based on current danger level (bullet density)",
+    "White flash effect on successful bomb activation",
+    "Hitbox becomes more visible when Shift is held"
+  ],
+  "mvp_scope": "Single endless survival mode on a fixed 800x600 canvas. Player ship rendered as a white triangle with a red circular hitbox. Enemies are colored geometric shapes (squares, circles, hexagons) rendered with canvas drawing. Bullets are small colored circles with trailing gradients. Three enemy types with distinct behaviors: basic (moves down, fires radial spread on death), shooter (moves down slowly, fires aimed shots at player), and tank (moves in sine wave, fires spiral pattern). Wave spawning increases difficulty over time by reducing spawn intervals and increasing bullet count. UI shows score, current power level, remaining bombs, and a timer. Game over screen displays final score and survival time with restart option. All graphics procedurally generated using canvas API (no images). No audio required for MVP.",
+  "win_lose_condition": "Lose: Player's hitbox collides with any enemy bullet or enemy ship. Win: Survive for 180 seconds (3 minutes) to see victory screen with final score ranking (S/A/B/C based on score thresholds)."
+}
