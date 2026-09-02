@@ -1,0 +1,30 @@
+{
+  "title": "Gem Cascade",
+  "core_loop": "Player swaps adjacent gems to create matches of 3+ identical colors. Matched gems disappear, gems above fall down to fill gaps, and new gems spawn from the top. Cascading matches award bonus points. Player must reach a target score within a limited number of moves.",
+  "controls": "Click/tap on a gem, then click/tap an adjacent gem (up/down/left/right) to swap them. Only swaps that create a valid match are allowed. Alternatively, click and drag a gem to an adjacent position.",
+  "mechanics": [
+    "8x8 grid of gems in 6 different colors (rendered as colored circles with gradients)",
+    "Swap adjacent gems horizontally or vertically",
+    "Match 3 or more identical gems in a row/column to clear them",
+    "Gravity pulls gems down to fill empty spaces",
+    "New random gems spawn at the top to fill the board",
+    "Cascading chain reactions award 2x, 3x, 4x multiplier bonuses",
+    "Limited move counter decreases with each swap",
+    "Target score must be reached before moves run out",
+    "Only allow swaps that result in valid matches (no dead swaps)"
+  ],
+  "juice": [
+    "Gems pulse/scale slightly when selected",
+    "Smooth lerp animation for swapping gems (200ms)",
+    "Matched gems scale down and fade out before disappearing",
+    "Falling gems animate smoothly with easing",
+    "Score popup numbers float upward and fade at match location",
+    "Chain multiplier text displays prominently with color intensity based on multiplier",
+    "Matched gems flash white briefly before destruction",
+    "Canvas background gradient shifts hue slightly on successful matches",
+    "Move counter pulses red when below 5 moves remaining",
+    "Particle burst effect (small colored circles radiating outward) on matches"
+  ],
+  "mvp_scope": "Single endless-style level with a target score of 1000 points and 20 moves. 8x8 grid with 6 gem colors. Basic match-3 mechanics with gravity and cascading. Procedurally drawn gems using canvas circles with radial gradients. Score tracking, move counter, and win/lose screen with restart button. All rendering, physics, and game logic in one HTML file with inline JavaScript and CSS.",
+  "win_lose_condition": "WIN: Reach 1000 points before running out of moves. LOSE: Moves reach zero before achieving target score. Game displays win/lose message overlay with final score and a 'Play Again' button that resets the game state."
+}

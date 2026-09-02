@@ -1,0 +1,29 @@
+{
+  "title": "Hex Defense",
+  "core_loop": "Players place towers on hexagonal grid cells to destroy waves of enemies following a fixed path from entrance to exit. Destroyed enemies drop currency used to build more towers or upgrade existing ones. Survive all waves to win.",
+  "controls": "Mouse only. Click empty hex cells to open build menu, click menu buttons to place towers (costs currency). Click existing towers to open upgrade menu. Click wave start button to begin next wave. Hover over cells to see range indicators.",
+  "mechanics": [
+    "Hexagonal grid map with fixed enemy path marked from entrance to exit",
+    "Three tower types: Cannon (medium damage, medium range, medium cost), Laser (fast attack, short range, low cost), Missile (slow attack, long range, high cost, splash damage)",
+    "Enemies follow predetermined path at varying speeds with increasing HP per wave",
+    "Currency system: earn gold per enemy killed, spend gold to build or upgrade towers",
+    "Two upgrade tiers per tower: damage boost (+50% damage) and rate boost (+50% attack speed)",
+    "Player has 20 lives, loses 1 life per enemy that reaches the exit",
+    "10 waves total with increasing difficulty (more enemies, faster speed, higher HP)",
+    "Tower range visualization on hover during placement and when selected"
+  ],
+  "juice": [
+    "Procedurally drawn hexagon cells with color-coded states (buildable, path, tower-occupied)",
+    "Animated projectiles: cannonballs arc, lasers beam instantly, missiles trail with particles",
+    "Enemy health bars that deplete with damage, flash red on hit",
+    "Particle burst on enemy death (colored circles expanding and fading)",
+    "Tower pulse/glow animation when firing",
+    "Floating +gold text that rises and fades when enemies die",
+    "Range circle indicator (semi-transparent) appears on tower hover/select",
+    "Wave complete banner with celebration particle effect",
+    "Smooth color transitions for UI button states (hover, disabled)",
+    "Enemy sprite changes color/size based on wave difficulty"
+  ],
+  "mvp_scope": "Single fixed map with 30-40 hex cells in a honeycomb pattern. One winding path from top-left to bottom-right. Three tower types with two upgrade levels each. Ten waves with 5-15 enemies per wave. Simple circular enemies rendered as filled circles with procedural colors. All graphics use Canvas API with basic shapes (hexagons, circles, lines). No external assets. Game state: building phase (player places towers) and wave phase (enemies spawn and move). Win by surviving wave 10, lose when lives reach 0.",
+  "win_lose_condition": "Win: Survive all 10 waves with at least 1 life remaining. Lose: Lives reach 0 from enemies completing the path. Game displays win/lose screen with final stats (waves survived, enemies killed, towers built) and restart button."
+}
