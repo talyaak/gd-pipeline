@@ -237,8 +237,9 @@ NODE_MAX_ATTEMPTS = {
     "research": 2,
     "design": 3,
     "spec": 2,
-    "codegen": 3,
+    "codegen": 5,
     "validate_execute": 2,
     "review": 2,
+    "codegen_patch": 5,
     "variant_gen": 1,  # Variants don't retry
 }
