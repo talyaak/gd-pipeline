@@ -30,8 +30,6 @@ HUMAN_REVIEW_GDD = os.environ.get("HUMAN_REVIEW_GDD", "true").lower() in ("1", "
 RETRY_MAX_ATTEMPTS = int(os.environ.get("RETRY_MAX_ATTEMPTS", "3"))
 RETRY_BASE_DELAY_SECONDS = float(os.environ.get("RETRY_BASE_DELAY_SECONDS", "2"))
 
-# 16000 was cutting off complex genres mid-function (mini-boss/wave-spawning code
-# missing entirely), which the LLM reviewer kept flagging as "truncated". Sonnet
-# supports 8192 output tokens max; 48000 triggered OpenRouter fallback to free models.
-# Use 8192 to stay on the intended model (claude-sonnet-4).
-CODEGEN_MAX_TOKENS = int(os.environ.get("CODEGEN_MAX_TOKENS", "8192"))
+# Direct Anthropic API (claude-sonnet-4-5-20250929) supports >8192 output tokens.
+# 8192 was truncating complex genres mid-function. Use 16000 to allow full generation.
+CODEGEN_MAX_TOKENS = int(os.environ.get("CODEGEN_MAX_TOKENS", "16000"))
