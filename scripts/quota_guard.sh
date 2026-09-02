@@ -11,7 +11,7 @@
 # shell/state inspection, run on a schedule, independent of the agent.
 set -euo pipefail
 
-JOB_ID="220e71a987bf"
+JOB_ID="a79364fe708d"
 THRESHOLD=15
 LOG_FILE="$HOME/.hermes/logs/agent.log"
 GUARD_LOG="$HOME/.hermes/quota_guard.log"
