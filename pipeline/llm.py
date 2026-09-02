@@ -65,6 +65,19 @@ def _review_llm_anthropic(temperature: float, node: str):
     )
 
 
+def _try_openrouter_then_anthropic(openrouter_fn, anthropic_fn, *args, **kwargs):
+    """Try OpenRouter first; on 402 (insufficient credits), fall back to Anthropic."""
+    try:
+        return openrouter_fn(*args, **kwargs)
+    except Exception as e:
+        # Check for OpenRouter 402 "insufficient credits" error
+        err_str = str(e)
+        if "402" in err_str and ("credit" in err_str.lower() or "budget" in err_str.lower()):
+            # Fall back to Anthropic
+            return anthropic_fn(*args, **kwargs)
+        raise
+
+
 _PROVIDERS = {
     "anthropic": (_generation_llm_anthropic, _review_llm_anthropic),
     "openrouter": (_generation_llm_openrouter, _review_llm_openrouter),
@@ -73,15 +86,27 @@ _PROVIDERS = {
 
 def get_generation_llm(temperature: float = 0.7, max_tokens: int = 8192, node: str = "generation"):
     try:
-        generation_fn, _ = _PROVIDERS[LLM_PROVIDER]
+        openrouter_gen, _ = _PROVIDERS["openrouter"]
+        anthropic_gen, _ = _PROVIDERS["anthropic"]
     except KeyError:
         raise ValueError(f"Unknown LLM_PROVIDER {LLM_PROVIDER!r}; must be one of {list(_PROVIDERS)}")
-    return generation_fn(temperature, max_tokens, node)
+    
+    if LLM_PROVIDER == "openrouter":
+        return _try_openrouter_then_anthropic(
+            openrouter_gen, anthropic_gen, temperature, max_tokens, node
+        )
+    return anthropic_gen(temperature, max_tokens, node)
 
 
 def get_review_llm(temperature: float = 0.0, node: str = "review"):
     try:
-        _, review_fn = _PROVIDERS[LLM_PROVIDER]
+        _, openrouter_rev = _PROVIDERS["openrouter"]
+        _, anthropic_rev = _PROVIDERS["anthropic"]
     except KeyError:
         raise ValueError(f"Unknown LLM_PROVIDER {LLM_PROVIDER!r}; must be one of {list(_PROVIDERS)}")
-    return review_fn(temperature, node)
+    
+    if LLM_PROVIDER == "openrouter":
+        return _try_openrouter_then_anthropic(
+            openrouter_rev, anthropic_rev, temperature, node
+        )
+    return anthropic_rev(temperature, node)
