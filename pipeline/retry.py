@@ -147,6 +147,16 @@ async def invoke_with_timeout(
         )
 
 
+def _calculate_delay(attempt: int, error_category: ErrorCategory) -> float:
+    """Calculate delay with special handling for rate limits."""
+    base = RETRY_BASE_DELAY_SECONDS
+    if error_category == ErrorCategory.TRANSIENT:
+        # Rate limits need much longer - OpenRouter free tier resets ~minute level
+        # Use 30s base with exponential backoff: 30s, 60s, 120s
+        base = 30.0
+    return base * (2 ** attempt)
+
+
 def invoke_with_retry(
     fn: Callable[[], T],
     node: str = "",
@@ -187,8 +197,8 @@ def invoke_with_retry(
             if not pe.recoverable or attempt == max_attempts - 1:
                 raise
             
-            # Exponential backoff
-            delay = RETRY_BASE_DELAY_SECONDS * (2 ** attempt)
+            # Exponential backoff with rate-limit awareness
+            delay = _calculate_delay(attempt, pe.category)
             time.sleep(delay)
             
         except Exception as exc:
@@ -199,7 +209,7 @@ def invoke_with_retry(
             if not pe.recoverable or attempt == max_attempts - 1:
                 raise pe
             
-            delay = RETRY_BASE_DELAY_SECONDS * (2 ** attempt)
+            delay = _calculate_delay(attempt, pe.category)
             time.sleep(delay)
     
     # Should not reach here, but safety net
