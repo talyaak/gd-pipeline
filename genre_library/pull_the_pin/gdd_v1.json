@@ -1,0 +1,30 @@
+{
+  "title": "Liquid Logic: Pin Pull Puzzle",
+  "core_loop": "Player pulls pins in the correct sequence to guide colored liquids from source chambers into matching target containers while avoiding hazards (bombs, acid, color contamination). Each level is a self-contained physics puzzle: analyze the chamber layout, deduce the pull order, execute taps. Core loop: observe -> plan pull sequence -> tap pins -> watch liquid simulation -> succeed or reset -> next level.",
+  "controls": "Tap/click a pin to pull it out (irreversible). Pins are visually distinct (metallic cylinders with pull rings). No drag, hold, or timing-based input — purely sequential decision making. Reset button restarts the level instantly.",
+  "mechanics": [
+    "Grid-based chamber layout (max 8x6 cells) with fixed walls, source chambers, target containers, and pins at cell edges",
+    "Three liquid types: Water (blue), Lava (orange), Poison (green) — each flows via cellular automata (down > down-left/down-right > left/right)",
+    "Color mixing rules: Water + Lava = Steam (harmless, dissipates), Water + Poison = Acid (destroys containers), Lava + Poison = Toxic Gas (fails level)",
+    "Hazard pins: Bomb pins (red ring) release explosives that destroy everything in radius if liquid touches them; Spike pins (gray) shred liquid on contact",
+    "Container requirements: each target accepts only its matching color; overfilling fails; underfilling at level end fails",
+    "Pin pull is permanent — no undo; level fails if wrong liquid reaches container, hazard triggers, or containers unfilled after all pins pulled",
+    "Progressive complexity: Level 1-5 (single liquid, 2-3 pins), 6-15 (two liquids, color separation, 4-6 pins), 16-30 (three liquids, mixing puzzles, hazard avoidance, 7-10 pins)",
+    "Star rating: 3 stars = optimal pin pulls (no wasted pulls), all containers filled exactly, no hazards triggered; 2 stars = success with minor waste; 1 star = bare success",
+    "No fail limit — player can reset instantly and retry; no lives, no energy system, no ads in gameplay"
+  ],
+  "juice": [
+    "Pin pull: metallic ring slides out with satisfying 'click' sound, pin shrinks and fades in 150ms with subtle screen shake (2px)",
+    "Liquid flow: smooth cellular animation with momentum — droplets stretch and merge, surface tension visual via rounded blob rendering",
+    "Color mixing: Steam = white puff particles with upward drift; Acid = green sizzle particles + container corrosion shader; Gas = purple swirl + screen flash",
+    "Container fill: target glows and emits color-matched particle ring when correctly filled; 'pling' chime per container",
+    "Level complete: all containers pulse in sequence, confetti burst (color-matched circles), star counter animates up with bounce",
+    "Failure: hazard trigger = sharp screen shake (8px) + red vignette flash + distinctive fail sound; wrong color = container cracks visibly",
+    "Reset: instant snap-back with rewind particle trail (liquid reverses flow visually in 300ms before hard reset)",
+    "UI: level number and star display with subtle parallax on device tilt (mobile) or mouse move (desktop)",
+    "Background: procedural laboratory aesthetic — layered gradient + animated grid lines + subtle equipment silhouettes",
+    "Audio: Web Audio API procedural — pin click (short decay sine), liquid flow (filtered noise), success chime (major triad), fail (diminished chord)"
+  ],
+  "mvp_scope": "30 hand-designed levels across 3 difficulty tiers. 800x600 fixed canvas. All graphics procedural: liquids as metaball-style blobs (canvas arcs + gradient fill), pins as rounded rectangles with gradient shine, walls/containers as rects with beveled edges. Cellular automata liquid simulation at 30Hz independent of render loop. Level data as embedded JSON array (no external files). Web Audio for all SFX. Responsive: letterboxed on mobile, centered on desktop. Target 60fps render / 30Hz sim on 7-year-old phones. Single HTML file, zero dependencies beyond Phaser 3 (vendored).",
+  "win_lose_condition": "WIN level: All target containers filled with correct liquid, no hazards triggered. Level awards 1-3 stars. Full game WIN: Complete all 30 levels (any star rating). LOSE level: Wrong liquid enters container, hazard triggers, or any container unfilled after all pins pulled. Instant reset available — no penalty, no limit. No game-over state for the full game; progression is purely level-based."
+}
