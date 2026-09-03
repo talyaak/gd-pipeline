@@ -1,0 +1,32 @@
+{
+  "title": "Prism Pour: Color Sort Puzzle",
+  "core_loop": "Player sorts mixed colored balls into uniform tubes by pouring between them. Each move: tap a source tube, then tap a destination tube — the top contiguous stack of matching color pours over if the destination has space and matches (or is empty). Core loop: scan board -> identify pour that advances color grouping -> execute pour -> repeat until every non-empty tube holds exactly 4 balls of a single color. Pure logic, no timing, no dexterity — instant reset on mistake.",
+  "controls": "Mouse/touch only. Tap a tube to select it (highlights). Tap a second tube to pour from first into second. Invalid pour (wrong color, no space, empty source) shakes screen lightly and clears selection. Tap selected tube again to deselect. Reset button restarts level instantly. No drag, hold, or swipe — purely two-tap discrete actions.",
+  "mechanics": [
+    "6 vertical tubes, capacity 4 each. 4 colors × 4 balls = 16 balls total, plus 2 empty tubes = 6 tubes on screen",
+    "Pour rule: only the top contiguous run of a single color moves. Destination must be empty or have same color on top. Destination must have free capacity. Partial pours allowed (e.g., 3 blue on top, dest has 1 space -> moves 1 blue)",
+    "Move counter: 30 moves max. Counter decrements on every successful pour. Turns red at ≤5 moves remaining",
+    "Session timer: 60 seconds. Thin progress bar at top. Timer expiry = loss",
+    "Level generation: 16 balls (4 per color) shuffled and dealt into first 4 tubes (4 each). Last 2 tubes start empty. Not guaranteed solvable — generous move limit compensates for demo harness",
+    "Solved state: every non-empty tube contains exactly 4 balls of identical color (i.e., 4 uniform tubes, 2 empty)",
+    "No undo, no hints, no move preview. Pure player deduction",
+    "Difficulty scaling not in MVP — single board layout. Future: larger color sets, more tubes, obstructed tubes, move-optimal targets"
+  ],
+  "juice": [
+    "Tube frame: glowing cyan rounded rectangle stroke, subtle pulse on hover/tap",
+    "Balls: glossy circles with white specular highlight, subtle drop shadow for depth",
+    "Pour animation: selected ball stack slides horizontally in 180ms with slight arc, destination balls settle with 80ms spring bounce",
+    "Successful pour: 6-particle color-matched burst at destination tube mouth, 'plink' tone (Web Audio sine decay)",
+    "Invalid pour: 80ms 0.004 intensity camera shake + selection clears",
+    "Tube selection: expanding cyan highlight ring (Juice.GemSelectionHighlight) around tube frame",
+    "Move counter: color shifts from white to red at ≤5 moves, subtle scale bounce on decrement",
+    "Timer bar: cyan fill shrinks leftward; flashes red at <20% remaining",
+    "Level start: 'POUR MATCHING COLORS TOGETHER' intro banner slides down with Juice.IntroBanner, tap hint on first tube fades after 2s",
+    "Win: all 4 uniform tubes pulse in sequence (150ms stagger), cyan confetti burst (Juice.ParticleBurst), victory chime (major triad)",
+    "Loss (moves/timer): red vignette flash + sharp shake (8px) + diminished chord, GameOverPanel with score (successful pours) and retry",
+    "Background: deep navy gradient with subtle animated grid lines (parallax on pointer move)",
+    "Audio: all procedural Web Audio — pour (filtered noise), plink (sine), win (triad), fail (diminished), ambient hum (low-pass noise)"
+  ],
+  "mvp_scope": "Single 800×450 canvas. 6 tubes, 4 colors, capacity 4, 30 moves, 60s timer. All graphics procedural: tubes as stroked rounded rects, balls as gradient circles with highlight. Physics-free — instant discrete pours. Level data: single board generated on start via shuffle-and-deal (embedded logic, no external files). Juice toolkit for particles, highlights, banners, panels, screen shake, procedural audio. Zero external assets. Single self-contained HTML file with vendored Phaser 3 + Juice. Target 60fps on 7-year-old phones. Responsive: letterboxed on mobile, centered on desktop.",
+  "win_lose_condition": "WIN: All 4 colors sorted into 4 uniform tubes (4 balls each, same color), 2 tubes empty. Triggers win sequence: tube pulse cascade, confetti, chime, GameOverPanel with 'LEVEL COMPLETE', move count as score, retry button. LOSE: Move counter reaches 0 OR 60s timer expires. Triggers loss sequence: red vignette, sharp shake, fail sound, GameOverPanel with 'OUT OF MOVES' or 'TIME UP', move count as score, retry button. No meta-progression, no stars, no lives — pure single-board puzzle."
+}
