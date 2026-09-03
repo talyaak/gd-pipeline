@@ -1,0 +1,31 @@
+{
+  "title": "Prism Shift",
+  "core_loop": "Player rotates 2x2 quadrants of a 7x7 gem board clockwise to align 4+ matching gems in orthogonal lines. Each rotation costs 1 move. Matched gems clear, gravity fills from the nearest edge (direction rotates each level), and new gems spawn. Special prism gems act as wildcards and trigger area clears. Complete level objectives within the move limit to progress through 15 hand-crafted stages.",
+  "controls": "Click/tap any 2x2 block intersection (internal grid crossings) to rotate that quadrant clockwise. Visual preview shows the rotation before commit. Drag from intersection to preview rotation direction (clockwise only for MVP). No gem-to-gem swapping — the board manipulates in chunks.",
+  "mechanics": [
+    "7x7 board with 5 base gem colors + prism wildcard gems (spawn ~8% chance)",
+    "Rotate any 2x2 quadrant clockwise by clicking its center intersection (16 possible rotations)",
+    "Match 4+ identical gems in a straight line (horizontal/vertical) to clear — prism gems match any color",
+    "Gravity direction rotates 90° clockwise each level: Down → Right → Up → Left → repeat",
+    "Prism gem clears entire row AND column when matched (cross blast), awarding bonus moves",
+    "Locked gems (gray, cracked) require 2 adjacent matches to break — appear from level 5",
+    "Frozen gems (ice overlay) cannot rotate — must be matched adjacent to thaw, from level 8",
+    "Move counter: 18 moves base, +3 per prism blast, -1 per rotation",
+    "Level objectives vary: target score, clear all locked gems, trigger N prism blasts, survive N moves",
+    "15 hand-designed levels with progressive introduction: basics → prisms → locks → ice → combos"
+  ],
+  "juice": [
+    "Quadrant rotation: 300ms elastic ease-out with subtle overshoot, gems follow curved paths",
+    "Match clear: matched gems scale to 1.3x with color flash, then dissolve into 8 directional particles",
+    "Prism blast: cross-shaped shockwave (screen shake 150ms), row/column gems erupt in prismatic particles",
+    "Gravity shift: entire board slides 150ms with motion blur trail, new gems fade in from spawn edge",
+    "Score popups: numbers arc upward with color matching cleared gem type, prism = rainbow gradient",
+    "Move counter: pulses amber at 5 moves, red at 2, shakes on prism blast bonus",
+    "Level complete: board folds into a card that flips to show 1-3 star rating, confetti burst",
+    "Locked gem break: spiderweb crack animation, then shatters into sharp geometric fragments",
+    "Frozen gem thaw: ice crystals spread outward from match point before gem releases",
+    "Background: subtle animated shader (WebGL) shifting hue per gravity direction, no external textures"
+  ],
+  "mvp_scope": "15-level match-4 puzzle with quadrant rotation mechanic, prism wildcards, rotating gravity, locked/frozen obstacles. 7x7 procedural gem rendering (canvas circles with gradients), prism gems as multi-color radial gradients. All 15 levels encoded as compact JSON in the HTML. Win/lose overlays with star rating, level select screen. Single self-contained HTML5 file, Phaser 3, no external assets. Target 60fps on 5-year-old phones.",
+  "win_lose_condition": "WIN: Complete level objective within move limit. Stars: 1 star = objective met, 2 stars = +3 moves remaining, 3 stars = +6 moves or prism blast used. LOSE: Moves reach zero before objective. Level select shows best star rating per level. No lives/energy system — retry instantly. Long-term: 3-star all 15 levels to unlock 'Endless Prism' mode (infinite procedural levels, global leaderboard via localStorage)."
+}
