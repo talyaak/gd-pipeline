@@ -1,0 +1,30 @@
+{
+  "title": "Granular Gravity: Sand Pin Puzzle",
+  "core_loop": "Player pulls pins to guide flowing granular materials (sand, water, oil, magma) from source hoppers into target basins while navigating obstacles and avoiding hazards. Each level is a self-contained falling-sand physics puzzle: observe the particle field -> deduce pull sequence -> tap pins -> watch granular simulation -> succeed or reset -> next level. Core loop: analyze -> plan -> execute -> observe result -> iterate.",
+  "controls": "Tap/click a pin to retract it (irreversible). Pins are wooden dowels with visible grain, distinct from metal hazard pins. No drag, hold, or timing precision — purely sequential decision making. Reset button restarts level instantly with particle rewind animation. Optional: pinch-zoom to inspect dense particle clusters (mobile).",
+  "mechanics": [
+    "Grid-free continuous 2D world (800x600) with fixed geometry: source hoppers, target basins, solid walls, and pins at configurable positions",
+    "Four particle types with distinct physics: Sand (yellow, piles at angle of repose ~35°), Water (blue, flows horizontally, mixes with sand = mud), Oil (amber, floats on water, burns), Magma (orange-red, solidifies to rock on contact with water, burns oil/sand)",
+    "Material interactions: Water + Sand = Mud (brown, heavier, piles steeper), Water + Oil = separation (oil floats), Water + Magma = Steam + Rock (explosive expansion), Oil + Magma = Fire (spreads upward, consumes oil/sand), Magma + Sand = Glass (transparent, rigid, shatters on impact)",
+    "Hazard pins: Burn pins (charred wood) ignite oil/magma on contact; Void pins (black) delete all particles in radius; Crusher pins (steel) compress particles into dense bricks that block flow",
+    "Target basins: each accepts specific material(s) — e.g., 'Sand Basin' requires ≥80% sand by volume, 'Water Basin' requires pure water, 'Glass Basin' requires glass only. Overfilling spills and fails; wrong material contaminates and fails",
+    "Pin retraction is permanent — no undo; level fails if wrong material reaches basin, hazard triggers, or any basin unfilled after all pins pulled",
+    "Progressive complexity: Levels 1-8 (sand only, 2-4 pins, static geometry), 9-20 (water + sand, mud mechanics, 5-7 pins), 21-35 (oil + magma introduced, thermal reactions, 8-10 pins, moving walls), 36-50 (all four materials, chain reactions, crusher/void hazards, 10-12 pins)",
+    "Star rating: 3 stars = all basins filled to exact target volume (±5%), zero particle waste, no hazards triggered; 2 stars = success with ≤20% waste or minor contamination; 1 star = basins filled but messy. Stars unlock cosmetic particle skins (gold sand, neon water, etc.)",
+    "No fail limit — instant reset always available; no lives, energy, or ads. Optional 'hint' shows first pin to pull (costs 1 star if used)"
+  ],
+  "juice": [
+    "Pin pull: wooden dowel slides out with creak sound, dust motes drift from hole, subtle 1.5px screen shake, pin ghost fades in 200ms",
+    "Particle flow: GPU-accelerated falling-sand simulation (60Hz sim / 60Hz render) — 50k particles at 60fps on 7-year-old phones via spatial hashing; sand piles with realistic angle of repose, water ripples with pressure-based velocity",
+    "Material reactions: Mud = slow brown plumes + wet sound; Steam = expanding white ring + hiss; Rock formation = crackle + screen flash; Fire = rising ember particles + crackle + heat shimmer shader; Glass = chime + refractive shard burst on break",
+    "Basin fill: target glows material-color, emits satisfaction chime (pentatonic scale per material), particle crown orbits basin rim",
+    "Level complete: basins pulse in material-color sequence, particle fireworks (material-matched), star counter bounces with particle trail",
+    "Failure: hazard trigger = sharp shake (6px) + material-specific vignette (red=fire, black=void, gray=crush) + fail chord; contamination = basin cracks with material-color fissures",
+    "Reset: particle rewind — all particles reverse velocity for 400ms with ghost trails, then snap to initial state with soft pop",
+    "UI: level/star display with particle-dust parallax on device tilt/mouse move; material legend shows active types with live particle preview",
+    "Background: procedural cavern — layered parallax rock strata, subtle bioluminescent moss, distant dripping water particles",
+    "Audio: Web Audio procedural — pin creak (karplus-strong), particle flow (granular noise), reactions (FM synthesis), success (pentatonic arpeggio), fail (dissonant cluster)"
+  ],
+  "mvp_scope": "50 hand-designed levels across 4 difficulty tiers. 800x600 fixed canvas. All graphics procedural: particles as colored circles (batch-rendered via Phaser Graphics), basins/walls as polygon paths with gradient fills, pins as textured rectangles. Falling-sand simulation via spatial hash grid (cell size = particle diameter) at 60Hz. Level data as embedded JSON (geometry + pin positions + basin targets + particle spawn rates). Web Audio for all SFX. Responsive: letterboxed mobile, centered desktop. Target 60fps sim+render on 7-year-old phones. Single HTML file, zero deps beyond Phaser 3 (vendored).",
+  "win_lose_condition": "WIN level: All target basins filled to target volume (±5%) with correct material purity (≥80% for mixed basins, ≥95% for pure). Level awards 1-3 stars. Full game WIN: Complete all 50 levels (any star rating). LOSE level: Wrong material enters basin (purity < threshold), hazard triggers (fire/void/crush), or any basin unfilled after all pins pulled. Instant reset — no penalty, no limit. No game-over; progression is purely level-based. Stars unlock cosmetic particle skins (persisted in localStorage)."
+}
