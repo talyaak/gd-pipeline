@@ -67,6 +67,12 @@ class PlayScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.tweens.add({ targets: this.startText, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
 
+    // Quick visible intro: point at the player and the lanes for ~2s before
+    // the (already-instant) tap-to-start becomes the obvious next move.
+    const introBanner = Juice.IntroBanner.create(this, { label: 'DODGE OBSTACLES • JUMP TO SURVIVE' });
+    const introHint = Juice.TapHint.create(this, LANES_X[1], PLAYER_Y, { color: 0x33e6ff });
+    this.time.delayedCall(2000, () => { introBanner.destroy(); introHint.destroy(); });
+
     this.input.keyboard.on('keydown-SPACE', () => this._onAction());
     this.input.keyboard.on('keydown-UP', () => this._onAction());
     this.input.keyboard.on('keydown-W', () => this._onAction());

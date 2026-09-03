@@ -85,6 +85,12 @@ class PlayScene extends Phaser.Scene {
       this.balls.push({ sprite, x, y, vx: (Math.random() - 0.5) * 20, vy: 0, alive: true });
     }
 
+    // Quick visible intro: point at the first pin for ~2s before the
+    // (already-instant) tap-to-start becomes the obvious next move.
+    const introBanner = Juice.IntroBanner.create(this, { label: 'TAP A PIN TO DROP THE BALLS', y: 44 });
+    const introHint = Juice.TapHint.create(this, SHELVES[0].gapCenter, SHELVES[0].y, { color: 0xffe14d, radius: 16 });
+    this.time.delayedCall(2000, () => { introBanner.destroy(); introHint.destroy(); });
+
     this.input.on('pointerdown', (p) => this._onPointerDown(p));
 
     window.__GAME__ = this.game;

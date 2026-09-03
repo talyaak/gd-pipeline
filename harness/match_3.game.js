@@ -78,17 +78,69 @@ class PlayScene extends Phaser.Scene {
 
     this.startText = this.add.text(400, 60, 'TAP TO START  •  swap adjacent gems to match 3+', {
       fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', align: 'center',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setVisible(false);
     this.tweens.add({ targets: this.startText, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
 
     this._buildBoard();
     this._renderBoardStatic();
+    this._playIntroDemo();
 
     this.input.on('pointerdown', (p) => this._onPointerDown(p));
     this.input.on('pointerup', (p) => this._onPointerUp(p));
 
     window.__GAME__ = this.game;
     this.game.registry.set('score', 0);
+  }
+
+  // ---- intro demo: ~1s auto-play of the core swap so a first-time player
+  // sees the mechanic before being asked to act. Tapping at any point skips
+  // straight to "begin" -- see _begin()'s demoActive handling. ----
+
+  _playIntroDemo() {
+    this.demoActive = true;
+    this.introTimers = [];
+    this.introBanner = Juice.IntroBanner.create(this, { label: 'SWAP GEMS TO MATCH 3+' });
+    const a = { c: 2, r: 3 }, b = { c: 3, r: 3 };
+    this.introHighlight = Juice.GemSelectionHighlight.create(this, BOARD_X + a.c * CELL, BOARD_Y + a.r * CELL, CELL);
+    this.introTimers.push(this.time.delayedCall(300, () => {
+      if (!this.demoActive) return;
+      this.introHighlight.destroy();
+      this.introHighlight = null;
+      Juice.SwapAnimation.create(this, this.board[a.r][a.c].sprite, this.board[b.r][b.c].sprite, {
+        duration: 220,
+        onComplete: () => {
+          if (!this.demoActive) return;
+          this._swapCells(a, b);
+          this.introTimers.push(this.time.delayedCall(350, () => {
+            if (!this.demoActive) return;
+            Juice.SwapAnimation.create(this, this.board[a.r][a.c].sprite, this.board[b.r][b.c].sprite, {
+              duration: 220,
+              onComplete: () => {
+                if (!this.demoActive) return;
+                this._swapCells(a, b);
+                this._endIntroDemo();
+              }
+            });
+          }));
+        }
+      });
+    }));
+  }
+
+  _endIntroDemo() {
+    this.demoActive = false;
+    if (this.introBanner) { this.introBanner.destroy(); this.introBanner = null; }
+    if (this.introHighlight) { this.introHighlight.destroy(); this.introHighlight = null; }
+    this.startText.setVisible(true);
+  }
+
+  _resyncSpritePositions() {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = this.board[r][c];
+        if (cell && cell.sprite) { cell.sprite.x = cellX(c); cell.sprite.y = cellY(r); }
+      }
+    }
   }
 
   // ---- board setup ----
@@ -318,6 +370,12 @@ class PlayScene extends Phaser.Scene {
   }
 
   _begin() {
+    if (this.demoActive) {
+      this.introTimers.forEach((t) => t.remove(false));
+      this.introTimers = [];
+      this._resyncSpritePositions();
+      this._endIntroDemo();
+    }
     this.state = STATE.IDLE;
     this.startText.setVisible(false);
   }
