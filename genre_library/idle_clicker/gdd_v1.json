@@ -1,0 +1,31 @@
+{
+  "title": "Cosmic Tap Tycoon",
+  "core_loop": "Player taps to generate cosmic energy, spends it on automated generators (probes, satellites, stations) that produce energy passively. Prestige system resets progress for permanent multipliers. Core loop: tap -> earn -> buy generators -> earn faster -> prestige -> repeat with multiplier.",
+  "controls": "Click/tap anywhere on the main screen to generate energy manually. Click generator buttons to purchase/upgrade them. Click prestige button when available to reset for a permanent multiplier. All interactions are single-click/tap — no drag, hold, or complex gestures.",
+  "mechanics": [
+    "Manual tap generates base energy (1 per tap, scaled by tap multiplier)",
+    "5 generator tiers: Probe (1 energy/sec), Satellite (8/sec), Station (60/sec), Mothership (500/sec), Dyson Array (5000/sec)",
+    "Each generator has individual level, cost scales exponentially (base * 1.15^level)",
+    "Bulk buy options: x1, x10, x100, max affordable",
+    "Prestige unlocks at 1,000,000 total energy earned; resets generators/energy, grants +1 Star Core (permanent +25% all production)",
+    "Star Cores also unlock cosmetic visual upgrades (background evolution, particle styles)",
+    "Offline progress: generators produce while closed (capped at 4 hours), shown on return",
+    "Achievement system: 20 milestones (total taps, generators owned, prestige count, time played) with small bonuses",
+    "Floating energy numbers on tap with color scaling by magnitude",
+    "No fail state — pure progression; session ends when player closes tab"
+  ],
+  "juice": [
+    "Tap ripple effect: expanding ring at click position, color matches current generator tier",
+    "Generator purchase: brief scale-up + color flash of button, coin burst particles",
+    "Energy counter: smooth count-up animation (lerp) when values change, not instant jump",
+    "Prestige sequence: screen whites out with expanding pulse, starfield reforms with new color palette",
+    "Background evolves with each prestige: empty space -> nebula -> star cluster -> galaxy -> cosmic web",
+    "Passive generator 'heartbeat': subtle pulse animation on owned generator icons at their production interval",
+    "Milestone popups: toast-style slide-in from top with icon, auto-dismiss after 3s",
+    "Offline progress report: animated counter rolling up to caught-up total on return",
+    "Tap multiplier visual: floating 'xN' badge near cursor that grows/shrinks with combo rhythm",
+    "Ambient particle drift: slow-moving cosmic dust in background, density increases with progression"
+  ],
+  "mvp_scope": "Single-screen idle clicker with 5 generator tiers, prestige system (Star Cores), offline progress, 20 achievements, and evolving cosmic background. All graphics procedural: generators as geometric icons (circles, triangles, hexagons), particles as colored circles, backgrounds as layered gradient + noise. No external assets. Web Audio API for subtle UI clicks and prestige chime. Responsive layout: generator list on left (desktop) / bottom drawer (mobile), main tap area center. Target 60fps on 5-year-old phones.",
+  "win_lose_condition": "No lose condition — pure progression sandbox. Win condition per session: reach next prestige threshold or unlock next achievement. Long-term goal: unlock all 5 background evolutions (requires 4 prestiges) and earn 100 Star Cores. Game displays 'Session Progress' summary on close: energy earned, taps made, generators bought, time active."
+}
