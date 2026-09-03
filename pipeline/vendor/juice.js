@@ -1,5 +1,9 @@
-// Juice Toolkit — shared "game feel" utilities for gd-gpt harnesses
-// Import in harness HTML: <script src="../pipeline/vendor/juice.js"></script>
+// Juice Toolkit — shared "game feel" utilities for gd-gpt harnesses.
+// Harness builds inline this file's contents directly into one <script> block
+// alongside Phaser and the game code (see scripts/build_harness_html.sh) --
+// never reference a literal closing script tag in this file's text (even in
+// a comment): it prematurely ends that block when concatenated into HTML,
+// silently turning everything after it into inert page text.
 // All classes expose static factory methods (create) for one-line usage.
 // Style: no build step, no dependencies beyond Phaser 3 global.
 
@@ -378,6 +382,41 @@ class MovesCounter {
   }
 }
 
+/**
+ * IntroBanner — small "HOW TO PLAY" chrome shown during a ~2-2.5s scripted
+ * auto-demo before real input is enabled. Playable-ad convention: show the
+ * mechanic instead of describing it, first thing, before asking for a tap.
+ *   const banner = Juice.IntroBanner.create(scene, { label: 'HOW TO PLAY' })
+ *   banner.destroy() when the demo ends.
+ */
+class IntroBanner {
+  static create(scene, { label = 'HOW TO PLAY', y = 20, color = '#8899ff' } = {}) {
+    const text = scene.add.text(400, y, label, { fontFamily: 'monospace', fontSize: '13px', color }).setOrigin(0.5).setAlpha(0);
+    scene.tweens.add({ targets: text, alpha: 1, duration: 200 });
+    return { destroy: () => scene.tweens.add({ targets: text, alpha: 0, duration: 150, onComplete: () => text.destroy() }) };
+  }
+}
+
+/**
+ * TapHint — pulsing ring + dot at a point, for a lightweight "tap here" intro
+ * cue. Purely cosmetic and self-cleaning: call destroy() early to cut it off
+ * (e.g. once the player acts) or let it run for `duration` and destroy it
+ * yourself on a timer.
+ *   const hint = Juice.TapHint.create(scene, x, y, { duration: 1800 })
+ */
+class TapHint {
+  static create(scene, x, y, { color = 0xffffff, radius = 22 } = {}) {
+    const ring = scene.add.circle(x, y, radius, color, 0).setStrokeStyle(3, color, 0.9);
+    const dot = scene.add.circle(x, y, 6, color, 0.9);
+    const ringTween = scene.tweens.add({
+      targets: ring, radius: radius + 20, alpha: 0, duration: 700, repeat: -1, ease: 'Cubic.easeOut',
+      onRepeat: () => { ring.radius = radius; ring.alpha = 0.9; }
+    });
+    const dotTween = scene.tweens.add({ targets: dot, scale: 0.7, duration: 350, yoyo: true, repeat: -1 });
+    return { destroy: () => { ringTween.stop(); dotTween.stop(); ring.destroy(); dot.destroy(); } };
+  }
+}
+
 // namespace export
 window.Juice = {
   ScreenShake,
@@ -394,5 +433,7 @@ window.Juice = {
   SwapAnimation,
   CascadeSystem,
   BoardBackground,
-  MovesCounter
+  MovesCounter,
+  IntroBanner,
+  TapHint
 };

@@ -80,6 +80,12 @@ class PlayScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.tweens.add({ targets: this.startText, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
 
+    // Quick visible intro: point at the tap orb for ~2s before the
+    // (already-instant) tap-to-start becomes the obvious next move.
+    const introBanner = Juice.IntroBanner.create(this, { label: 'TAP TO EARN • BUY GENERATORS', y: 46 });
+    const introHint = Juice.TapHint.create(this, this.tapOrb.x, this.tapOrb.y, { color: 0x33e6ff, radius: 70 });
+    this.time.delayedCall(2000, () => { introBanner.destroy(); introHint.destroy(); });
+
     window.__GAME__ = this.game;
     this.game.registry.set('score', 0);
   }
