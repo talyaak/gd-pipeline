@@ -1,0 +1,32 @@
+{
+  "title": "Prism Warden",
+  "core_loop": "Player controls a floating prism at the bottom of the screen that automatically rotates. Geometric void entities descend in formations, firing coherent light beams. The player positions the prism to refract, split, or reflect incoming beams back at enemies. Absorbing beams of matching color charges the prism's spectrum meter; a full meter unleashes a prismatic nova that clears the screen. No direct shooting — the player's weapon is the enemies' own fire turned against them.",
+  "controls": "Mouse or touch drag to move prism horizontally. Prism rotates automatically (one full rotation per 2 seconds). Left-click or tap to instantly snap prism to the next color facet (cycle: Red -> Green -> Blue -> Red) for precise color matching. Hold Shift to slow rotation to 25% speed for fine alignment.",
+  "mechanics": [
+    "Auto-rotating prism with 3 color facets (Red, Green, Blue) — each refracts matching-color beams",
+    "Beam refraction: matching-color beam splits into 3 weaker beams at 60-degree angles, damaging enemies",
+    "Beam reflection: mismatched-color beam reflects at equal angle back toward its source (angled ricochet)",
+    "Beam absorption: holding a beam on a matching facet charges spectrum meter (1% per 0.2s contact)",
+    "Spectrum meter (0-100%): at 100%, press Space to fire Prismatic Nova — 360-degree burst of all colors, destroys all beams and damages all enemies on screen",
+    "Void entities spawn in formations: Lines (fire parallel beams), Spirals (fire rotating beams), Lattices (fire grid beams), and Prisms (fire color-shifting beams)",
+    "Entity types: Drone (1 HP, fires single beam), Splitter (2 HP, beam splits on hit), Reflector (3 HP, reflects player's refracted beams), Prismatic (5 HP, cycles beam color every 2s)",
+    "Grazing bonus: beam passing within 8px of prism without hitting grants +5 score and +2% spectrum (risk/reward)",
+    "Difficulty scaling: spawn interval decreases 5% per wave, beam speed increases 3% per wave, new entity types unlock every 3 waves",
+    "Combo system: consecutive refractions without taking damage multiply score (1x -> 1.5x -> 2x -> 3x max), reset on hit",
+    "Prism overcharge: absorbing while at 100% spectrum converts excess into score bonus (100 pts per 1%) instead of wasting it"
+  ],
+  "juice": [
+    "Prism facets glow intensely when actively refracting/absorbing, with color-matched bloom",
+    "Refracted beams leave brief chromatic aberration trails (RGB split) showing split paths",
+    "Reflected beams gain a momentary white-hot core and sharp 'ping' particle on enemy impact",
+    "Spectrum meter pulses with prism rotation; at 100% it emits expanding rainbow rings",
+    "Prismatic Nova: full-screen radial gradient explosion with shockwave distortion and 0.2s time dilation",
+    "Entity death: geometric shatter into facet-matched fragments that fade along beam vectors",
+    "Grazing near-miss: prism emits a brief 'ring' pulse and chromatic lens flare at contact point",
+    "Wave transition: background void color shifts (deep violet -> cyan -> magenta -> void black) with scanline sweep",
+    "UI elements (spectrum meter, combo, score) use the same prism facet aesthetic with smooth transitions",
+    "Screen shake on hit (light) and Prismatic Nova (heavy), with directional offset toward threat source"
+  ],
+  "mvp_scope": "Single endless survival mode on 800x600 canvas. Prism rendered as rotating triangle with three colored facets (RGB). Beams are thin lines with gradient cores. Entities are geometric shapes (triangles, squares, pentagons) with procedural colors. All graphics use Canvas API with gradients and blend modes (lighter for beams, source-over for entities). No external assets. UI: spectrum meter (circular around prism), combo multiplier, score, wave counter. Game over shows final score, highest combo, waves survived, and prismatic efficiency (% beams refracted). Restart button. Target 60fps.",
+  "win_lose_condition": "Lose: Prism takes 3 hits (each beam contact = 1 hit, shown as prism facet cracking). Win: Survive 20 waves to face the Void Prism boss — a massive multi-faceted entity firing chaotic beams. Defeat it by refracting its own ultimate beam back 3 times to trigger a Prismatic Nova chain reaction. Victory screen shows 'Void Sealed' with final stats and S/A/B/C/D rank based on score, combo max, and refraction efficiency."
+}
