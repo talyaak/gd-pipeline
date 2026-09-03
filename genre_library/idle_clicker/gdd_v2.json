@@ -1,0 +1,33 @@
+{
+  "title": "Alchemy Lab: Elemental Tycoon",
+  "core_loop": "Player taps to gather raw essence, spends it on alchemical apparatus (crucibles, alembics, transmutation circles) that automate essence production and unlock new elements. Prestige system (Philosopher's Stone) resets progress for permanent transmutation multipliers and recipe discovery. Core loop: tap -> gather essence -> build apparatus -> produce elements -> discover recipes -> transmute -> prestige -> repeat with multiplier.",
+  "controls": "Click/tap anywhere in the gathering circle to manually collect essence. Click apparatus slots to purchase/upgrade crucibles, alembics, and circles. Click recipe buttons to transmute elements when requirements are met. Click the Philosopher's Stone when charged to prestige. All interactions are single-click/tap — no drag, hold, or complex gestures.",
+  "mechanics": [
+    "Manual tap in gathering circle yields base essence (1 per tap, scaled by essence multiplier)",
+    "5 apparatus tiers: Crucible (1 essence/sec), Alembic (10/sec), Transmutation Circle (100/sec), Philosopher's Furnace (1000/sec), Aetheric Engine (10000/sec)",
+    "Each apparatus has individual level, cost scales exponentially (base * 1.18^level) with diminishing returns past level 50",
+    "Bulk buy options: x1, x10, x100, max affordable",
+    "Element system: 8 base elements (Fire, Water, Earth, Air, Light, Shadow, Metal, Wood) produced by apparatus tiers",
+    "Recipe discovery: combine 2-3 elements to unlock 24 advanced elements (Steam, Lava, Dust, Mist, etc.) with bonus essence rates",
+    "Philosopher's Stone charges at 10,000,000 total essence; prestige resets apparatus/elements, grants +1 Stone Fragment (permanent +30% all production)",
+    "Stone Fragments unlock visual laboratory upgrades (glowing runes, animated aether currents, particle styles)",
+    "Offline progress: apparatus produce while closed (capped at 6 hours), essence and element counts shown on return with animated roll-up",
+    "Achievement system: 25 milestones (total taps, apparatus owned, elements discovered, prestiges, time played) with essence bonuses",
+    "Floating essence numbers on tap with elemental color coding (Fire=orange, Water=blue, etc.)",
+    "No fail state — pure progression sandbox; session ends when player closes tab"
+  ],
+  "juice": [
+    "Tap essence burst: elemental particle ring at click position matching current dominant element",
+    "Apparatus purchase: gear-turn animation + alchemical symbol flash, essence sparkle particles",
+    "Essence counter: smooth count-up with elemental glow trail (lerp, 300ms)",
+    "Prestige transmutation: screen dissolves into swirling alchemical symbols, laboratory reforms with new rune set",
+    "Laboratory evolves with each prestige: stone table -> enchanted workspace -> arcane sanctum -> aetheric nexus -> reality forge",
+    "Passive apparatus 'resonance': subtle glow pulse on owned apparatus at their production interval, color = element produced",
+    "Recipe discovery popup: parchment unfurl animation with ingredient icons and new element reveal",
+    "Offline progress report: cauldron bubble animation rolling up to caught-up totals per element",
+    "Essence multiplier visual: floating alchemical sigil near cursor that rotates with combo rhythm",
+    "Ambient aether currents: slow-moving magical particles in background, density and color shift with discovered elements"
+  ],
+  "mvp_scope": "Single-screen idle clicker with 5 apparatus tiers, 8 base + 24 advanced elements, recipe discovery, Philosopher's Stone prestige (Stone Fragments), offline progress (6h cap), 25 achievements, and evolving laboratory. All graphics procedural: apparatus as geometric alchemical symbols (circles, triangles, squares, hexagrams), particles as colored circles with additive blending, backgrounds as layered WebGL shaders (gradient + noise + distortion). No external assets. Web Audio API for subtle UI chimes, transmutation resonance, and prestige harmonic chord. Responsive layout: apparatus list on left (desktop) / bottom drawer (mobile), gathering circle center. Target 60fps on 5-year-old phones.",
+  "win_lose_condition": "No lose condition — pure progression sandbox. Win condition per session: discover next recipe, reach next prestige threshold, or unlock next laboratory evolution. Long-term goal: unlock all 5 laboratory evolutions (requires 4 prestiges) and collect 50 Stone Fragments. Game displays 'Session Ledger' on close: essence gathered, taps made, apparatus built, recipes discovered, elements transmuted, time active."
+}
