@@ -17,7 +17,7 @@ const COLORS = [0x33e6ff, 0xff33cc, 0xffe14d, 0x33ff88, 0xff9933, 0xaa66ff];
 const TARGET_SCORE = 1200;
 const START_MOVES = 20;
 
-const STATE = { BOOT: 'boot', START: 'start', IDLE: 'idle', BUSY: 'busy', END: 'end' };
+const STATE = { BOOT: 'boot', START: 'start', PLAYING: 'playing', BUSY: 'busy', END: 'end' };
 
 function cellX(c) { return BOARD_X + c * CELL + CELL / 2; }
 function cellY(r) { return BOARD_Y + r * CELL + CELL / 2; }
@@ -29,6 +29,7 @@ class PlayScene extends Phaser.Scene {
 
   create() {
     this.state = STATE.START;
+    this.game.state = STATE.START;
     this.score = 0;
     this.best = Number(localStorage.getItem('match3_best') || 0);
     this.moves = START_MOVES;
@@ -209,7 +210,7 @@ class PlayScene extends Phaser.Scene {
       this.scene.restart();
       return;
     }
-    if (this.state !== STATE.IDLE) return;
+    if (this.state !== STATE.PLAYING) return;
     const cell = this._screenToCell(p.x, p.y);
     if (!cell) return;
     this.dragStart = cell;
@@ -217,7 +218,7 @@ class PlayScene extends Phaser.Scene {
   }
 
   _onPointerUp(p) {
-    if (this.state !== STATE.IDLE || !this.dragStart) { this.dragStart = null; return; }
+    if (this.state !== STATE.PLAYING || !this.dragStart) { this.dragStart = null; return; }
     const cell = this._screenToCell(p.x, p.y);
     const start = this.dragStart;
     this.dragStart = null;
@@ -262,6 +263,7 @@ class PlayScene extends Phaser.Scene {
   _attemptSwap(a, b) {
     this._clearSelection();
     this.state = STATE.BUSY;
+    this.game.state = STATE.BUSY;
     this._swapCells(a, b);
     Juice.SwapAnimation.create(this, this.board[a.r][a.c].sprite, this.board[b.r][b.c].sprite, {
       duration: 150,
@@ -274,7 +276,7 @@ class PlayScene extends Phaser.Scene {
             duration: 160,
             isRevert: true,
             shakeCamera: true,
-            onComplete: () => { this.state = STATE.IDLE; }
+            onComplete: () => { this.state = STATE.PLAYING; this.game.state = STATE.PLAYING; }
           });
           return;
         }
@@ -349,13 +351,15 @@ class PlayScene extends Phaser.Scene {
       this._end(true);
       return;
     }
-    this.state = STATE.IDLE;
+    this.state = STATE.PLAYING;
+    this.game.state = STATE.PLAYING;
   }
 
   // ---- end states ----
 
   _end(won) {
     this.state = STATE.END;
+    this.game.state = STATE.END;
     this.best = Math.max(this.best, this.score);
     localStorage.setItem('match3_best', String(this.best));
 
@@ -376,7 +380,8 @@ class PlayScene extends Phaser.Scene {
       this._resyncSpritePositions();
       this._endIntroDemo();
     }
-    this.state = STATE.IDLE;
+    this.state = STATE.PLAYING;
+    this.game.state = STATE.PLAYING;
     this.startText.setVisible(false);
   }
 

@@ -57,46 +57,66 @@ def _serve_dir(directory: Path):
     return httpd, port
 
 
+def _has_vendor_scripts(html: str) -> bool:
+    """Check if HTML already contains bundled vendor scripts (Phaser/Juice).
+    Self-contained harness games include Phaser + Juice + game code in one <script> block.
+    Heuristics: look for actual bundled code exports/definitions, not mere references.
+    """
+    # Harness games bundle the full Juice toolkit which exports: window.Juice = { ... }
+    # They also define Juice classes like ScreenShake in the global scope.
+    # The Phaser minified bundle is ~1MB and starts with a UMD wrapper.
+    # Fixtures only REFERENCE Phaser/Juice without including them.
+    return any(marker in html for marker in (
+        "window.Juice = {",    # Actual Juice namespace export
+        "class ScreenShake",   # Juice class definition (bundled)
+        "window.__GAME__ = this.game",  # Harness-specific pattern
+    ))
+
+
 def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Skip vendor injection for self-contained HTML (harness games)
+    needs_vendor = not _has_vendor_scripts(html)
+
     # Inject vendored Phaser into the HTML before serving
     # Insert before </head> or at the start of <body> if no </head>
-    if "</head>" in html:
-        html = html.replace("</head>", f"<script>{PHASER_JS}</script></head>")
-    else:
-        html = html.replace("<body>", f"<body><script>{PHASER_JS}</script>")
+    if needs_vendor:
+        if "</head>" in html:
+            html = html.replace("</head>", f"<script>{PHASER_JS}</script></head>")
+        else:
+            html = html.replace("<body>", f"<body><script>{PHASER_JS}</script>")
 
-    # Inject MRAID wrapper if available
-    if MRAID_WRAPPER:
-        if "</head>" in html:
-            html = html.replace("</head>", f"<script>{MRAID_WRAPPER}</script></head>")
-        else:
-            html = html.replace("<body>", f"<body><script>{MRAID_WRAPPER}</script>")
-    # Inject particle.js if available
-    if PARTICLE_JS_CONTENT:
-        if "</head>" in html:
-            html = html.replace("</head>", f"<script>{PARTICLE_JS_CONTENT}</script></head>")
-        else:
-            html = html.replace("<body>", f"<body><script>{PARTICLE_JS_CONTENT}</script>")
-    # Inject ui.js if available
-    if UI_JS_CONTENT:
-        if "</head>" in html:
-            html = html.replace("</head>", f"<script>{UI_JS_CONTENT}</script></head>")
-        else:
-            html = html.replace("<body>", f"<body><script>{UI_JS_CONTENT}</script>")
-    # Inject art.js if available
-    if ART_JS_CONTENT:
-        if "</head>" in html:
-            html = html.replace("</head>", f"<script>{ART_JS_CONTENT}</script></head>")
-        else:
-            html = html.replace("<body>", f"<body><script>{ART_JS_CONTENT}</script>")
-    # Inject juice.js if available
-    if JUICE_JS_CONTENT:
-        if "</head>" in html:
-            html = html.replace("</head>", f"<script>{JUICE_JS_CONTENT}</script></head>")
-        else:
-            html = html.replace("<body>", f"<body><script>{JUICE_JS_CONTENT}</script>")
+        # Inject MRAID wrapper if available
+        if MRAID_WRAPPER:
+            if "</head>" in html:
+                html = html.replace("</head>", f"<script>{MRAID_WRAPPER}</script></head>")
+            else:
+                html = html.replace("<body>", f"<body><script>{MRAID_WRAPPER}</script>")
+        # Inject particle.js if available
+        if PARTICLE_JS_CONTENT:
+            if "</head>" in html:
+                html = html.replace("</head>", f"<script>{PARTICLE_JS_CONTENT}</script></head>")
+            else:
+                html = html.replace("<body>", f"<body><script>{PARTICLE_JS_CONTENT}</script>")
+        # Inject ui.js if available
+        if UI_JS_CONTENT:
+            if "</head>" in html:
+                html = html.replace("</head>", f"<script>{UI_JS_CONTENT}</script></head>")
+            else:
+                html = html.replace("<body>", f"<body><script>{UI_JS_CONTENT}</script>")
+        # Inject art.js if available
+        if ART_JS_CONTENT:
+            if "</head>" in html:
+                html = html.replace("</head>", f"<script>{ART_JS_CONTENT}</script></head>")
+            else:
+                html = html.replace("<body>", f"<body><script>{ART_JS_CONTENT}</script>")
+        # Inject juice.js if available
+        if JUICE_JS_CONTENT:
+            if "</head>" in html:
+                html = html.replace("</head>", f"<script>{JUICE_JS_CONTENT}</script></head>")
+            else:
+                html = html.replace("<body>", f"<body><script>{JUICE_JS_CONTENT}</script>")
 
     game_path = out_dir / "game.html"
     game_path.write_text(html, encoding="utf-8")
