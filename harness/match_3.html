@@ -403,6 +403,26 @@ class IntroBanner {
   }
 }
 
+/**
+ * TapHint — pulsing ring + dot at a point, for a lightweight "tap here" intro
+ * cue. Purely cosmetic and self-cleaning: call destroy() early to cut it off
+ * (e.g. once the player acts) or let it run for `duration` and destroy it
+ * yourself on a timer.
+ *   const hint = Juice.TapHint.create(scene, x, y, { duration: 1800 })
+ */
+class TapHint {
+  static create(scene, x, y, { color = 0xffffff, radius = 22 } = {}) {
+    const ring = scene.add.circle(x, y, radius, color, 0).setStrokeStyle(3, color, 0.9);
+    const dot = scene.add.circle(x, y, 6, color, 0.9);
+    const ringTween = scene.tweens.add({
+      targets: ring, radius: radius + 20, alpha: 0, duration: 700, repeat: -1, ease: 'Cubic.easeOut',
+      onRepeat: () => { ring.radius = radius; ring.alpha = 0.9; }
+    });
+    const dotTween = scene.tweens.add({ targets: dot, scale: 0.7, duration: 350, yoyo: true, repeat: -1 });
+    return { destroy: () => { ringTween.stop(); dotTween.stop(); ring.destroy(); dot.destroy(); } };
+  }
+}
+
 // namespace export
 window.Juice = {
   ScreenShake,
@@ -420,7 +440,8 @@ window.Juice = {
   CascadeSystem,
   BoardBackground,
   MovesCounter,
-  IntroBanner
+  IntroBanner,
+  TapHint
 };
 // Hand-built match-3 harness. Every value here is hardcoded and tuned by
 // actually playing the game -- same approach as harness/endless_runner.game.js.
@@ -441,7 +462,7 @@ const COLORS = [0x33e6ff, 0xff33cc, 0xffe14d, 0x33ff88, 0xff9933, 0xaa66ff];
 const TARGET_SCORE = 1200;
 const START_MOVES = 20;
 
-const STATE = { BOOT: 'boot', START: 'start', IDLE: 'idle', BUSY: 'busy', END: 'end' };
+const STATE = { BOOT: 'boot', START: 'start', PLAYING: 'playing', BUSY: 'busy', END: 'end' };
 
 function cellX(c) { return BOARD_X + c * CELL + CELL / 2; }
 function cellY(r) { return BOARD_Y + r * CELL + CELL / 2; }
@@ -453,6 +474,7 @@ class PlayScene extends Phaser.Scene {
 
   create() {
     this.state = STATE.START;
+    this.game.state = STATE.START;
     this.score = 0;
     this.best = Number(localStorage.getItem('match3_best') || 0);
     this.moves = START_MOVES;
@@ -633,7 +655,7 @@ class PlayScene extends Phaser.Scene {
       this.scene.restart();
       return;
     }
-    if (this.state !== STATE.IDLE) return;
+    if (this.state !== STATE.PLAYING) return;
     const cell = this._screenToCell(p.x, p.y);
     if (!cell) return;
     this.dragStart = cell;
@@ -641,7 +663,7 @@ class PlayScene extends Phaser.Scene {
   }
 
   _onPointerUp(p) {
-    if (this.state !== STATE.IDLE || !this.dragStart) { this.dragStart = null; return; }
+    if (this.state !== STATE.PLAYING || !this.dragStart) { this.dragStart = null; return; }
     const cell = this._screenToCell(p.x, p.y);
     const start = this.dragStart;
     this.dragStart = null;
@@ -686,6 +708,7 @@ class PlayScene extends Phaser.Scene {
   _attemptSwap(a, b) {
     this._clearSelection();
     this.state = STATE.BUSY;
+    this.game.state = STATE.BUSY;
     this._swapCells(a, b);
     Juice.SwapAnimation.create(this, this.board[a.r][a.c].sprite, this.board[b.r][b.c].sprite, {
       duration: 150,
@@ -698,7 +721,7 @@ class PlayScene extends Phaser.Scene {
             duration: 160,
             isRevert: true,
             shakeCamera: true,
-            onComplete: () => { this.state = STATE.IDLE; }
+            onComplete: () => { this.state = STATE.PLAYING; this.game.state = STATE.PLAYING; }
           });
           return;
         }
@@ -773,13 +796,15 @@ class PlayScene extends Phaser.Scene {
       this._end(true);
       return;
     }
-    this.state = STATE.IDLE;
+    this.state = STATE.PLAYING;
+    this.game.state = STATE.PLAYING;
   }
 
   // ---- end states ----
 
   _end(won) {
     this.state = STATE.END;
+    this.game.state = STATE.END;
     this.best = Math.max(this.best, this.score);
     localStorage.setItem('match3_best', String(this.best));
 
@@ -800,7 +825,8 @@ class PlayScene extends Phaser.Scene {
       this._resyncSpritePositions();
       this._endIntroDemo();
     }
-    this.state = STATE.IDLE;
+    this.state = STATE.PLAYING;
+    this.game.state = STATE.PLAYING;
     this.startText.setVisible(false);
   }
 
