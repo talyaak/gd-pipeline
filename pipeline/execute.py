@@ -61,16 +61,22 @@ def _has_vendor_scripts(html: str) -> bool:
     """Check if HTML already contains bundled vendor scripts (Phaser/Juice).
     Self-contained harness games include Phaser + Juice + game code in one <script> block.
     Heuristics: look for actual bundled code exports/definitions, not mere references.
+    Requires at least 2 of 3 markers to avoid false positives from comments/strings.
     """
     # Harness games bundle the full Juice toolkit which exports: window.Juice = { ... }
     # They also define Juice classes like ScreenShake in the global scope.
     # The Phaser minified bundle is ~1MB and starts with a UMD wrapper.
     # Fixtures only REFERENCE Phaser/Juice without including them.
-    return any(marker in html for marker in (
+    markers = (
         "window.Juice = {",    # Actual Juice namespace export
         "class ScreenShake",   # Juice class definition (bundled)
         "window.__GAME__ = this.game",  # Harness-specific pattern
-    ))
+    )
+    # Count how many markers appear in the HTML
+    match_count = sum(1 for marker in markers if marker in html)
+    # Require at least 2 of 3 markers to avoid single-marker false positives
+    # (e.g., a comment containing "class ScreenShake" alone)
+    return match_count >= 2
 
 
 def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
