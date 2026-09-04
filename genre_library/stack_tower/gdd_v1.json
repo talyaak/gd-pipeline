@@ -1,0 +1,29 @@
+{
+  "title": "Stack Master",
+  "core_loop": "A moving block oscillates horizontally above the tower. Tap at the precise moment it aligns with the previous layer to drop it perfectly. Each perfect drop keeps the full width; misaligned drops shear off the overhang, narrowing the next layer. Stack 15 layers to win — miss once and the run ends.",
+  "controls": "Single tap/click anywhere (or Spacebar) to drop the moving block. No horizontal control — timing is the only skill. Touch-friendly: entire screen is the drop zone.",
+  "mechanics": [
+    "Horizontally oscillating block that moves faster each layer (140 -> 320 px/sec)",
+    "Alternating left-to-right and right-to-left spawn direction each layer",
+    "Overlap calculation: only the intersecting portion of the moving block becomes the new layer",
+    "Perfect drop detection within 6px tolerance — restores full width, grants combo bonus",
+    "Progressive narrowing: each miss or imperfect drop reduces the next layer's width",
+    "Layer descent animation: all existing rows shift down smoothly when a new layer lands",
+    "Offcut physics: sheared pieces fall away with rotation and fade for visual feedback",
+    "Speed scaling: each layer increases oscillation speed by 8 px/sec up to a cap"
+  ],
+  "juice": [
+    "Camera flash (90ms, warm gold) on every perfect drop",
+    "Particle burst (gold, 10 particles) at perfect drop impact point",
+    "Floating 'PERFECT' text with combo multiplier (x2, x3...) that rises and fades",
+    "Camera shake (180ms, 0.01 intensity) on miss",
+    "Smooth cubic-ease row descent animation (160ms) when new layer locks in",
+    "Offcut fall-away animation with random rotation and fade (500ms)",
+    "Pulsing 'TAP TO DROP' prompt with alpha breathing animation during attract mode",
+    "Intro banner with tap-hint indicator that auto-dismisses after 2 seconds",
+    "Color-cycling palette across layers (cyan, magenta, yellow, green, orange, purple)",
+    "Game-over/win end card with final score, retry and CTA buttons (via Juice toolkit)"
+  ],
+  "mvp_scope": "Single-screen vertical stacking game, 800x450. 15 target layers to win. Base row 260px wide, 28px tall. All graphics are procedural Phaser rectangles with strokes — zero external assets. Oscillating block spans full width on layer 1, narrows with each imperfect drop. Score = 10 per layer + 20*combo on perfect drops. LocalStorage high-score persistence. Keyboard (Space) and touch/click input. 60fps target on mobile.",
+  "win_lose_condition": "Win: Stack 15 layers (any width > 0) — triggers victory end card with final score. Lose: Moving block has ≤4px overlap with previous layer on tap — instant game over with miss animation. No partial credit; one miss ends the run. High score tracked across sessions."
+}
