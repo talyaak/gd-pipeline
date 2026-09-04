@@ -8,11 +8,12 @@
 //
 // Uses Juice toolkit (pipeline/vendor/juice.js) for shared juice utilities.
 
+const W = 450, H = 800;
 const COLS = 7;
 const ROWS = 7;
-const CELL = 46;
-const BOARD_X = 400 - (COLS * CELL) / 2;
-const BOARD_Y = 108;
+const CELL = 58; // bigger than the old 46 -- more room in portrait, better touch target
+const BOARD_X = W / 2 - (COLS * CELL) / 2;
+const BOARD_Y = H / 2 - (ROWS * CELL) / 2;
 const COLORS = [0x33e6ff, 0xff33cc, 0xffe14d, 0x33ff88, 0xff9933, 0xaa66ff];
 const TARGET_SCORE = 1200;
 const START_MOVES = 20;
@@ -63,12 +64,12 @@ class PlayScene extends Phaser.Scene {
 
     this.scoreText = this.add.text(16, 12, 'Score: 0', { fontFamily: 'monospace', fontSize: '20px', color: '#33e6ff' });
     this.bestText = this.add.text(16, 36, 'Best: ' + this.best, { fontFamily: 'monospace', fontSize: '14px', color: '#ff33cc' });
-    this.targetText = this.add.text(784, 12, 'Target: ' + TARGET_SCORE, { fontFamily: 'monospace', fontSize: '16px', color: '#ffe14d' }).setOrigin(1, 0);
+    this.targetText = this.add.text(W - 16, 12, 'Target: ' + TARGET_SCORE, { fontFamily: 'monospace', fontSize: '16px', color: '#ffe14d' }).setOrigin(1, 0);
 
     // Moves counter via Juice
     this.movesCounter = Juice.MovesCounter.create(this, {
       moves: this.moves,
-      x: 784,
+      x: W - 16,
       y: 36,
       warnThreshold: 5,
       normalColor: '#ffffff',
@@ -77,7 +78,7 @@ class PlayScene extends Phaser.Scene {
       fontSize: '18px'
     });
 
-    this.startText = this.add.text(400, 60, 'TAP TO START  •  swap adjacent gems to match 3+', {
+    this.startText = this.add.text(W / 2, 60, 'TAP TO START  •  swap adjacent gems to match 3+', {
       fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', align: 'center',
     }).setOrigin(0.5).setVisible(false);
     this.tweens.add({ targets: this.startText, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
@@ -180,10 +181,10 @@ class PlayScene extends Phaser.Scene {
     const x = cellX(c);
     const y = cellY(r);
     const container = this.add.container(x, startY);
-    const glow = this.add.circle(0, 0, 17, cell.color, 0.25).setScale(1.3);
-    const body = this.add.circle(0, 0, 16, cell.color);
+    const glow = this.add.circle(0, 0, 21, cell.color, 0.25).setScale(1.3);
+    const body = this.add.circle(0, 0, 20, cell.color);
     body.setStrokeStyle(2, 0xffffff, 0.7);
-    const shine = this.add.circle(-5, -5, 5, 0xffffff, 0.5);
+    const shine = this.add.circle(-6, -6, 6, 0xffffff, 0.5);
     container.add([glow, body, shine]);
     cell.sprite = container;
     if (startY !== y) {
@@ -337,7 +338,10 @@ class PlayScene extends Phaser.Scene {
         return points;
       },
       onCascadeEnd: () => this._afterCascade(),
-      onGemGone: (r, c) => { this.board[r][c] = null; }
+      onGemGone: (r, c) => { this.board[r][c] = null; },
+      onNewGem: (r, c, color, stackDepth) => {
+        this._spawnGemSprite(r, c, BOARD_Y - CELL * stackDepth);
+      }
     });
     cascade.resolve();
   }
@@ -392,15 +396,14 @@ class PlayScene extends Phaser.Scene {
     const c1 = Phaser.Display.Color.HSVToRGB(this.hue, 0.5, 0.12);
     this.bgG.clear();
     this.bgG.fillStyle(Phaser.Display.Color.GetColor(c1.r, c1.g, c1.b), 1);
-    this.bgG.fillRect(0, 0, 800, 450);
+    this.bgG.fillRect(0, 0, W, H);
   }
 }
 
 const config = {
   type: Phaser.AUTO,
-  width: 800,
-  height: 450,
-  parent: undefined,
+  parent: 'game-root',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: W, height: H },
   backgroundColor: '#0a0a18',
   scene: [PlayScene],
   audio: { noAudio: true },
