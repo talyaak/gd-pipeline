@@ -1,0 +1,33 @@
+{
+  "title": "Merge Guardians",
+  "core_loop": "Drag and drop identical towers onto each other to merge them into a stronger tier. Merged towers auto-fire at enemies advancing in 3 horizontal lanes. Survive 60 seconds of escalating waves. Merge chain: Tier 1 (Basic) → Tier 2 (Double) → Tier 3 (Triple) → Tier 4 (Ultimate). Each merge refunds partial cost, encouraging experimentation.",
+  "controls": "Mouse/touch drag-and-drop only. Drag a tower from the bottom tray onto the 4x4 grid to place (costs gold). Drag one placed tower onto another of the SAME tier to merge (free, refunds 50% of lower tier's cost). Tap/click a placed tower to sell for 75% refund. No menus, no wave button — waves auto-spawn every 8 seconds.",
+  "mechanics": [
+    "4x4 square grid (16 cells) with 3 horizontal enemy lanes (rows 1, 2, 3 from top); row 0 and row 3 are buffer zones for tower placement only",
+    "Four tower tiers per element: Fire (splash), Ice (slow), Lightning (chain), Poison (DoT) — 16 unique tower sprites total",
+    "Merge rule: same element + same tier → next tier (e.g., Fire T1 + Fire T1 = Fire T2). Cross-element merges forbidden. Tier 4 (Ultimate) cannot merge further",
+    "Gold economy: start with 150 gold. Kill reward: 8-12 gold scaling with enemy HP. Passive income: 5 gold/sec. Merge refund: 50% of sacrificed tower's cost. Sell refund: 75%",
+    "Enemy waves: 8-second intervals, 6-10 enemies per wave. Enemy types: Grunt (low HP, fast), Tank (high HP, slow), Shielded (immune to splash, vulnerable to chain), Healer (heals nearby allies, priority target)",
+    "Tower targeting: closest-to-exit in range. Fire T3/T4 splash radius 120px. Ice slows 60% for 2s. Lightning chains to 3 targets within 80px. Poison ticks 15 DPS for 4s",
+    "Ultimate abilities (Tier 4 only, 30s cooldown): Fire = meteor strike (300 dmg, 150px radius), Ice = deep freeze (stun all enemies 3s), Lightning = storm (hits all enemies 100 dmg), Poison = plague cloud (50 DPS, 200px, 8s)",
+    "Lives system: 10 lives. Grunt leaks = -1 life, Tank = -2, Shielded = -1, Healer = -3. Game over at 0 lives. Survive 60 seconds (8 waves) to win",
+    "Combo merge bonus: merging within 2s of previous merge grants +10% gold refund (stacks to +50% max). Encourages rapid merge chains during wave gaps",
+    "Visual clarity: towers show tier via border glow (T1=white, T2=green, T3=blue, T4=gold). Lane markers glow red when enemies in that lane exceed 3"
+  ],
+  "juice": [
+    "Merge animation: both towers scale to 1.3x, rotate ±15°, flash white, merge into new tower with 300ms elastic scale-in (Phaser elasticity 0.5)",
+    "Merge particles: 12 colored sparks burst from merge point, gravity 200, fade 400ms, color matches element (Fire=orange, Ice=cyan, Lightning=yellow, Poison=green)",
+    "Projectile feel: Fire = arcing lob with squash/stretch, Ice = crisp beam with hit pause 30ms, Lightning = jagged chain with 50ms delay per hop, Poison = homing dart with trailing particles",
+    "Enemy hit flash: 80ms white tint + 2px scale bump. Death: 15 particle burst matching damage type + floating gold text (+8 to +12) rising 60px over 800ms",
+    "Ultimate activation: full-screen color flash (element color, 100ms) + camera shake (150ms, 0.02 intensity) + slow-mo 0.3x for 400ms during effect",
+    "Wave start banner: \"WAVE N\" slides down from top (300ms, bounce ease), pauses 500ms, slides up. Lane glow pulses red 3x when wave spawns",
+    "Tower placement: ghost preview follows cursor (50% alpha). On valid drop: 200ms scale 0→1.1→1 with subtle screen shake (50ms, 0.005). Invalid drop: shake 100ms + red flash",
+    "Sell animation: tower dissolves into 8 gold coins that fly to gold counter (400ms arc), counter increments with number tween",
+    "Combo merge streak UI: small fireworks at screen top, streak counter scales 1.5x per increment, resets after 2s idle",
+    "Victory screen: confetti burst (50 pieces, 3s), \"MERGE MASTER\" title with gradient text, final stats (merges, ultimates used, gold earned), replay button with pulse animation",
+    "Defeat screen: grid grayscales, \"OVERWHELMED\" in red, last wave reached shown, retry button shakes gently every 2s",
+    "Background: subtle parallax layers (3 speeds) with element-themed ambient particles (embers, snowflakes, sparks, spores) — purely cosmetic, no gameplay impact"
+  ],
+  "mvp_scope": "Single 4x4 grid, 3 lanes, 4 elements × 4 tiers = 16 tower variants. 4 enemy types. 8 waves over 60 seconds. All graphics procedural: towers as layered geometric shapes (Fire=triangles, Ice=hexagons, Lightning=zigzags, Poison=blobs) with tier-appropriate detail. Projectiles as canvas-drawn shapes with blend modes. No external assets. UI: bottom tray (4 slots, one per element T1), gold counter top-right, lives top-left, timer top-center, combo streak top-right under gold. State machine: Boot → Preload → Tutorial (3 guided merges) → Play → Victory/Defeat → Replay.",
+  "win_lose_condition": "Win: Survive 60 seconds (8 waves) with ≥1 life. Shows victory screen with merge count, ultimates fired, total gold, time survived. Lose: Lives reach 0 before 60s. Shows defeat screen with wave reached, merges performed, highest tier achieved. Both screens offer Replay (restarts same seed) and Menu (returns to tutorial)."
+}
