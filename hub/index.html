@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>gd-gpt Playable Review Hub</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0a18;
+    --card: #14142a;
+    --border: #23234a;
+    --accent: #33e6ff;
+    --accent2: #ff33cc;
+    --text: #f0f0ff;
+    --dim: #8899bb;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  header {
+    padding: 20px 18px 14px;
+    text-align: center;
+  }
+  header h1 {
+    margin: 0 0 4px; font-size: 20px; letter-spacing: 0.5px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header p { margin: 0; font-size: 12px; color: var(--dim); }
+  #status {
+    margin: 10px auto 0; max-width: 480px; padding: 8px 14px;
+    font-size: 11px; color: var(--dim); text-align: center;
+  }
+  main {
+    max-width: 480px; margin: 0 auto; padding: 6px 14px 40px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  a.card {
+    display: block; text-decoration: none; color: var(--text);
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px 18px; position: relative; overflow: hidden;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+  a.card:active { transform: scale(0.97); border-color: var(--accent); }
+  a.card .name { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+  a.card .desc { font-size: 12.5px; color: var(--dim); margin: 0; line-height: 1.4; }
+  a.card .tag {
+    display: inline-block; margin-top: 8px; font-size: 10.5px; padding: 3px 8px;
+    border-radius: 20px; background: rgba(51,230,255,0.12); color: var(--accent);
+    letter-spacing: 0.3px;
+  }
+  a.card .dot {
+    position: absolute; top: 16px; right: 16px; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent2); box-shadow: 0 0 8px var(--accent2);
+  }
+  footer { text-align: center; padding: 10px 0 30px; font-size: 10.5px; color: #555a7a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>PLAYABLE REVIEW HUB</h1>
+  <p>gd-gpt hand-built genre harnesses — tap to play</p>
+</header>
+<div id="status">Loading…</div>
+<main id="cards"></main>
+<footer>local review build · served over tunnel</footer>
+<script>
+const GAMES = [
+  { file: 'endless_runner.html', name: 'Neon Dash', tag: 'Endless Runner', desc: 'Dodge, jump, survive an escalating obstacle course.' },
+  { file: 'match_3.html', name: 'Prism Cascade', tag: 'Match-3', desc: 'Swap gems, chain cascades, hit the target score.' },
+  { file: 'idle_clicker.html', name: 'Cosmic Tap', tag: 'Idle / Clicker', desc: 'Tap to earn, buy generators, race the clock.' },
+  { file: 'pull_the_pin.html', name: 'Pull the Pin', tag: 'Physics Puzzle', desc: 'Pull pins, cascade balls, rescue enough of them.' },
+  { file: 'ball_sort.html', name: 'Prism Pour', tag: 'Ball / Water Sort', desc: 'Pour colors together until every tube is sorted.' },
+  { file: 'stack_tower.html', name: 'Skybound Stack', tag: 'Stack Tower', desc: 'Time your drops, stack straight, chase a perfect streak.' },
+  { file: 'tower_defense.html', name: 'Signal Defense', tag: 'Tower Defense', desc: 'Build turrets, hold the lane, survive 3 waves.' },
+];
+
+const main = document.getElementById('cards');
+GAMES.forEach(g => {
+  const a = document.createElement('a');
+  a.className = 'card';
+  a.href = '/harness/' + g.file + '?t=' + Date.now();
+  a.innerHTML = `<div class="dot"></div><p class="name">${g.name}</p><p class="desc">${g.desc}</p><span class="tag">${g.tag}</span>`;
+  main.appendChild(a);
+});
+
+const statusEl = document.getElementById('status');
+statusEl.textContent = GAMES.length + ' playables · updated live as builds land';
+</script>
+</body>
+</html>

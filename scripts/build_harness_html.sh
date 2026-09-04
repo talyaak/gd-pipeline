@@ -10,9 +10,12 @@ TITLE="$2"      # e.g. "Prism Cascade - Harness"
 
 {
   echo '<!DOCTYPE html>'
-  echo "<html><head><meta charset=\"utf-8\"><title>${TITLE}</title>"
-  echo '<style>html,body{margin:0;background:#0a0a18;overflow:hidden;display:flex;align-items:center;justify-content:center;height:100%;}canvas{display:block;}</style>'
+  echo "<html><head><meta charset=\"utf-8\">"
+  echo '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">'
+  echo "<title>${TITLE}</title>"
+  echo '<style>html,body{margin:0;background:#0a0a18;overflow:hidden;height:100%;width:100%;position:fixed;touch-action:none;}#game-root{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}canvas{display:block;touch-action:none;}</style>'
   echo '</head><body>'
+  echo '<div id="game-root"></div>'
   echo '<script>'
   cat pipeline/vendor/phaser.min.js
   echo

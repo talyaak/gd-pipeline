@@ -6,9 +6,11 @@
 // generation. Do not add a config layer here; pull constants out only after this
 // is confirmed fun by actually playing it.
 
-const LANES_X = [200, 400, 600];
-const PLAYER_Y = 340;
+const W = 450, H = 800;
+const LANES_X = [95, 225, 355];
+const PLAYER_Y = 620;
 const LANE_SWITCH_MS = 140;
+const SWIPE_THRESHOLD = 30;
 
 const STATE = { BOOT: 'boot', START: 'start', PLAYING: 'playing', DEAD: 'dead' };
 
@@ -60,9 +62,9 @@ class PlayScene extends Phaser.Scene {
     // UI
     this.scoreText = this.add.text(16, 12, 'Score: 0', { fontFamily: 'monospace', fontSize: '22px', color: '#33e6ff' });
     this.bestText = this.add.text(16, 38, 'Best: ' + this.best, { fontFamily: 'monospace', fontSize: '16px', color: '#ff33cc' });
-    this.multText = this.add.text(784, 12, 'x1', { fontFamily: 'monospace', fontSize: '22px', color: '#ffe14d' }).setOrigin(1, 0);
+    this.multText = this.add.text(W - 16, 12, 'x1', { fontFamily: 'monospace', fontSize: '22px', color: '#ffe14d' }).setOrigin(1, 0);
 
-    this.startText = this.add.text(400, 225, 'TAP or PRESS SPACE\nA/D or ←/→ to switch lanes  •  ↑/SPACE to jump', {
+    this.startText = this.add.text(W / 2, 300, 'TAP or SWIPE\nSWIPE LEFT/RIGHT to switch lanes\nTAP / SWIPE UP to jump', {
       fontFamily: 'monospace', fontSize: '18px', color: '#ffffff', align: 'center'
     }).setOrigin(0.5);
     this.tweens.add({ targets: this.startText, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
@@ -76,11 +78,38 @@ class PlayScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-SPACE', () => this._onAction());
     this.input.keyboard.on('keydown-UP', () => this._onAction());
     this.input.keyboard.on('keydown-W', () => this._onAction());
-    this.input.on('pointerdown', () => this._onAction());
     this.input.keyboard.on('keydown-LEFT', () => this._switchLane(-1));
     this.input.keyboard.on('keydown-A', () => this._switchLane(-1));
     this.input.keyboard.on('keydown-RIGHT', () => this._switchLane(1));
     this.input.keyboard.on('keydown-D', () => this._switchLane(1));
+
+    // Touch: swipe left/right switches lanes, swipe up or a plain tap jumps
+    // (or starts/restarts). A tap is just a swipe that never crossed the
+    // threshold -- decided on release, not on press, so a lane-switch swipe
+    // doesn't also fire a jump.
+    this._touchStartX = 0;
+    this._touchStartY = 0;
+    this._touchDecided = false;
+    this.input.on('pointerdown', (p) => {
+      this._touchStartX = p.x;
+      this._touchStartY = p.y;
+      this._touchDecided = false;
+    });
+    this.input.on('pointermove', (p) => {
+      if (!p.isDown || this._touchDecided) return;
+      const dx = p.x - this._touchStartX;
+      const dy = p.y - this._touchStartY;
+      if (Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
+        this._touchDecided = true;
+        this._switchLane(dx > 0 ? 1 : -1);
+      } else if (dy < -SWIPE_THRESHOLD && Math.abs(dy) > Math.abs(dx)) {
+        this._touchDecided = true;
+        this._onAction();
+      }
+    });
+    this.input.on('pointerup', () => {
+      if (!this._touchDecided) this._onAction();
+    });
 
     window.__GAME__ = this.game;
     this.game.registry.set('score', 0);
@@ -194,12 +223,13 @@ class PlayScene extends Phaser.Scene {
     this.best = Math.max(this.best, Math.floor(this.score));
     localStorage.setItem('runner_best', String(this.best));
 
-    const panel = this.add.rectangle(400, 225, 340, 220, 0x0a0a18, 0.92).setStrokeStyle(2, 0x33e6ff);
-    const title = this.add.text(400, 150, 'GAME OVER', { fontFamily: 'monospace', fontSize: '32px', color: '#ff3377' }).setOrigin(0.5);
-    const scoreT = this.add.text(400, 200, 'Score: ' + Math.floor(this.score), { fontFamily: 'monospace', fontSize: '20px', color: '#33e6ff' }).setOrigin(0.5);
-    const bestT = this.add.text(400, 228, 'Best: ' + this.best, { fontFamily: 'monospace', fontSize: '16px', color: '#ffe14d' }).setOrigin(0.5);
-    const restart = this.add.text(400, 270, 'TAP TO RESTART', { fontFamily: 'monospace', fontSize: '16px', color: '#0a0a18', backgroundColor: '#33e6ff', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive();
-    const cta = this.add.text(400, 315, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5);
+    const cx = W / 2, cy = H / 2;
+    const panel = this.add.rectangle(cx, cy, 340, 220, 0x0a0a18, 0.92).setStrokeStyle(2, 0x33e6ff);
+    const title = this.add.text(cx, cy - 75, 'GAME OVER', { fontFamily: 'monospace', fontSize: '32px', color: '#ff3377' }).setOrigin(0.5);
+    const scoreT = this.add.text(cx, cy - 25, 'Score: ' + Math.floor(this.score), { fontFamily: 'monospace', fontSize: '20px', color: '#33e6ff' }).setOrigin(0.5);
+    const bestT = this.add.text(cx, cy + 3, 'Best: ' + this.best, { fontFamily: 'monospace', fontSize: '16px', color: '#ffe14d' }).setOrigin(0.5);
+    const restart = this.add.text(cx, cy + 45, 'TAP TO RESTART', { fontFamily: 'monospace', fontSize: '16px', color: '#0a0a18', backgroundColor: '#33e6ff', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive();
+    const cta = this.add.text(cx, cy + 90, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5);
     this.tweens.add({ targets: [panel, title, scoreT, bestT, restart, cta], alpha: { from: 0, to: 1 }, duration: 250 });
   }
 
@@ -228,14 +258,14 @@ class PlayScene extends Phaser.Scene {
       const alpha = 0.5 * (1 - t);
       const hue = Phaser.Display.Color.HSVToRGB(0.5 + difficulty * 0.35, 0.6, 0.9);
       this.tunnelG.lineStyle(2, Phaser.Display.Color.GetColor(hue.r, hue.g, hue.b), alpha);
-      const w = 60 + scale * 700, h = 40 + scale * 420;
-      this.tunnelG.strokeRect(400 - w / 2, 200 - h / 2, w, h);
+      const w = 60 + scale * 400, h = 40 + scale * 750;
+      this.tunnelG.strokeRect(W / 2 - w / 2, 260 - h / 2, w, h);
     }
 
     // lane guides
     this.laneG.clear();
     this.laneG.lineStyle(1, 0x2a2a55, 0.5);
-    LANES_X.forEach((x) => { this.laneG.lineBetween(x, 0, x, 450); });
+    LANES_X.forEach((x) => { this.laneG.lineBetween(x, 0, x, H); });
 
     // trail: shift history, ghost squares follow with delay
     this.trailHistory.unshift({ x: this.player.x, y: this.player.y });
@@ -257,7 +287,7 @@ class PlayScene extends Phaser.Scene {
     for (let i = this.obstacles.length - 1; i >= 0; i--) {
       const o = this.obstacles[i];
       o.obj.y += move;
-      if (o.obj.y > 470) { o.obj.destroy(); this.obstacles.splice(i, 1); continue; }
+      if (o.obj.y > H + 20) { o.obj.destroy(); this.obstacles.splice(i, 1); continue; }
       if (Math.abs(o.obj.y - this.player.y) < 24 && o.lane === this.lane) {
         const safe = o.type === 'hurdle' && this.jumping;
         if (!safe) { this._die(); return; }
@@ -268,7 +298,7 @@ class PlayScene extends Phaser.Scene {
     for (let i = this.pickups.length - 1; i >= 0; i--) {
       const p = this.pickups[i];
       p.obj.y += move;
-      if (p.obj.y > 470) { p.obj.destroy(); this.pickups.splice(i, 1); continue; }
+      if (p.obj.y > H + 20) { p.obj.destroy(); this.pickups.splice(i, 1); continue; }
       if (Math.abs(p.obj.y - this.player.y) < 26 && p.lane === this.lane) {
         this.score += 10 * this.multiplier;
         const popup = this.add.text(p.obj.x, p.obj.y, '+' + (10 * this.multiplier), { fontFamily: 'monospace', fontSize: '16px', color: '#33ffbb' }).setOrigin(0.5);
@@ -287,9 +317,8 @@ class PlayScene extends Phaser.Scene {
 
 const config = {
   type: Phaser.AUTO,
-  width: 800,
-  height: 450,
-  parent: undefined,
+  parent: 'game-root',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: W, height: H },
   backgroundColor: '#0a0a18',
   scene: [PlayScene],
   audio: { noAudio: true },
