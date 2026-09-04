@@ -13,23 +13,27 @@
 // right amount of physics for what this genre actually needs -- balls
 // falling and resting on shelves, not a general rigid-body simulation.
 
+const W = 450, H = 800;
 const GRAVITY = 900;
-const WALL_L = 260, WALL_R = 540;
-const CHAMBER_TOP = 90, CHAMBER_BOTTOM = 430;
+const WALL_L = 70, WALL_R = 380;
+const CHAMBER_TOP = 140, CHAMBER_BOTTOM = 680;
 const BALL_R = 12;
 const BALL_COUNT = 10;
 const PIN_PULLS = 3;
 const TARGET_COLLECTED = 6;
 const SESSION_MS = 40000;
+const TIMER_BAR_W = 180;
 const BALL_COLORS = [0x33e6ff, 0xff33cc, 0xffe14d, 0x33ff88, 0xff9933];
 
 // Each shelf is two rectangle segments with a gap between them -- balls can
 // trickle through the gap on their own over time, or the player can spend a
-// pin-pull to remove the whole shelf for an instant cascade.
+// pin-pull to remove the whole shelf for an instant cascade. Positions here
+// are proportional to the original 800x450 landscape layout, just spread
+// across the taller portrait chamber.
 const SHELVES = [
-  { y: 190, gapCenter: 340, gapWidth: 60 },
-  { y: 270, gapCenter: 460, gapWidth: 60 },
-  { y: 350, gapCenter: 400, gapWidth: 60 },
+  { y: 299, gapCenter: 159, gapWidth: 60 },
+  { y: 426, gapCenter: 291, gapWidth: 60 },
+  { y: 553, gapCenter: 225, gapWidth: 60 },
 ];
 const SHELF_H = 10;
 
@@ -68,18 +72,18 @@ class PlayScene extends Phaser.Scene {
     this.energyText = null;
     this.scoreText = this.add.text(16, 12, 'Collected: 0 / ' + TARGET_COLLECTED, { fontFamily: 'monospace', fontSize: '18px', color: '#33ffbb' });
     this.pullsText = this.add.text(16, 36, 'Pin pulls: ' + this.pullsLeft, { fontFamily: 'monospace', fontSize: '14px', color: '#ffe14d' });
-    this.timerBarBg = this.add.rectangle(650, 20, 260, 10, 0x14142a).setStrokeStyle(1, 0x33e6ff, 0.5);
-    this.timerBarFg = this.add.rectangle(520, 20, 260, 10, 0x33e6ff).setOrigin(0, 0.5);
+    this.timerBarBg = this.add.rectangle(W - 16 - TIMER_BAR_W / 2, 20, TIMER_BAR_W, 10, 0x14142a).setStrokeStyle(1, 0x33e6ff, 0.5);
+    this.timerBarFg = this.add.rectangle(W - 16 - TIMER_BAR_W, 20, TIMER_BAR_W, 10, 0x33e6ff).setOrigin(0, 0.5);
 
-    this.startText = this.add.text(400, 60, 'TAP A SHELF TO PULL ITS PIN', {
+    this.startText = this.add.text(W / 2, 60, 'TAP A SHELF TO PULL ITS PIN', {
       fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', align: 'center',
     }).setOrigin(0.5);
     this.tweens.add({ targets: this.startText, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
 
     this.balls = [];
     for (let i = 0; i < BALL_COUNT; i++) {
-      const x = 300 + (i % 5) * 40 + (Math.random() - 0.5) * 10;
-      const y = 105 + Math.floor(i / 5) * 26;
+      const x = WALL_L + 25 + (i % 5) * 55 + (Math.random() - 0.5) * 10;
+      const y = CHAMBER_TOP + 15 + Math.floor(i / 5) * 30;
       const color = BALL_COLORS[i % BALL_COLORS.length];
       const sprite = this.add.circle(x, y, BALL_R, color).setStrokeStyle(2, 0xffffff, 0.7);
       this.balls.push({ sprite, x, y, vx: (Math.random() - 0.5) * 20, vy: 0, alive: true });
@@ -87,7 +91,7 @@ class PlayScene extends Phaser.Scene {
 
     // Quick visible intro: point at the first pin for ~2s before the
     // (already-instant) tap-to-start becomes the obvious next move.
-    const introBanner = Juice.IntroBanner.create(this, { label: 'TAP A PIN TO DROP THE BALLS', y: 44 });
+    const introBanner = Juice.IntroBanner.create(this, { label: 'TAP A PIN TO DROP THE BALLS', y: 100 });
     const introHint = Juice.TapHint.create(this, SHELVES[0].gapCenter, SHELVES[0].y, { color: 0xffe14d, radius: 16 });
     this.time.delayedCall(2000, () => { introBanner.destroy(); introHint.destroy(); });
 
@@ -184,12 +188,13 @@ class PlayScene extends Phaser.Scene {
   _end(won) {
     this.state = STATE.END;
     if (won) this.cameras.main.flash(150, 51, 255, 187, false);
-    const panel = this.add.rectangle(400, 225, 360, 220, 0x0a0a18, 0.95).setStrokeStyle(2, won ? 0x33ffbb : 0xff3377);
-    const title = this.add.text(400, 155, won ? 'RESCUED!' : "TIME'S UP", { fontFamily: 'monospace', fontSize: '26px', color: won ? '#33ffbb' : '#ff3377' }).setOrigin(0.5);
-    const scoreT = this.add.text(400, 200, 'Collected: ' + this.collected + ' / ' + TARGET_COLLECTED, { fontFamily: 'monospace', fontSize: '18px', color: '#33e6ff' }).setOrigin(0.5);
-    const pullsT = this.add.text(400, 226, (PIN_PULLS - this.pullsLeft) + ' pins pulled', { fontFamily: 'monospace', fontSize: '13px', color: '#8899ff' }).setOrigin(0.5);
-    const restart = this.add.text(400, 268, 'TAP TO RETRY', { fontFamily: 'monospace', fontSize: '16px', color: '#0a0a18', backgroundColor: '#33e6ff', padding: { x: 14, y: 8 } }).setOrigin(0.5);
-    const cta = this.add.text(400, 312, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5);
+    const cx = W / 2, cy = H / 2;
+    const panel = this.add.rectangle(cx, cy, 360, 220, 0x0a0a18, 0.95).setStrokeStyle(2, won ? 0x33ffbb : 0xff3377);
+    const title = this.add.text(cx, cy - 70, won ? 'RESCUED!' : "TIME'S UP", { fontFamily: 'monospace', fontSize: '26px', color: won ? '#33ffbb' : '#ff3377' }).setOrigin(0.5);
+    const scoreT = this.add.text(cx, cy - 25, 'Collected: ' + this.collected + ' / ' + TARGET_COLLECTED, { fontFamily: 'monospace', fontSize: '18px', color: '#33e6ff' }).setOrigin(0.5);
+    const pullsT = this.add.text(cx, cy + 1, (PIN_PULLS - this.pullsLeft) + ' pins pulled', { fontFamily: 'monospace', fontSize: '13px', color: '#8899ff' }).setOrigin(0.5);
+    const restart = this.add.text(cx, cy + 43, 'TAP TO RETRY', { fontFamily: 'monospace', fontSize: '16px', color: '#0a0a18', backgroundColor: '#33e6ff', padding: { x: 14, y: 8 } }).setOrigin(0.5);
+    const cta = this.add.text(cx, cy + 87, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5);
     this.tweens.add({ targets: [panel, title, scoreT, pullsT, restart, cta], alpha: { from: 0, to: 1 }, duration: 250 });
   }
 
@@ -197,7 +202,7 @@ class PlayScene extends Phaser.Scene {
     if (this.state === STATE.PLAYING) {
       const elapsed = time - this.sessionStart;
       const remain = Phaser.Math.Clamp(1 - elapsed / SESSION_MS, 0, 1);
-      this.timerBarFg.width = 260 * remain;
+      this.timerBarFg.width = TIMER_BAR_W * remain;
       this.timerBarFg.fillColor = remain < 0.2 ? 0xff3355 : 0x33e6ff;
       if (elapsed >= SESSION_MS && this.collected < TARGET_COLLECTED) { this._end(false); return; }
       if (this.collected >= TARGET_COLLECTED) { this._end(true); return; }
@@ -274,9 +279,8 @@ class PlayScene extends Phaser.Scene {
 
 const config = {
   type: Phaser.AUTO,
-  width: 800,
-  height: 450,
-  parent: undefined,
+  parent: 'game-root',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: W, height: H },
   backgroundColor: '#0a0a18',
   scene: [PlayScene],
   audio: { noAudio: true },
