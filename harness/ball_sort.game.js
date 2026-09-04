@@ -19,9 +19,15 @@ const EMPTY_TUBES = 2;
 const MOVE_LIMIT = 30;
 const SESSION_MS = 60000;
 
+const W = 450, H = 800;
 const TUBE_W = 54;
 const TUBE_H = TUBE_CAPACITY * 34 + 20;
-const TUBE_Y = 380;
+// 6 tubes in one row needs ~700px (the old 800x450 layout) -- doesn't fit a
+// 450-wide portrait screen. Two rows of 3 instead, each tube tracking its
+// own (x, y) rather than a single shared TUBE_Y.
+const TUBE_COLS = 3;
+const COL_X = [100, 225, 350];
+const ROW_Y = [280, 590];
 const BALL_R = 15;
 
 const STATE = { START: 'start', PLAYING: 'playing', END: 'end' };
@@ -40,29 +46,28 @@ class PlayScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#0a0a18');
     this.bgG = this.add.graphics();
     this.bgG.fillGradientStyle(0x0a0a18, 0x0a0a18, 0x101528, 0x101528, 1);
-    this.bgG.fillRect(0, 0, 800, 450);
+    this.bgG.fillRect(0, 0, W, H);
 
     this._generatePuzzle();
 
-    const totalTubes = this.tubes.length;
-    const spacing = 700 / (totalTubes - 1);
-    this.tubeX = this.tubes.map((_, i) => 60 + i * spacing + 10);
+    this.tubeX = this.tubes.map((_, i) => COL_X[i % TUBE_COLS]);
+    this.tubeY = this.tubes.map((_, i) => ROW_Y[Math.floor(i / TUBE_COLS)]);
 
     this.tubeLayer = this.add.container(0, 0);
     this.tubes.forEach((_, i) => this._buildTubeSprite(i));
     this._renderAllTubes();
 
     this.movesText = this.add.text(16, 12, 'Moves: ' + this.moves, { fontFamily: 'monospace', fontSize: '18px', color: '#ffffff' });
-    this.timerBarBg = this.add.rectangle(650, 20, 260, 10, 0x14142a).setStrokeStyle(1, 0x33e6ff, 0.5);
-    this.timerBarFg = this.add.rectangle(520, 20, 260, 10, 0x33e6ff).setOrigin(0, 0.5);
+    this.timerBarBg = this.add.rectangle(W / 2, 20, 220, 10, 0x14142a).setStrokeStyle(1, 0x33e6ff, 0.5);
+    this.timerBarFg = this.add.rectangle(W / 2 - 110, 20, 220, 10, 0x33e6ff).setOrigin(0, 0.5);
 
-    this.startText = this.add.text(400, 55, 'TAP TWO TUBES TO POUR  •  SORT EACH COLOR', {
+    this.startText = this.add.text(W / 2, 55, 'TAP TWO TUBES TO POUR\nSORT EACH COLOR', {
       fontFamily: 'monospace', fontSize: '15px', color: '#ffffff', align: 'center',
     }).setOrigin(0.5);
     this.tweens.add({ targets: this.startText, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
 
-    const introBanner = Juice.IntroBanner.create(this, { label: 'POUR MATCHING COLORS TOGETHER', y: 44 });
-    const introHint = Juice.TapHint.create(this, this.tubeX[0], TUBE_Y - 40, { color: COLORS[0], radius: 30 });
+    const introBanner = Juice.IntroBanner.create(this, { label: 'POUR MATCHING COLORS TOGETHER', y: 100 });
+    const introHint = Juice.TapHint.create(this, this.tubeX[0], this.tubeY[0] - 40, { color: COLORS[0], radius: 30 });
     this.time.delayedCall(2000, () => { introBanner.destroy(); introHint.destroy(); });
 
     this.input.on('pointerdown', (p) => this._onPointerDown(p));
@@ -109,10 +114,10 @@ class PlayScene extends Phaser.Scene {
   // ---- rendering ----
 
   _buildTubeSprite(i) {
-    const x = this.tubeX[i];
+    const x = this.tubeX[i], ty = this.tubeY[i];
     const g = this.add.graphics();
     g.lineStyle(3, 0x33e6ff, 0.5);
-    g.strokeRoundedRect(x - TUBE_W / 2, TUBE_Y - TUBE_H, TUBE_W, TUBE_H, 10);
+    g.strokeRoundedRect(x - TUBE_W / 2, ty - TUBE_H, TUBE_W, TUBE_H, 10);
     const ballLayer = this.add.container(0, 0);
     this.tubeSprites[i] = { g, ballLayer, highlight: null };
   }
@@ -124,9 +129,9 @@ class PlayScene extends Phaser.Scene {
   _renderTube(i) {
     const spr = this.tubeSprites[i];
     spr.ballLayer.removeAll(true);
-    const x = this.tubeX[i];
+    const x = this.tubeX[i], ty = this.tubeY[i];
     this.tubes[i].forEach((color, slot) => {
-      const y = TUBE_Y - 12 - slot * 34 - 17;
+      const y = ty - 12 - slot * 34 - 17;
       const ball = this.add.circle(x, y, BALL_R, color).setStrokeStyle(2, 0xffffff, 0.7);
       spr.ballLayer.add(ball);
     });
@@ -136,7 +141,7 @@ class PlayScene extends Phaser.Scene {
 
   _tubeAt(x, y) {
     for (let i = 0; i < this.tubeX.length; i++) {
-      if (Math.abs(x - this.tubeX[i]) < TUBE_W / 2 + 8 && y > TUBE_Y - TUBE_H - 10 && y < TUBE_Y + 10) return i;
+      if (Math.abs(x - this.tubeX[i]) < TUBE_W / 2 + 8 && y > this.tubeY[i] - TUBE_H - 10 && y < this.tubeY[i] + 10) return i;
     }
     return null;
   }
@@ -170,7 +175,7 @@ class PlayScene extends Phaser.Scene {
     this._applyPour(from, idx);
     this._renderTube(from);
     this._renderTube(idx);
-    Juice.ParticleBurst.create(this, this.tubeX[idx], TUBE_Y - 20, { color: this.tubes[idx][this.tubes[idx].length - 1], count: 6 });
+    Juice.ParticleBurst.create(this, this.tubeX[idx], this.tubeY[idx] - 20, { color: this.tubes[idx][this.tubes[idx].length - 1], count: 6 });
     this.moves -= 1;
     this.movesText.setText('Moves: ' + this.moves);
     this.movesText.setColor(this.moves <= 5 ? '#ff3355' : '#ffffff');
@@ -183,7 +188,7 @@ class PlayScene extends Phaser.Scene {
   _highlight(idx, on) {
     const spr = this.tubeSprites[idx];
     if (on) {
-      spr.highlight = Juice.GemSelectionHighlight.create(this, this.tubeX[idx] - TUBE_W / 2 - 3, TUBE_Y - TUBE_H - 3, TUBE_W + 6, { radius: 10 });
+      spr.highlight = Juice.GemSelectionHighlight.create(this, this.tubeX[idx] - TUBE_W / 2 - 3, this.tubeY[idx] - TUBE_H - 3, TUBE_W + 6, { radius: 10 });
     } else if (spr.highlight) {
       spr.highlight.destroy();
       spr.highlight = null;
@@ -218,7 +223,7 @@ class PlayScene extends Phaser.Scene {
     if (this.state !== STATE.PLAYING) return;
     const elapsed = time - this.sessionStart;
     const remain = Phaser.Math.Clamp(1 - elapsed / SESSION_MS, 0, 1);
-    this.timerBarFg.width = 260 * remain;
+    this.timerBarFg.width = 220 * remain;
     this.timerBarFg.fillColor = remain < 0.2 ? 0xff3355 : 0x33e6ff;
     if (elapsed >= SESSION_MS) { this._end(false); }
 
@@ -228,9 +233,8 @@ class PlayScene extends Phaser.Scene {
 
 const config = {
   type: Phaser.AUTO,
-  width: 800,
-  height: 450,
-  parent: undefined,
+  parent: 'game-root',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: W, height: H },
   backgroundColor: '#0a0a18',
   scene: [PlayScene],
   audio: { noAudio: true },
