@@ -61,23 +61,48 @@ def _has_vendor_scripts(html: str) -> bool:
     """Check if HTML already contains bundled vendor scripts (Phaser/Juice).
     Self-contained harness games include Phaser + Juice + game code in one <script> block.
     Heuristics: look for actual bundled code exports/definitions, not mere references.
-    Requires at least 2 of 3 markers to avoid false positives from comments/strings.
     """
-    # Extract script content and strip JS comments (// and /* */) to avoid
-    # false positives from markers appearing in comments or string literals.
     import re
     script_blocks = re.findall(r'<script[^>]*>(.*?)</script>', html, re.DOTALL)
     if not script_blocks:
         return False
     combined_script = "\n".join(script_blocks)
-    # Remove single-line comments (// ...)
-    combined_script = re.sub(r'//.*$', '', combined_script, flags=re.MULTILINE)
-    # Remove multi-line comments (/* ... */)
+
+    # Remove single-line comments (// ...) but NOT inside string literals.
+    # Use a state machine approach: track whether we're inside a string.
+    def strip_single_line_comments(js: str) -> str:
+        result = []
+        i = 0
+        in_string = False
+        string_char = ''
+        while i < len(js):
+            ch = js[i]
+            if not in_string:
+                if ch == '"' or ch == "'" or ch == '`':
+                    in_string = True
+                    string_char = ch
+                    result.append(ch)
+                elif ch == '/' and i + 1 < len(js) and js[i + 1] == '/':
+                    # Skip to end of line
+                    while i < len(js) and js[i] != '\n':
+                        i += 1
+                    if i < len(js):
+                        result.append(js[i])  # keep the newline
+                else:
+                    result.append(ch)
+            else:
+                result.append(ch)
+                if ch == '\\' and i + 1 < len(js):
+                    result.append(js[i + 1])
+                    i += 1
+                elif ch == string_char:
+                    in_string = False
+            i += 1
+        return ''.join(result)
+
+    combined_script = strip_single_line_comments(combined_script)
+    # Remove multi-line comments (/* ... */) - these don't appear in strings in our codebase
     combined_script = re.sub(r'/\*.*?\*/', '', combined_script, flags=re.DOTALL)
-    # Also remove string literals to be extra safe (single/double quotes, template literals)
-    combined_script = re.sub(r'`[^`]*`', '', combined_script)
-    combined_script = re.sub(r'"(?:[^"\\]|\\.)*"', '', combined_script)
-    combined_script = re.sub(r"'(?:[^'\\]|\\.)*'", '', combined_script)
 
     # Harness games bundle the full Juice toolkit which exports: window.Juice = { ... }
     # They also define Juice classes like ScreenShake in the global scope.
@@ -90,8 +115,6 @@ def _has_vendor_scripts(html: str) -> bool:
     )
     # Count how many markers appear in the cleaned script content
     match_count = sum(1 for marker in markers if marker in combined_script)
-    # Require at least 2 of 3 markers to avoid single-marker false positives
-    # (e.g., a comment containing "class ScreenShake" alone)
     return match_count >= 2
 
 
