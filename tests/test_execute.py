@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.execute import run_execution_report
+from pipeline.execute import run_execution_report, _has_vendor_scripts
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
@@ -41,8 +41,55 @@ def test_game_over_after_real_engagement_is_not_flagged(tmp_path):
     assert report.engagement_duration_ms and report.engagement_duration_ms > 0
 
 
-@pytest.mark.slow
+@ pytest.mark.slow
 def test_missing_canvas_is_detected(tmp_path):
     html = "<!DOCTYPE html><html><body>no game here</body></html>"
     report = run_execution_report(html, tmp_path)
     assert report.canvas_rendered is False
+
+
+def test_has_vendor_scripts_detects_self_contained():
+    """Self-contained harness HTML (with bundled Juice/Phaser) should be detected."""
+    # Minimal self-contained HTML with the markers _has_vendor_scripts looks for
+    self_contained_html = """
+    <!DOCTYPE html>
+    <html><head><title>Test</title></head><body>
+    <script>
+    window.Juice = { ScreenShake: class ScreenShake {} };
+    class ScreenShake { constructor() {} }
+    window.__GAME__ = this.game;
+    </script>
+    </body></html>
+    """
+    assert _has_vendor_scripts(self_contained_html) is True
+
+
+def test_has_vendor_scripts_detects_regular_html():
+    """Regular HTML without bundled vendor scripts should not be detected as self-contained."""
+    regular_html = """
+    <!DOCTYPE html>
+    <html><head><title>Test</title></head><body>
+    <script>
+    class PlayScene extends Phaser.Scene { create() {} }
+    var game = new Phaser.Game({ type: Phaser.AUTO, width: 400, height: 300, scene: [PlayScene] });
+    window.__GAME__ = game;
+    </script>
+    </body></html>
+    """
+    assert _has_vendor_scripts(regular_html) is False
+
+
+def test_has_vendor_scripts_detects_partial_markers():
+    """HTML with only partial/similar markers should not be detected as self-contained."""
+    # Similar but not matching markers (comments don't contain the exact marker strings)
+    partial_html = """
+    <!DOCTYPE html>
+    <html><head><title>Test</title></head><body>
+    <script>
+    window.Juice = [];  // Array instead of object
+    // ScreenShake class not defined here
+    // Game reference pattern not used here
+    </script>
+    </body></html>
+    """
+    assert _has_vendor_scripts(partial_html) is False
