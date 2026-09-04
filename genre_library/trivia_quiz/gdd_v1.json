@@ -1,0 +1,31 @@
+{
+  "title": "Quiz Blitz",
+  "core_loop": "Rapid-fire multiple-choice trivia questions appear one at a time. The player selects an answer before the 10-second timer expires. Correct answers award points and extend the streak multiplier; wrong answers reset the multiplier and cost a life. Three lives total. Questions cycle through categories (pop culture, science, history, geography, entertainment) with increasing difficulty per streak tier. Session ends when lives reach zero or 50 questions are answered — final score combines base points, streak bonuses, speed bonuses, and category completion bonuses.",
+  "controls": "Tap or click one of four answer buttons (A/B/C/D). Keyboard: 1/2/3/4 or A/B/C/D keys to select. Space to skip question (costs 1 life, once per session). No drag, swipe, or hold mechanics — pure discrete selection.",
+  "mechanics": [
+    "10-second countdown timer per question (visual ring + numeric)",
+    "Streak multiplier: 1x base -> 1.5x at 3 correct -> 2x at 6 -> 3x at 10 -> 4x at 15 (caps at 4x)",
+    "Speed bonus: +50 pts for answering in <3s, +25 pts for <6s, +10 pts for <9s",
+    "Three lives (heart icons). Wrong answer: -1 life, streak resets to 0, 0.5s screen shake",
+    "Skip token: 1 per session, press Space to skip current question (costs 1 life, no streak penalty)",
+    "Category rotation: Pop Culture, Science, History, Geography, Entertainment — cycles every 5 questions",
+    "Difficulty scaling: Streak 0-2 (easy), 3-5 (medium), 6-9 (hard), 10-14 (expert), 15+ (master)",
+    "Category mastery bonus: Complete all 5 questions in a category cycle without missing -> +200 pts and 1 life restored (max 3)",
+    "Question pool: 200+ hand-authored questions per category, shuffled per session, no repeats within session",
+    "Final score = sum(base * streak_mult + speed_bonus) + category_bonuses + survival_bonus (10 pts per remaining life)"
+  ],
+  "juice": [
+    "Answer buttons pulse on hover/tap with color-matched glow (green=correct preview, red=wrong preview)",
+    "Correct answer: green checkmark burst, +points popup floats up, streak meter fills with rainbow gradient",
+    "Wrong answer: red X burst, screen shake (6px, 150ms), heart icon cracks and falls off with particle trail",
+    "Timer ring: smooth clockwise drain, pulses red at 3s remaining, emits urgency ticks at 5/3/1s",
+    "Streak milestone (3/6/10/15): full-screen flash with multiplier badge, brief 0.15s time dilation",
+    "Category complete: confetti burst in category color, mastery badge slides in from side",
+    "Skip activation: vortex swallow animation on question card, skip token grays out",
+    "Question transition: card flips 3D (Y-axis, 200ms), new question fades in on back face",
+    "Background hue shifts subtly per category (pop=pink, science=cyan, history=sepia, geography=green, entertainment=purple)",
+    "Game over: score tally animation (base -> streak -> speed -> category -> survival), rank badge (S/A/B/C/D/E), 'Play Again' pulse"
+  ],
+  "mvp_scope": "Single-file HTML5 (800x600), Phaser 3, no external assets. All text rendered via bitmap font (procedurally generated atlas). Questions stored as embedded JSON array. Four answer buttons as Phaser containers with rounded rect backgrounds. Timer as graphics arc. Streak meter as horizontal bar with gradient fill. Lives as three heart containers. Category icon row at top. Background: animated gradient mesh matching current category hue. GameOver scene with animated score breakdown and rank. 60fps target on 5-year-old mobile.",
+  "win_lose_condition": "Lose: Lives reach 0 (3 wrong answers or 2 wrong + 1 skip). Win: Answer 50 questions without losing all lives. Both end states show GameOver scene with animated score tally, rank (S: 45k+, A: 35k+, B: 25k+, C: 15k+, D: 8k+, E: <8k), and restart button. No mid-session save — session is 60-90 seconds, designed for ad-length play."
+}
