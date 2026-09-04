@@ -6,15 +6,26 @@
 // hard for a single playable-ad session: one lane, one tower type, 3 short
 // waves -- not the free-placement multi-tower economy a full game would have.
 
-const PATH_Y = 225;
+const W = 450, H = 800;
+// Path runs top-to-bottom instead of the old left-to-right -- a horizontal
+// lane across only 450px of width felt cramped and gave enemies barely any
+// runway; a vertical lane uses the portrait screen's actual long axis and
+// reads more naturally on a phone (enemies march down toward you).
+const PATH_X = W / 2;
+const PATH_TOP = 90;
+const PATH_BOTTOM = 750;
+const BASE_Y = 770;
 const BASE_HP = 10;
 const CURRENCY_START = 100;
 const TOWER_COST = 40;
 const TOWER_RANGE = 100;
 const TOWER_DMG = 2;
 const TOWER_RATE_MS = 500;
-const BUILD_SPOTS = [200, 400, 600];
-const BUILD_Y = 175;
+const BUILD_SPOTS = [
+  { x: PATH_X - 90, y: 260 },
+  { x: PATH_X + 90, y: 420 },
+  { x: PATH_X - 90, y: 580 },
+];
 
 const WAVES = [
   { count: 5, hp: 5, speed: 55, spawnGap: 900 },
@@ -43,33 +54,33 @@ class PlayScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#0a0a18');
     this.bgG = this.add.graphics();
     this.bgG.fillGradientStyle(0x0a0a18, 0x0a0a18, 0x101a1a, 0x101a1a, 1);
-    this.bgG.fillRect(0, 0, 800, 450);
+    this.bgG.fillRect(0, 0, W, H);
 
     const pathG = this.add.graphics();
     pathG.lineStyle(26, 0x14142a, 1);
-    pathG.lineBetween(0, PATH_Y, 800, PATH_Y);
+    pathG.lineBetween(PATH_X, PATH_TOP, PATH_X, PATH_BOTTOM);
     pathG.lineStyle(2, 0x33e6ff, 0.35);
-    pathG.lineBetween(0, PATH_Y, 800, PATH_Y);
+    pathG.lineBetween(PATH_X, PATH_TOP, PATH_X, PATH_BOTTOM);
 
-    this.baseSprite = this.add.rectangle(790, PATH_Y, 20, 60, 0x33ffbb).setStrokeStyle(2, 0xffffff, 0.8);
-    this.baseHpText = this.add.text(790, PATH_Y - 42, String(this.baseHp), { fontFamily: 'monospace', fontSize: '14px', color: '#33ffbb' }).setOrigin(0.5);
+    this.baseSprite = this.add.rectangle(PATH_X, BASE_Y, 60, 20, 0x33ffbb).setStrokeStyle(2, 0xffffff, 0.8);
+    this.baseHpText = this.add.text(PATH_X + 46, BASE_Y, String(this.baseHp), { fontFamily: 'monospace', fontSize: '14px', color: '#33ffbb' }).setOrigin(0.5);
 
     this.enemyLayer = this.add.container(0, 0);
     this.towerLayer = this.add.container(0, 0);
     this.fxLayer = this.add.container(0, 0);
 
-    this.buildPads = BUILD_SPOTS.map((x) => this._buildPad(x));
+    this.buildPads = BUILD_SPOTS.map((spot) => this._buildPad(spot.x, spot.y));
 
     this.currencyText = this.add.text(16, 12, 'Coins: ' + this.currency, { fontFamily: 'monospace', fontSize: '18px', color: '#ffe14d' });
-    this.waveText = this.add.text(784, 12, 'Wave 1 / ' + WAVES.length, { fontFamily: 'monospace', fontSize: '16px', color: '#33e6ff' }).setOrigin(1, 0);
+    this.waveText = this.add.text(W - 16, 12, 'Wave 1 / ' + WAVES.length, { fontFamily: 'monospace', fontSize: '16px', color: '#33e6ff' }).setOrigin(1, 0);
 
-    this.startText = this.add.text(400, 55, 'TAP A PAD TO BUILD  •  DEFEND THE BASE', {
+    this.startText = this.add.text(W / 2, 55, 'TAP A PAD TO BUILD\nDEFEND THE BASE', {
       fontFamily: 'monospace', fontSize: '15px', color: '#ffffff', align: 'center',
     }).setOrigin(0.5);
     this.tweens.add({ targets: this.startText, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
 
-    const introBanner = Juice.IntroBanner.create(this, { label: 'TAP PADS TO BUILD TOWERS (' + TOWER_COST + ' COINS)', y: 44 });
-    const introHint = Juice.TapHint.create(this, BUILD_SPOTS[1], BUILD_Y, { color: 0x33e6ff, radius: 20 });
+    const introBanner = Juice.IntroBanner.create(this, { label: 'TAP PADS TO BUILD TOWERS (' + TOWER_COST + ' COINS)', y: 100 });
+    const introHint = Juice.TapHint.create(this, BUILD_SPOTS[1].x, BUILD_SPOTS[1].y, { color: 0x33e6ff, radius: 20 });
     this.time.delayedCall(2000, () => { introBanner.destroy(); introHint.destroy(); });
 
     this.input.on('pointerdown', (p) => this._onPointerDown(p));
@@ -78,11 +89,11 @@ class PlayScene extends Phaser.Scene {
     this.game.registry.set('score', 0);
   }
 
-  _buildPad(x) {
+  _buildPad(x, y) {
     const g = this.add.graphics();
     g.lineStyle(2, 0x33e6ff, 0.6);
-    g.strokeRoundedRect(x - 20, BUILD_Y - 20, 40, 40, 6);
-    return { x, y: BUILD_Y, g, tower: null };
+    g.strokeRoundedRect(x - 20, y - 20, 40, 40, 6);
+    return { x, y, g, tower: null };
   }
 
   _onPointerDown(p) {
@@ -136,8 +147,8 @@ class PlayScene extends Phaser.Scene {
   }
 
   _spawnEnemy(wave) {
-    const sprite = this.add.circle(-20, PATH_Y, 12, 0xff3377).setStrokeStyle(2, 0xffffff, 0.7);
-    const hpBar = this.add.rectangle(-20, PATH_Y - 20, 22, 4, 0x33ff88).setOrigin(0.5);
+    const sprite = this.add.circle(PATH_X, PATH_TOP - 20, 12, 0xff3377).setStrokeStyle(2, 0xffffff, 0.7);
+    const hpBar = this.add.rectangle(PATH_X, PATH_TOP - 40, 22, 4, 0x33ff88).setOrigin(0.5);
     this.enemyLayer.add(sprite);
     this.enemyLayer.add(hpBar);
     this.enemies.push({ sprite, hpBar, hp: wave.hp, maxHp: wave.hp, speed: wave.speed, alive: true });
@@ -166,9 +177,9 @@ class PlayScene extends Phaser.Scene {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       if (!e.alive) continue;
-      e.sprite.x += e.speed * dtS;
-      e.hpBar.x = e.sprite.x;
-      if (e.sprite.x >= 775) {
+      e.sprite.y += e.speed * dtS;
+      e.hpBar.y = e.sprite.y - 20;
+      if (e.sprite.y >= BASE_Y - 20) {
         this.baseHp -= 1;
         this.baseHpText.setText(String(this.baseHp));
         this.cameras.main.shake(120, 0.006);
@@ -182,7 +193,7 @@ class PlayScene extends Phaser.Scene {
     // towers fire
     this.towers.forEach((t) => {
       if (time - t.lastFired < TOWER_RATE_MS) return;
-      const target = this.enemies.find((e) => e.alive && Math.abs(e.sprite.x - t.x) < TOWER_RANGE);
+      const target = this.enemies.find((e) => e.alive && Math.abs(e.sprite.y - t.y) < TOWER_RANGE);
       if (!target) return;
       t.lastFired = time;
       const beam = this.add.line(0, 0, t.x, t.y, target.sprite.x, target.sprite.y, 0x33e6ff, 0.8).setOrigin(0, 0).setLineWidth(2);
@@ -222,9 +233,8 @@ class PlayScene extends Phaser.Scene {
 
 const config = {
   type: Phaser.AUTO,
-  width: 800,
-  height: 450,
-  parent: undefined,
+  parent: 'game-root',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: W, height: H },
   backgroundColor: '#0a0a18',
   scene: [PlayScene],
   audio: { noAudio: true },
