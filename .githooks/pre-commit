@@ -50,6 +50,39 @@ if echo "$staged_files" | grep -qx "$LOG_FILE"; then
             fi
         fi
     fi
+
+    # Mechanically blocks a new top entry whose date header has drifted from
+    # the real system clock. This has happened for real, ten separate times
+    # (see LESSONS_LEARNED.md) - every instance traced back to a cycle
+    # computing or guessing "today's date" instead of actually running `date`.
+    # A prompt instruction telling it to run `date -u` first was tried and
+    # did not hold (an independent audit caught an 11th instance land AFTER
+    # that instruction was added) - a written request a free-tier model can
+    # silently skip is not a gate, so this checks the actual clock instead.
+    if [ -z "$ALLOW_LOG_TIMESTAMP_DRIFT" ]; then
+        top_line=$(git show ":$LOG_FILE" | head -1)
+        entry_date=$(echo "$top_line" | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' || true)
+        if [ -n "$entry_date" ]; then
+            real_date=$(date -u +%Y-%m-%d)
+            entry_epoch=$(date -u -d "$entry_date" +%s 2>/dev/null || echo "")
+            real_epoch=$(date -u -d "$real_date" +%s)
+            if [ -n "$entry_epoch" ]; then
+                diff=$((entry_epoch - real_epoch))
+                abs_diff=${diff#-}
+                if [ "$abs_diff" -gt 86400 ]; then
+                    days=$((abs_diff / 86400))
+                    echo "BLOCKED: $LOG_FILE's new top entry is dated $entry_date, but the"
+                    echo "real system date (per 'date -u' right now) is $real_date -"
+                    echo "that's $days day(s) off. Run 'date -u +\"%Y-%m-%d %H:%M UTC\"'"
+                    echo "yourself and use THAT exact output as the entry header - do not"
+                    echo "compute, estimate, or carry a date forward from the previous entry."
+                    echo "If this is genuinely intentional, retry with"
+                    echo "ALLOW_LOG_TIMESTAMP_DRIFT=1 git commit ..."
+                    exit 1
+                fi
+            fi
+        fi
+    fi
 fi
 
 p4_touched=$(echo "$staged_files" | grep -E "$P4_PATTERN" || true)
