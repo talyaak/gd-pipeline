@@ -1,0 +1,33 @@
+{
+  "title": "Beat Runner: Neon Rhythm Rush",
+  "core_loop": "Player controls a glowing cube auto-running through a three-lane neon tunnel. Obstacles and pickups spawn strictly on musical beats (120 BPM = 500ms/beat). Lane-switch or jump ON-BEAT (±60ms window) = PERFECT: +25% score bonus, brief invincibility (300ms), screen flash. Off-beat = normal. Survive 60s to trigger BOSS PHASE: obstacle density doubles, beat interval halves (250ms), PERFECT window tightens to ±40ms. Endless high-score challenge after boss.",
+  "controls": "A/D or Left/Right Arrow: switch lanes (3 lanes). Space/W/Up Arrow: jump (vaults low hurdles). Touch: left/right thirds = lane switch, center = jump. Visual beat indicator pulses at screen bottom — tap on pulse for PERFECT.",
+  "mechanics": [
+    "Three-lane horizontal movement (x positions: 200, 400, 600), 140ms cubic-ease lane switch",
+    "Jump vault: 420ms total, 40px height, 1.35x scale squash/stretch, cannot jump again until landing",
+    "Continuous forward scroll: base speed 220 px/sec, ramps +240 px/sec over 45s, then holds at 460 px/sec",
+    "Beat-synced spawning: all obstacles/pickups spawn ON BEAT (120 BPM = 500ms interval). Beat phase never drifts — spawns quantized to nearest beat",
+    "Obstacle types (weighted by difficulty 0→1 over 45s): HURDLE (55%→40%, low 18px, jumpable), BARRIER (30%→25%, full-height 40px, must lane-switch), WALL (0%→35% after 8s, blocks 2 of 3 lanes, one safe gap)",
+    "Pickups: glowing orbs (55% chance per beat), award 10×multiplier score, particle burst + floating popup",
+    "PERFECT system: lane-switch or jump within ±60ms of beat = PERFECT. Grants: +25% score for that action, 300ms invincibility (obstacles pass through), white screen flash (100ms, 0.3 alpha), combo counter increments. Miss window = combo resets",
+    "Combo multiplier: PERFECT streak ×0.1 added to base multiplier (base = 1 + floor(elapsed/5000)). Max combo bonus +1.0 (10 PERFECTs in a row)",
+    "BOSS PHASE at 60s: spawn interval 500ms→250ms (240 BPM), PERFECT window ±60ms→±40ms, obstacle density 2×, speed holds at 460 px/sec. Survive 30s boss = 'BOSS CLEARED' banner, then endless continues at boss intensity",
+    "High score persisted in localStorage (key: 'beat_runner_best')"
+  ],
+  "juice": [
+    "Pulsing neon glow on player (0x33e6ff) and obstacles — intensity synced to beat (scale 1.0→1.08→1.0 on each pulse)",
+    "Beat indicator: pulsing ring at bottom-center (radius 24→32→24, 500ms cycle), flashes white on PERFECT",
+    "Particle burst on pickup collect: 12 radiating lines (0x33ffbb), 350ms, cubic-ease-out + fade",
+    "PERFECT flash: full-screen white additive flash 100ms, 0.3 alpha, + camera shake 80ms 0.008",
+    "Invincibility shimmer: player alpha 0.5→1.0 ping-pong 100ms during 300ms invincibility",
+    "Trail effect: 6 ghost squares fading 0.12→0.01, positions lag 6 frames each (36-frame history)",
+    "Parallax tunnel: 7 concentric rings expanding from center, HSV hue shifts 0.5→0.85 (blue→purple→red) with difficulty, stroke alpha 0.5→0 over ring lifetime (280ms)",
+    "Lane guides: subtle 0x2a2a55 lines at x=200,400,600, alpha 0.5",
+    "Floating score popups: '+N' text rises 40px over 600ms, fades, monospace 16px, color matches pickup (0x33ffbb)",
+    "Death explosion: 18 geometric fragments (6×6 squares, 0x33e6ff) scatter 60-140px over 500-800ms cubic-ease-out + fade",
+    "Game over panel: dark semi-transparent (0x0a0a18, 0.92) with cyan stroke, 'GAME OVER' magenta 32px, score cyan 20px, best yellow 16px, 'TAP TO RESTART' button (cyan bg, dark text, 14px padding), 'PLAY FULL VERSION' CTA (magenta bg). All fade in 250ms",
+    "Intro sequence: Juice.IntroBanner 'DODGE ON BEAT • JUMP TO SURVIVE' + Juice.TapHint at player (cyan), both auto-dismiss after 2s"
+  ],
+  "mvp_scope": "Single endless neon tunnel with three-lane rhythm gameplay. Beat-synced procedural generation: every obstacle/pickup quantized to 120 BPM grid. Three obstacle types with difficulty-weighted spawns. PERFECT timing system with ±60ms window, invincibility reward, combo multiplier. Boss phase at 60s (240 BPM, ±40ms window, 2× density). All graphics: HTML5 Canvas geometric shapes, gradients, additive glow — no external assets. Juice toolkit: IntroBanner, TapHint, ScreenShake, ParticleBurst, EndCard. Responsive keyboard/touch. Target 60fps. Score + best persisted.",
+  "win_lose_condition": "No win condition — endless high-score challenge. Lose: colliding with any obstacle while NOT invincible instantly ends run. BOSS PHASE milestone at 60s survival (banner 'BOSS CLEARED' 3s). Goal: maximize score via survival time (8 pts/sec × multiplier), pickup collects (10×multiplier), and PERFECT bonuses (+25% per perfect action, combo up to +1.0 multiplier)."
+}
