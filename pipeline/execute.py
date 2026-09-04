@@ -63,6 +63,22 @@ def _has_vendor_scripts(html: str) -> bool:
     Heuristics: look for actual bundled code exports/definitions, not mere references.
     Requires at least 2 of 3 markers to avoid false positives from comments/strings.
     """
+    # Extract script content and strip JS comments (// and /* */) to avoid
+    # false positives from markers appearing in comments or string literals.
+    import re
+    script_blocks = re.findall(r'<script[^>]*>(.*?)</script>', html, re.DOTALL)
+    if not script_blocks:
+        return False
+    combined_script = "\n".join(script_blocks)
+    # Remove single-line comments (// ...)
+    combined_script = re.sub(r'//.*$', '', combined_script, flags=re.MULTILINE)
+    # Remove multi-line comments (/* ... */)
+    combined_script = re.sub(r'/\*.*?\*/', '', combined_script, flags=re.DOTALL)
+    # Also remove string literals to be extra safe (single/double quotes, template literals)
+    combined_script = re.sub(r'`[^`]*`', '', combined_script)
+    combined_script = re.sub(r'"(?:[^"\\]|\\.)*"', '', combined_script)
+    combined_script = re.sub(r"'(?:[^'\\]|\\.)*'", '', combined_script)
+
     # Harness games bundle the full Juice toolkit which exports: window.Juice = { ... }
     # They also define Juice classes like ScreenShake in the global scope.
     # The Phaser minified bundle is ~1MB and starts with a UMD wrapper.
@@ -72,8 +88,8 @@ def _has_vendor_scripts(html: str) -> bool:
         "class ScreenShake",   # Juice class definition (bundled)
         "window.__GAME__ = this.game",  # Harness-specific pattern
     )
-    # Count how many markers appear in the HTML
-    match_count = sum(1 for marker in markers if marker in html)
+    # Count how many markers appear in the cleaned script content
+    match_count = sum(1 for marker in markers if marker in combined_script)
     # Require at least 2 of 3 markers to avoid single-marker false positives
     # (e.g., a comment containing "class ScreenShake" alone)
     return match_count >= 2
