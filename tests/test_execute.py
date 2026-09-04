@@ -93,3 +93,50 @@ def test_has_vendor_scripts_detects_partial_markers():
     </body></html>
     """
     assert _has_vendor_scripts(partial_html) is False
+
+
+def test_has_vendor_scripts_rejects_single_marker_in_comment():
+    """Regression test: a comment containing a single marker should not trigger false positive.
+    
+    This is the exact case from the audit: a comment with 'class ScreenShake'
+    should not be detected as self-contained when the other markers are absent.
+    """
+    # HTML with only ONE marker inside a comment - should NOT be detected
+    single_marker_comment_html = """
+    <!DOCTYPE html>
+    <html><head><title>Test</title></head><body>
+    <script>
+    // TODO: implement class ScreenShake later
+    var game = new Phaser.Game({ type: Phaser.AUTO, width: 400, height: 300, scene: [] });
+    </script>
+    </body></html>
+    """
+    assert _has_vendor_scripts(single_marker_comment_html) is False
+
+    # Another case: window.Juice = { in a comment only
+    juice_comment_html = """
+    <!DOCTYPE html>
+    <html><head><title>Test</title></head><body>
+    <script>
+    // Mock: window.Juice = { ScreenShake: class {} };
+    class PlayScene extends Phaser.Scene { create() {} }
+    var game = new Phaser.Game({ type: Phaser.AUTO, width: 400, height: 300, scene: [PlayScene] });
+    window.__GAME__ = game;
+    </script>
+    </body></html>
+    """
+    assert _has_vendor_scripts(juice_comment_html) is False
+
+    # Another case: window.__GAME__ = this.game in a comment only
+    game_comment_html = """
+    <!DOCTYPE html>
+    <html><head><title>Test</title></head><body>
+    <script>
+    // Old pattern: window.__GAME__ = this.game;
+    class PlayScene extends Phaser.Scene { create() {} }
+    var game = new Phaser.Game({ type: Phaser.AUTO, width: 400, height: 300, scene: [PlayScene] });
+    window.__GAME__ = game;
+    </script>
+    </body></html>
+    """
+    assert _has_vendor_scripts(game_comment_html) is False
