@@ -2,12 +2,18 @@
 // harness/*.game.js files: hardcoded, tuned by actually playing it.
 // Priority #5 in STRATEGY.md's genre list, no GDD existed yet.
 
+const W = 450, H = 800;
 const TARGET_LAYERS = 15;
 const BLOCK_H = 28;
 const ACTIVE_Y = 150;
 const FIRST_ROW_Y = ACTIVE_Y + BLOCK_H;
-const ROW_REMOVE_Y = 430;
-const BASE_WIDTH = 260;
+// Portrait gives far more vertical room than the old 800x450 layout had --
+// all 15 layers now fit on screen at once (178 + 15*28 = 598, well under
+// this), so the "scroll older rows off and remove them" path barely
+// triggers instead of being load-bearing. That's a genuine improvement for
+// this genre in portrait, not just a resize.
+const ROW_REMOVE_Y = 760;
+const BASE_WIDTH = 220;
 const PERFECT_TOLERANCE = 6;
 const BASE_SPEED = 140; // px/sec of horizontal oscillation
 const SPEED_STEP = 8;
@@ -32,28 +38,28 @@ class PlayScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#0a0a18');
     this.bgG = this.add.graphics();
     this.bgG.fillGradientStyle(0x0a0a18, 0x0a0a18, 0x121226, 0x121226, 1);
-    this.bgG.fillRect(0, 0, 800, 450);
+    this.bgG.fillRect(0, 0, W, H);
 
     this.rowLayer = this.add.container(0, 0);
     this.particlesLayer = this.add.container(0, 0);
 
     // base row (foundation, not player-placed)
-    const baseLeft = 400 - BASE_WIDTH / 2;
-    const baseRight = 400 + BASE_WIDTH / 2;
-    const baseSprite = this.add.rectangle(400, FIRST_ROW_Y, BASE_WIDTH, BLOCK_H, PALETTE[0]).setStrokeStyle(2, 0xffffff, 0.6);
+    const baseLeft = W / 2 - BASE_WIDTH / 2;
+    const baseRight = W / 2 + BASE_WIDTH / 2;
+    const baseSprite = this.add.rectangle(W / 2, FIRST_ROW_Y, BASE_WIDTH, BLOCK_H, PALETTE[0]).setStrokeStyle(2, 0xffffff, 0.6);
     this.rowLayer.add(baseSprite);
     this.rows.push({ sprite: baseSprite, left: baseLeft, right: baseRight, y: FIRST_ROW_Y });
 
     this.scoreText = this.add.text(16, 12, 'Score: 0', { fontFamily: 'monospace', fontSize: '20px', color: '#33e6ff' });
     this.layerText = this.add.text(16, 36, 'Layer: 0 / ' + TARGET_LAYERS, { fontFamily: 'monospace', fontSize: '14px', color: '#ffe14d' });
 
-    this.startText = this.add.text(400, 60, 'TAP TO DROP  •  STACK ' + TARGET_LAYERS + ' LAYERS', {
+    this.startText = this.add.text(W / 2, 60, 'TAP TO DROP  •  STACK ' + TARGET_LAYERS + ' LAYERS', {
       fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', align: 'center',
     }).setOrigin(0.5);
     this.tweens.add({ targets: this.startText, alpha: 0.4, duration: 700, yoyo: true, repeat: -1 });
 
-    const introBanner = Juice.IntroBanner.create(this, { label: 'TAP WHEN ALIGNED TO STACK PERFECTLY', y: 44 });
-    const introHint = Juice.TapHint.create(this, 400, ACTIVE_Y, { color: 0x33e6ff, radius: 24 });
+    const introBanner = Juice.IntroBanner.create(this, { label: 'TAP WHEN ALIGNED TO STACK PERFECTLY', y: 100 });
+    const introHint = Juice.TapHint.create(this, W / 2, ACTIVE_Y, { color: 0x33e6ff, radius: 24 });
     this.time.delayedCall(2000, () => { introBanner.destroy(); introHint.destroy(); });
 
     this._spawnMovingBlock(baseLeft, baseRight);
@@ -70,7 +76,7 @@ class PlayScene extends Phaser.Scene {
     const fromLeftSide = this.layer % 2 === 0;
     const speed = Math.min(MAX_SPEED, BASE_SPEED + this.layer * SPEED_STEP);
     const minCenter = MARGIN + width / 2;
-    const maxCenter = 800 - MARGIN - width / 2;
+    const maxCenter = W - MARGIN - width / 2;
     const sprite = this.add.rectangle(fromLeftSide ? minCenter : maxCenter, ACTIVE_Y, width, BLOCK_H, PALETTE[this.layer % PALETTE.length]).setStrokeStyle(2, 0xffffff, 0.7);
     this.moving = {
       sprite, width, speed, dir: fromLeftSide ? 1 : -1, minCenter, maxCenter,
@@ -192,9 +198,8 @@ class PlayScene extends Phaser.Scene {
 
 const config = {
   type: Phaser.AUTO,
-  width: 800,
-  height: 450,
-  parent: undefined,
+  parent: 'game-root',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: W, height: H },
   backgroundColor: '#0a0a18',
   scene: [PlayScene],
   audio: { noAudio: true },
