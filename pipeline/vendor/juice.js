@@ -156,13 +156,14 @@ class UIScoreDisplay {
  */
 class GameOverPanel {
   static create(scene, { won = true, score = 0, target = 0, best = 0, onRetry, onCTA } = {}) {
+    const cx = scene.scale.width / 2, cy = scene.scale.height / 2;
     scene.cameras.main.flash(150, won ? 51 : 255, won ? 230 : 51, won ? 255 : 119, false);
-    const panel = scene.add.rectangle(400, 225, 360, 220, 0x0a0a18, 0.94).setStrokeStyle(2, won ? 0x33e6ff : 0xff3377);
-    const title = scene.add.text(400, 155, won ? 'LEVEL CLEAR!' : 'GAME OVER', { fontFamily: 'monospace', fontSize: '28px', color: won ? '#33ffbb' : '#ff3377' }).setOrigin(0.5);
-    const scoreT = scene.add.text(400, 200, 'Score: ' + score + (target ? ' / ' + target : ''), { fontFamily: 'monospace', fontSize: '18px', color: '#33e6ff' }).setOrigin(0.5);
-    const bestT = scene.add.text(400, 226, 'Best: ' + best, { fontFamily: 'monospace', fontSize: '14px', color: '#ffe14d' }).setOrigin(0.5);
-    const retry = scene.add.text(400, 268, 'TAP TO RETRY', { fontFamily: 'monospace', fontSize: '16px', color: '#0a0a18', backgroundColor: '#33e6ff', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    const cta = scene.add.text(400, 312, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    const panel = scene.add.rectangle(cx, cy, 360, 220, 0x0a0a18, 0.94).setStrokeStyle(2, won ? 0x33e6ff : 0xff3377);
+    const title = scene.add.text(cx, cy - 70, won ? 'LEVEL CLEAR!' : 'GAME OVER', { fontFamily: 'monospace', fontSize: '28px', color: won ? '#33ffbb' : '#ff3377' }).setOrigin(0.5);
+    const scoreT = scene.add.text(cx, cy - 25, 'Score: ' + score + (target ? ' / ' + target : ''), { fontFamily: 'monospace', fontSize: '18px', color: '#33e6ff' }).setOrigin(0.5);
+    const bestT = scene.add.text(cx, cy + 1, 'Best: ' + best, { fontFamily: 'monospace', fontSize: '14px', color: '#ffe14d' }).setOrigin(0.5);
+    const retry = scene.add.text(cx, cy + 43, 'TAP TO RETRY', { fontFamily: 'monospace', fontSize: '16px', color: '#0a0a18', backgroundColor: '#33e6ff', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    const cta = scene.add.text(cx, cy + 87, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
     scene.tweens.add({ targets: [panel, title, scoreT, bestT, retry, cta], alpha: { from: 0, to: 1 }, duration: 250 });
 
@@ -171,13 +172,13 @@ class GameOverPanel {
 
     if (won) {
       for (let i = 0; i < 20; i++) {
-        const p = scene.add.rectangle(400, 120, 6, 10, Phaser.Display.Color.HSVToRGB(i / 20, 0.8, 0.9));
+        const p = scene.add.rectangle(cx, cy - 105, 6, 10, Phaser.Display.Color.HSVToRGB(i / 20, 0.8, 0.9));
         const angle = -Math.PI / 2 + (Math.random() - 0.5) * 2.2;
         const dist = 120 + Math.random() * 160;
         scene.tweens.add({
           targets: p,
-          x: 400 + Math.cos(angle) * dist,
-          y: 120 + Math.sin(angle) * dist + 120,
+          x: cx + Math.cos(angle) * dist,
+          y: cy - 105 + Math.sin(angle) * dist + 120,
           rotation: Math.random() * 6,
           alpha: 0,
           duration: 900 + Math.random() * 400,
@@ -252,9 +253,16 @@ class SwapAnimation {
  *   board: 2D array board[r][c] = { color, sprite } or null
  *   onMatch(matches, comboDepth) -> points
  *   onCascadeEnd() called when no more matches
+ *   onNewGem(r, c, color, stackDepth) -- REQUIRED if your game renders gems
+ *     as sprites: called for every cell refilled from the top during
+ *     gravity, since applyGravity only tracks color/board state here and
+ *     has no idea how your game draws a gem. Create the sprite and assign
+ *     it to board[r][c].sprite yourself. stackDepth counts how many other
+ *     new gems are filling in above this one in the same column this pass
+ *     (1 = topmost) -- use it to stagger each one's drop-in start height.
  */
 class CascadeSystem {
-  static create(scene, board, { cols, rows, cellSize, colors, getCellCenter, onMatch, onCascadeEnd, onGemGone } = {}) {
+  static create(scene, board, { cols, rows, cellSize, colors, getCellCenter, onMatch, onCascadeEnd, onGemGone, onNewGem } = {}) {
     const findAllMatches = () => {
       const marked = new Set();
       for (let r = 0; r < rows; r++) {
@@ -299,6 +307,7 @@ class CascadeSystem {
         for (let r = writeR; r >= 0; r--) {
           const color = colors[Phaser.Math.Between(0, colors.length - 1)];
           board[r][c] = { color, sprite: null };
+          if (onNewGem) onNewGem(r, c, color, writeR - r + 1);
           anyFell = true;
         }
       }
@@ -391,7 +400,7 @@ class MovesCounter {
  */
 class IntroBanner {
   static create(scene, { label = 'HOW TO PLAY', y = 20, color = '#8899ff' } = {}) {
-    const text = scene.add.text(400, y, label, { fontFamily: 'monospace', fontSize: '13px', color }).setOrigin(0.5).setAlpha(0);
+    const text = scene.add.text(scene.scale.width / 2, y, label, { fontFamily: 'monospace', fontSize: '13px', color }).setOrigin(0.5).setAlpha(0);
     scene.tweens.add({ targets: text, alpha: 1, duration: 200 });
     return { destroy: () => scene.tweens.add({ targets: text, alpha: 0, duration: 150, onComplete: () => text.destroy() }) };
   }
