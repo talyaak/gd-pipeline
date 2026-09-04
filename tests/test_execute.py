@@ -140,3 +140,25 @@ def test_has_vendor_scripts_rejects_single_marker_in_comment():
     </body></html>
     """
     assert _has_vendor_scripts(game_comment_html) is False
+
+
+def test_has_vendor_scripts_rejects_two_markers_in_comment():
+    """Regression test: two markers in comments should not trigger false positive.
+
+    The bug was that _has_vendor_scripts used simple substring matching on the
+    full HTML, so a comment block containing two of the three markers would
+    incorrectly return True even though the actual code doesn't bundle Juice/Phaser.
+    """
+    two_markers_in_comment = """
+    <!DOCTYPE html>
+    <html><head><title>Test</title></head><body>
+    <script>
+    // window.Juice = { ScreenShake: class {} };
+    // window.__GAME__ = this.game;
+    class PlayScene extends Phaser.Scene { create() {} }
+    var game = new Phaser.Game({ type: Phaser.AUTO, width: 400, height: 300, scene: [PlayScene] });
+    window.__GAME__ = game;
+    </script>
+    </body></html>
+    """
+    assert _has_vendor_scripts(two_markers_in_comment) is False
