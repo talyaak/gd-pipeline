@@ -1,0 +1,33 @@
+{
+  "title": "Polarity Peak: Magnetic Stack Challenge",
+  "core_loop": "A magnetized block oscillates horizontally above the tower. Tap to drop it — but polarity matters. The tower's top layer has a magnetic pole (N or S) that alternates each layer. Dropping a block with matching polarity (N-on-N or S-on-S) causes REPULSION: the block pushes away from center, requiring wider alignment tolerance but granting a polarity bonus. Dropping with OPPOSITE polarity causes ATTRACTION: the block snaps toward center with a tighter 3px perfect window. Stack 15 layers to win — a miss (≤4px overlap) ends the run instantly.",
+  "controls": "Single tap/click anywhere (or Spacebar) to drop the moving block. No horizontal control — timing and polarity awareness are the only skills. Touch-friendly: entire screen is the drop zone. Polarity of next block shown as N/S indicator beside score.",
+  "mechanics": [
+    "Horizontally oscillating magnetized block (N or S pole) that moves faster each layer (120 -> 280 px/sec)",
+    "Alternating tower polarity each layer: base is N, layer 1 is S, layer 2 is N, etc. Block polarity RANDOM each spawn (50/50 N/S)",
+    "REPULSION (matching polarity): block resists centering. Perfect tolerance WIDENS to 10px. Overlap calculation uses expanded bounds. Perfect drop grants +50% score bonus and polarity streak counter",
+    "ATTRACTION (opposite polarity): block snaps toward center. Perfect tolerance TIGHTENS to 3px. Perfect drop grants +25% score bonus but higher precision required",
+    "Overlap calculation: intersecting portion becomes new layer. Repulsion expands effective overlap zone; attraction contracts it",
+    "Polarity streak: consecutive drops with same interaction type (repulsion or attraction) build streak multiplier (x1, x1.5, x2, x2.5 max)",
+    "Progressive narrowing: each miss or imperfect drop reduces next layer's width. Perfect drops maintain width",
+    "Layer descent animation: all existing rows shift down smoothly (180ms cubic-ease) when new layer locks",
+    "Offcut physics: sheared pieces fall away with polarity-tinted rotation and fade (repulsion=red shift, attraction=blue shift)",
+    "Speed scaling: each layer increases oscillation speed by 6 px/sec up to 280 px/sec cap (slightly slower base than v1 to accommodate polarity reading)"
+  ],
+  "juice": [
+    "Magnetic field visualization: subtle animated field lines (N=blue outward, S=red inward) around moving block and tower top",
+    "Repulsion perfect drop: cyan camera flash (100ms), particle burst (electric blue, 12 particles) with radial push animation, floating 'REPEL PERFECT' text with streak multiplier",
+    "Attraction perfect drop: magenta camera flash (100ms), particle burst (magnetic pink, 12 particles) with radial pull animation, floating 'ATTRACT PERFECT' text with streak multiplier",
+    "Polarity switch indicator: when block spawns, N/S symbol pulses with field-color glow for 800ms",
+    "Camera shake (200ms, 0.012 intensity) on miss with polarity-shock screen distortion",
+    "Smooth cubic-ease row descent animation (180ms) when new layer locks in",
+    "Offcut fall-away animation with polarity-tinted rotation and fade (600ms, red for repulsion offcuts, blue for attraction)",
+    "Polarity streak meter: vertical bar beside score that fills with each same-type perfect, glows at max streak",
+    "Pulsing 'TAP TO DROP' prompt with field-line breathing animation during attract mode",
+    "Intro banner: 'MATCH POLES TO REPEL • OPPOSE TO ATTRACT • TAP WHEN ALIGNED' auto-dismisses after 3 seconds",
+    "6-layer polarity-cycling palette (N-layers: cool blues/cyans, S-layers: warm reds/magentas)",
+    "Game-over/win end card with final score, polarity streak record, retry and CTA buttons (via Juice toolkit)"
+  ],
+  "mvp_scope": "Single-screen vertical stacking game, 800x450. 15 target layers to win. Base row 260px wide, 28px tall. All graphics are procedural Phaser rectangles with strokes and animated field-line shaders — zero external assets. Oscillating block spawns with random N/S polarity each layer. Tower top polarity alternates deterministically. Repulsion: 10px perfect tolerance, +50% score. Attraction: 3px perfect tolerance, +25% score. Score = 10 per layer + polarity bonus * streak multiplier. LocalStorage high-score + max-streak persistence. Keyboard (Space) and touch/click input. 60fps target on mobile.",
+  "win_lose_condition": "Win: Stack 15 layers (any width > 0) — triggers victory end card with final score, max polarity streak, and polarity breakdown (repulsion vs attraction perfects). Lose: Moving block has ≤4px overlap with previous layer on tap — instant game over with magnetic shock animation. No partial credit; one miss ends the run. High score and max streak tracked across sessions."
+}
