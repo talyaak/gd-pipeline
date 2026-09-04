@@ -111,6 +111,8 @@ class PlayScene extends Phaser.Scene {
     this.state = STATE.PLAYING;
     this.startText.setVisible(false);
     this._startWave();
+    // Initialize sessionTime on Game instance for validation
+    this.game.sessionTime = 0;
   }
 
   _startWave() {
@@ -157,6 +159,8 @@ class PlayScene extends Phaser.Scene {
   update(time, dt) {
     if (this.state !== STATE.PLAYING) return;
     const dtS = dt / 1000;
+
+    this.game.sessionTime = (this.game.sessionTime || 0) + dt;
 
     // enemies advance
     for (let i = this.enemies.length - 1; i >= 0; i--) {

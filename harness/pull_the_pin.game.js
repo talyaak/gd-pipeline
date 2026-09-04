@@ -159,6 +159,8 @@ class PlayScene extends Phaser.Scene {
     this.state = STATE.PLAYING;
     this.startText.setVisible(false);
     this.sessionStart = this.time.now;
+    // Initialize sessionTime on Game instance for validation
+    this.game.sessionTime = 0;
   }
 
   _collect(ball) {
@@ -200,6 +202,8 @@ class PlayScene extends Phaser.Scene {
       if (elapsed >= SESSION_MS && this.collected < TARGET_COLLECTED) { this._end(false); return; }
       if (this.collected >= TARGET_COLLECTED) { this._end(true); return; }
     }
+
+    this.game.sessionTime = (this.game.sessionTime || 0) + dt;
 
     const dtS = Math.min(dt, 32) / 1000;
     if (this.state !== STATE.PLAYING) {

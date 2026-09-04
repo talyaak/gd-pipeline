@@ -198,6 +198,8 @@ class PlayScene extends Phaser.Scene {
     this.state = STATE.PLAYING;
     this.startText.setVisible(false);
     this.sessionStart = this.time.now;
+    // Initialize sessionTime on Game instance for validation
+    this.game.sessionTime = 0;
   }
 
   _end(won) {
@@ -212,13 +214,15 @@ class PlayScene extends Phaser.Scene {
     });
   }
 
-  update(time) {
+  update(time, dt) {
     if (this.state !== STATE.PLAYING) return;
     const elapsed = time - this.sessionStart;
     const remain = Phaser.Math.Clamp(1 - elapsed / SESSION_MS, 0, 1);
     this.timerBarFg.width = 260 * remain;
     this.timerBarFg.fillColor = remain < 0.2 ? 0xff3355 : 0x33e6ff;
     if (elapsed >= SESSION_MS) { this._end(false); }
+
+    this.game.sessionTime = (this.game.sessionTime || 0) + dt;
   }
 }
 
