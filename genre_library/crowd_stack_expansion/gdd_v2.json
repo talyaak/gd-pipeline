@@ -1,0 +1,31 @@
+{
+  "title": "Merge Legion: Elemental Crowd",
+  "core_loop": "Steer a leader through an arena to absorb elemental pedestrians (Fire/Water/Earth/Air). Absorbing 3 of the same element merges them into a higher-tier unit (Tier 1→2→3). Higher tiers count for more population value and have elemental strengths/weaknesses vs rival crowds. Survive 90 seconds with the highest total tier-value to win.",
+  "controls": "Drag or hold mouse/touch to steer the leader — your legion follows in a loose formation (not a strict snake trail). Tap/click anywhere to cycle the active elemental affinity (Fire→Water→Earth→Air) — only pedestrians matching your active affinity can be absorbed; others repel with a knockback. Touch-friendly: entire screen is a drag zone, tap cycles affinity.",
+  "mechanics": [
+    "Leader moves at 280 px/sec; legion units follow with 60ms positional lag per unit (loose flocking, not rigid trail)",
+    "4 elemental pedestrians spawn at 6/sec total (1.5/sec each) from arena corners — Fire (red), Water (blue), Earth (green), Air (white)",
+    "Active affinity filter: only pedestrians matching current affinity absorb (+1 unit of that element); mismatched pedestrians repel (knockback 100px, 0.2s stun on leader)",
+    "Merge rule: 3 Tier-1 units of same element → 1 Tier-2 unit (value 3, 1.5x size); 3 Tier-2 → 1 Tier-3 (value 9, 2x size, elemental aura). Max 3 tiers per element",
+    "Elemental rock-paper-scissors: Fire beats Earth (×1.5 value on absorb), Earth beats Air, Air beats Water, Water beats Fire. Absorbing a weak-element rival unit grants bonus value; absorbing strong-element costs double population",
+    "3 rival AI legions (each locked to one element: Red=Fire, Blue=Water, Green=Earth) roam arena — they absorb matching pedestrians and merge autonomously. Rival legions do NOT have Air affinity (player exclusive)",
+    "Population cap: 60 legion units max (any tier mix) — excess merges auto-trigger if possible, else pedestrians flee",
+    "Affinity cycle cooldown: 0.5s (prevents spam-cycling). Current affinity shown as glowing ring around leader (color-coded)",
+    "Pedestrian density scales: 6/sec (0-30s) → 9/sec (30-60s) → 12/sec (60-90s). Rival merge speed scales similarly",
+    "Final 15s 'Convergence': all pedestrian spawns stop, rival legions seek player aggressively, merge cooldowns halved for massive combo potential"
+  ],
+  "juice": [
+    "Absorb pedestrian: elemental particle burst (Fire=embers, Water=droplets, Earth=rock shards, Air=wind lines) + leader pulse (1.15x, 100ms, affinity color)",
+    "Merge Tier 1→2: satisfying 'pop' sound (pitch rises per tier), unit scales 1→1.5x with elastic overshoot (200ms, cubic-out), elemental ring expands outward (300ms)",
+    "Merge Tier 2→3: screen-wide elemental flash (affinity color, 150ms), time dilation 0.3x for 400ms, Tier-3 unit gains persistent aura (rotating particles), deep resonant chime",
+    "Elemental advantage absorb (weak→strong): bonus value numbers pop gold (+50% value), brief screen tint (advantage color, 80ms), 'SUPER EFFECTIVE' micro-text",
+    "Elemental disadvantage absorb (strong→weak): screen shake (80px, 0.1s), value numbers pop red (-50% value), leader recoil animation",
+    "Affinity cycle: leader ring shifts color with smooth hue transition (300ms), subtle UI chime (each element has distinct pitch), legion units briefly flash new affinity color",
+    "Repel mismatch: pedestrian flashes white (100ms) and shoots away with spiral trajectory, 'WRONG' micro-text, haptic vibration (mobile)",
+    "Rival legion merge: visible from distance — their units glow and combine, player sees their tier-value threat level update in real-time",
+    "UI: live tier-value counter (large, top-center) with elemental breakdown (Fire: 12, Water: 8, Earth: 6, Air: 4), animates on each merge/absorb",
+    "Game over/win: animated tier-value tally with elemental breakdown, rank badge (Archon: 400+, Warlord: 300+, Captain: 200+, Recruit: <200), 'Merge Again' pulse button with elemental cycle preview"
+  ],
+  "mvp_scope": "Single-file HTML5 (800x600), Phaser 3, no external assets. All units are procedural circles with elemental color coding and tier-indicating size/rings. Arena has subtle elemental quadrant background (four corners tinted). 3 rival AIs with elemental lock + simple steering (seek matching pedestrians, merge when 3 ready, flee from player if player tier-value > 1.2x theirs). 90-second session timer. Legion units stored as array with flocking steering (separation/alignment/cohesion). 60fps target on 5-year-old mobile. Self-contained with vendored Phaser + Juice toolkit.",
+  "win_lose_condition": "Lose: Player legion absorbed by rival with higher total tier-value (instant). Win: Timer reaches 0 and player total tier-value > all rival totals. Tie goes to player. Both end states show final tally with animated tier-value numbers per element, rank (Archon: 400+, Warlord: 300+, Captain: 200+, Recruit: <200), and restart/CTA. Session is exactly 90 seconds — designed for ad-length play."
+}
