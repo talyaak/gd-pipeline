@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -148,6 +149,38 @@ def run_build_script(harness_name: str, title: str, src_game_js: str | None = No
         return False, str(e)
 
 
+def verify_with_playwright(html_path: Path) -> tuple[bool, str]:
+    """
+    Run Playwright execution validation on the built HTML.
+    Returns (success, message).
+    """
+    try:
+        # Import here to avoid dependency if not verifying
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from pipeline.execute import run_execution_report
+
+        html = html_path.read_text()
+        out_dir = Path(tempfile.mkdtemp())
+        report = run_execution_report(html, out_dir)
+
+        # Check all critical success criteria
+        checks = [
+            ("loaded", report.loaded),
+            ("canvas_rendered", report.canvas_rendered),
+            ("input_response_detected", report.input_response_detected),
+            ("no_console_errors", len(report.console_errors) == 0),
+        ]
+
+        failures = [name for name, passed in checks if not passed]
+        if failures:
+            return False, f"Verification failed: {', '.join(failures)}. Console errors: {report.console_errors}"
+
+        return True, f"Verification passed: loaded={report.loaded}, canvas={report.canvas_rendered}, input={report.input_response_detected}, engagement={report.engagement_duration_ms}ms"
+
+    except Exception as e:
+        return False, f"Verification error: {e}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="pipeline.reskin",
@@ -168,6 +201,11 @@ def main() -> int:
         "--title",
         help="Title for HTML build (default: brief.copy.title or genre)",
         default=None,
+    )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="After building HTML, run Playwright execution validation",
     )
     args = parser.parse_args()
 
@@ -229,6 +267,7 @@ def main() -> int:
     print(f"Reskinned game.js written to: {out_js_path}")
 
     # Optionally build HTML
+    html_path = None
     if args.build:
         title = args.title or copy.get("title") or f"{genre.replace('_', ' ').title()} - Reskin"
         print(f"Building HTML with title: {title}")
@@ -246,6 +285,17 @@ def main() -> int:
             print(output.strip())
         else:
             print(f"Build failed: {output}", file=sys.stderr)
+            return 1
+
+    # Optionally verify with Playwright
+    if args.verify:
+        if not html_path:
+            print("Error: --verify requires --build to produce HTML first", file=sys.stderr)
+            return 1
+        print("Running Playwright verification...")
+        success, message = verify_with_playwright(html_path)
+        print(message)
+        if not success:
             return 1
 
     return 0
