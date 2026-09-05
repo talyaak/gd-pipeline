@@ -488,6 +488,7 @@ class PlayScene extends Phaser.Scene {
   create() {
     this.state = STATE.START;
     this.game.state = STATE.START;
+    this.game.sessionTime = 0;
     this.score = 0;
     this.best = Number(localStorage.getItem('match3_best') || 0);
     this.moves = START_MOVES;
@@ -847,6 +848,8 @@ class PlayScene extends Phaser.Scene {
   }
 
   update(time, dt) {
+    // Track session time on Game instance for validation
+    this.game.sessionTime = (this.game.sessionTime || 0) + dt;
     // ambient background hue drift, echoes endless_runner's tunnel treatment
     this.hue += dt * 0.00002;
     if (this.hue > 1) this.hue -= 1;

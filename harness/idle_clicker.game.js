@@ -44,6 +44,7 @@ class PlayScene extends Phaser.Scene {
   create() {
     this.state = STATE.START;
     this.game.state = STATE.START;
+    this.game.sessionTime = 0;
     this.energy = 0;
     this.displayEnergy = 0;
     this.totalEarned = 0;
@@ -226,6 +227,8 @@ class PlayScene extends Phaser.Scene {
   }
 
   update(time, dt) {
+    // Track session time on Game instance for validation
+    this.game.sessionTime = (this.game.sessionTime || 0) + dt;
     // ambient dust drift
     this.dust.forEach((d) => {
       d.x += d.vx * (dt / 1000);
