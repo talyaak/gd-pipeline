@@ -1,0 +1,16 @@
+{
+  "genre": "match_3",
+  "palette": ["0x33e6ff", "0xff33cc", "0xffe14d", "0x33ff88", "0xff9933", "0xaa66ff"],
+  "copy": {
+    "title": "Prism Cascade",
+    "cta_text": "PLAY FULL VERSION",
+    "cta_link": "https://example.com/game"
+  },
+  "logo_asset_path": "briefs/assets/brand_logo.png",
+  "difficulty_tier": "easy",
+  "session_length_s": 45,
+  "target_network": "mraid",
+  "TARGET_SCORE": 1500,
+  "START_MOVES": 25,
+  "COLORS": ["0x33e6ff", "0xff33cc", "0xffe14d", "0x33ff88", "0xff9933", "0xaa66ff"]
+}

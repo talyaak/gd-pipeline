@@ -8,6 +8,7 @@ cd "$(dirname "$0")/.."
 NAME="$1"       # e.g. match_3
 TITLE="$2"      # e.g. "Prism Cascade - Harness"
 SRC_GAME_JS="${3:-harness/${NAME}.game.js}"  # optional override
+INCLUDE_MRAID="${4:-false}"  # optional: include mraid.js (for reskin/ad builds)
 
 {
   echo '<!DOCTYPE html>'
@@ -22,6 +23,10 @@ SRC_GAME_JS="${3:-harness/${NAME}.game.js}"  # optional override
   echo
   cat pipeline/vendor/juice.js
   echo
+  if [ "$INCLUDE_MRAID" = "true" ]; then
+    cat pipeline/vendor/mraid.js
+    echo
+  fi
   cat "${SRC_GAME_JS}"
   echo '</script>'
   echo '</body></html>'
