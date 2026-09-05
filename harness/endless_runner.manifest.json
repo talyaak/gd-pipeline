@@ -1,0 +1,10 @@
+{
+  "harness": "endless_runner",
+  "params": {
+    "LANE_SWITCH_MS": { "type": "int", "min": 80, "max": 200, "default": 140 },
+    "SWIPE_THRESHOLD": { "type": "int", "min": 15, "max": 60, "default": 30 },
+    "PLAYER_Y": { "type": "int", "min": 550, "max": 700, "default": 620 }
+  },
+  "copy_slots": ["title", "cta_text", "cta_link"],
+  "asset_slots": ["logo_asset_path"]
+}

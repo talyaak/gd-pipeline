@@ -1,0 +1,13 @@
+{
+  "harness": "stack_tower",
+  "params": {
+    "TARGET_LAYERS": { "type": "int", "min": 10, "max": 25, "default": 15 },
+    "PERFECT_TOLERANCE": { "type": "int", "min": 3, "max": 12, "default": 6 },
+    "BASE_SPEED": { "type": "int", "min": 100, "max": 180, "default": 140 },
+    "SPEED_STEP": { "type": "int", "min": 4, "max": 16, "default": 8 },
+    "MAX_SPEED": { "type": "int", "min": 240, "max": 400, "default": 320 },
+    "PALETTE": { "type": "color_array", "count": 6 }
+  },
+  "copy_slots": ["title", "cta_text", "cta_link"],
+  "asset_slots": ["logo_asset_path"]
+}
