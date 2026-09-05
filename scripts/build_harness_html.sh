@@ -7,6 +7,7 @@ cd "$(dirname "$0")/.."
 
 NAME="$1"       # e.g. match_3
 TITLE="$2"      # e.g. "Prism Cascade - Harness"
+SRC_GAME_JS="${3:-harness/${NAME}.game.js}"  # optional override
 
 {
   echo '<!DOCTYPE html>'
@@ -21,7 +22,7 @@ TITLE="$2"      # e.g. "Prism Cascade - Harness"
   echo
   cat pipeline/vendor/juice.js
   echo
-  cat "harness/${NAME}.game.js"
+  cat "${SRC_GAME_JS}"
   echo '</script>'
   echo '</body></html>'
 } > "harness/${NAME}.html"
