@@ -78,6 +78,12 @@ class PlayScene extends Phaser.Scene {
     this.tapOrb.setInteractive({ useHandCursor: true });
     this.tapOrb.on('pointerdown', () => this._onTap());
 
+    // Global pointerdown for START->PLAYING transition and tap energy in PLAYING.
+    // Execution validation clicks at canvas center; this ensures it works regardless
+    // of where the user clicks (matching other harnesses: match_3, stack_tower, etc.).
+    this.input.on('pointerdown', () => this._onTap());
+    this.input.keyboard.on('keydown-SPACE', () => this._onTap());
+
     this.toastLayer = this.add.container(0, 0);
 
     // Shop panel -- bottom drawer, full width
