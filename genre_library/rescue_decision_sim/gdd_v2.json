@@ -1,0 +1,29 @@
+{
+  "title": "ER Triage: Code Blue",
+  "core_loop": "Patients flood the ER — player is the charge nurse. Each patient presents vital signs and a chief complaint; two disposition options (swipe LEFT for Option A, RIGHT for Option B). Choose correctly: patient stabilized, survival rate rises, next patient acuity increases. Choose wrong: patient crashes, survival rate drops, monitor flatlines. Process 15 patients (90-second shift) with survival rate > 60% to win. One-tap/click per decision, zero downtime.",
+  "controls": "Swipe LEFT or RIGHT anywhere on screen (or tap left/right half) to pick Option A or B. Keyboard: Left Arrow / Right Arrow. Touch-friendly: entire left half = Option A, entire right half = Option B. No hold, drag, or multi-touch — single binary input per patient.",
+  "mechanics": [
+    "15 patients per shift, 6-second decision window per patient (EKG trace countdown at top)",
+    "Patient types: Cardiac (STEMI vs. NSTEMI), Trauma (OR now vs. CT first), Sepsis (broad-spectrum vs. targeted abx), Stroke (tPA window vs. MRI first), Pediatric (admit vs. discharge) — each has a 'correct' triage logic learnable in 2-3 patients",
+    "Correct triage logic: Cardiac ST-elevation → cath lab (STEMI), no elevation → observation (NSTEMI); Trauma unstable vitals → OR, stable → CT; Sepsis qSOFA ≥2 → broad-spectrum + fluids, <2 → targeted; Stroke NIHSS ≥6 + <4.5h → tPA, else MRI; Pediatric fever <3mo → admit, >3mo well-appearing → discharge",
+    "Survival Rate meter: starts at 75% (0-100% scale). Correct disposition: +4% survival. Wrong disposition: -10% survival. Perfect streak (3+ correct): +2% bonus per patient. Survival Rate ≤ 30% at any point = instant fail (Mass Casualty Event).",
+    "Escalation: patients 1-5 stable (single complaint), patients 6-10 complex (two simultaneous complaints, pick priority), patients 11-15 critical (three complaints, 4-second window). Complex/critical: stabilizing the highest-acuity complaint counts as correct, but untreated complaints apply -3% each.",
+    "Resource system: one 'Rapid Response Team' call per shift — tap the pager to auto-stabilize current patient. Recharges on perfect streak of 4.",
+    "Audio urgency cue: monitor beep accelerates as decision window shrinks below 2 seconds; code blue alarm on wrong choice.",
+    "Patient tracker: shows last 3 outcomes (green check / red X) with survival delta, persistent across shift."
+  ],
+  "juice": [
+    "Disposition flash: green monitor border (80ms) on correct, red border + haptic vibration (navigator.vibrate 50ms) on wrong",
+    "Stabilization particle burst: red cross particles (cardiac), brown debris particles (trauma), purple bacteria particles (sepsis), blue brain particles (stroke), yellow teddy particles (pediatric) — 12 particles, 500ms fade",
+    "Patient card: stabilized patients slide up with 'STABLE' banner (cubic-ease 400ms), crashed patients fade to flatline EKG with 'CODE' stamp (300ms)",
+    "Survival Rate meter: smooth lerp animation (200ms) with color shift (green >70%, yellow 40-70%, red <40%), pulse glow on milestone crosses (40%, 60%, 80%)",
+    "EKG countdown trace: scrolls left linearly, turns amber at 3s, red at 1.5s, micro-jitter at 0.5s",
+    "Rapid Response pager: slow pulse (2s cycle), on use — screen-white defib flash (120ms), 'RAPID RESPONSE' text stamp, pager dims with recharge shimmer",
+    "Shift complete card: animated rating tier (Intern/Resident/Attending/Chief) based on final survival rate, confetti burst (tier color, 25 particles, 1.2s), 'SHIFT COMPLETE' typewriter text (600ms), retry + CTA buttons via Juice toolkit",
+    "Fail card: flatline tone, red vignette expands to full screen (800ms), 'MASS CASUALTY' slam-in text, final survival % + patients saved/lost tally, retry button",
+    "Ambient ER soundscape: low-volume monitor beeps, distant overhead pages, volume ducks during decision window",
+    "Intro briefing: 'YOU DECIDE WHO LIVES. SWIPE TO TRIAGE. 15 PATIENTS. 60% SURVIVAL. NO SECOND CHANCES.' — auto-advances after 3s or tap."
+  ],
+  "mvp_scope": "Single-screen portrait ER triage UI, 720x1280 (9:16). Top: EKG countdown trace + survival rate meter. Center: patient card with vitals + chief complaint + two disposition buttons (A/B). Bottom: patient tracker (3 rows) + Rapid Response pager. All graphics procedural: cards as rounded rects with strokes, particles as colored circles with additive blending, vitals as scrolling EKG traces via Phaser Graphics, text via Phaser bitmap fonts. Zero external assets. Web Audio for monitor beeps, flatline, pages, UI chimes. LocalStorage: best tier achieved, total patients saved across shifts. Target 60fps on 5-year-old phones. Single-file HTML5, no build step.",
+  "win_lose_condition": "Win: Process all 15 patients with survival rate > 60% — triggers tiered rating card (Intern: 61-70%, Resident: 71-80%, Attending: 81-90%, Chief: 91-100%) with confetti and CTA. Lose: Survival rate drops to ≤ 30% at any point — instant fail card with flatline tone, final tally, retry. No partial credit; shift is atomic. High score = highest tier reached (persisted)."
+}
