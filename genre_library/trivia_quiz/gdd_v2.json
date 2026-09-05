@@ -1,0 +1,32 @@
+{
+  "title": "Fact or Fiction",
+  "core_loop": "Statements appear one at a time — the player decides TRUE or FALSE with a swipe or tap before the 7-second timer expires. Correct: statement card flies toward 'Fact' pile with confetti, score increases, streak builds. Wrong: card crumples into 'Fiction' bin with screen shake, streak breaks, lose 1 of 3 credibility tokens. Every 5th statement is a 'Boss Fact' (harder, 2x points, 10s timer). Session ends at 0 tokens or 30 statements answered — final score = base + streak bonuses + boss bonuses + speed bonuses + survival bonus.",
+  "controls": "Swipe right or tap green check = TRUE. Swipe left or tap red X = FALSE. Keyboard: Right Arrow / D = TRUE, Left Arrow / A = FALSE. Space = pass (costs 1 token, once per session, no streak penalty). No drag-hold, no multi-step — binary decision only, optimized for instant thumb reaction.",
+  "mechanics": [
+    "7-second countdown per statement (progress bar + numeric, pulses at 3s/1s)",
+    "Streak multiplier: 1x -> 1.3x at 3 -> 1.7x at 6 -> 2.2x at 10 -> 3x at 15 -> 4x at 21 (caps at 4x)",
+    "Speed bonus: +40 pts for <2s, +20 pts for <4s, +10 pts for <6s",
+    "Three credibility tokens (shield icons). Wrong answer: -1 token, streak resets, 200ms screen shake (8px)",
+    "Pass token: 1 per session, Space to skip (costs 1 token, no streak penalty, statement marked 'Skipped')",
+    "Boss Facts every 5th statement (5, 10, 15, 20, 25, 30): 2x base points, 10s timer, visual crown badge, distinctive sound",
+    "Difficulty tiers by statement index: 1-6 (common knowledge), 7-12 (general), 13-18 (specialized), 19-24 (expert), 25-30 (obscure)",
+    "Category tags shown per statement (Science, History, Pop Culture, Geography, Nature, Tech) — no category mastery mechanic, pure variety",
+    "Statement pool: 300+ curated statements (50 per category), balanced 50/50 true/false, shuffled per session, no repeats",
+    "Final score = sum(base * streak_mult + speed_bonus) + boss_bonuses (2x base) + survival_bonus (15 pts per remaining token)"
+  ],
+  "juice": [
+    "Statement card: subtle 3D tilt on hover/touch (follows thumb), springs back on release",
+    "TRUE decision: card slides right with elastic overshoot, green checkmark stamp, +points float up, streak bar fills with gold gradient",
+    "FALSE decision: card slides left, red X stamp, tokens: shield cracks -> shatters -> empty with particle burst",
+    "Boss Fact entrance: card scales up 1.2x with golden glow pulse, crown icon orbits, timer ring gold",
+    "Boss Fact correct: screen flash gold, confetti ring burst, 'BOSS CLEARED' badge, 100ms time dilation",
+    "Timer bar: smooth drain, color shifts green->yellow->red, emits 3 urgency ticks at 3s/2s/1s",
+    "Streak milestone (3/6/10/15/21): multiplier badge pops with scale bounce, brief chromatic aberration shader",
+    "Pass activation: card dissolves into sparkles, pass token grays with lock icon, 'PASSED' stamp",
+    "Category tag: color-coded pill (Science=cyan, History=sepia, Pop=magenta, Geo=green, Nature=emerald, Tech=blue), fades in with statement",
+    "Background: animated gradient mesh, hue shifts subtly per category tag, 60fps on 5-year-old mobile",
+    "Game Over: score breakdown animation (base -> streak -> speed -> boss -> survival), rank badge (S: 25k+, A: 18k+, B: 12k+, C: 7k+, D: 3k+, E: <3k), 'Play Again' button pulses with breathing scale"
+  ],
+  "mvp_scope": "Single-file HTML5 (800x600), Phaser 3, no external assets. All text via bitmap font (procedural atlas). Statements embedded as JSON array. Two large touch targets (TRUE/FALSE) as Phaser containers with rounded rects. Timer as horizontal progress bar with color gradient. Streak bar as segmented fill. Tokens as three shield containers. Category pill at top. Boss Fact crown overlay. Background: animated gradient mesh. GameOver scene with animated score breakdown and rank. 60fps target on 5-year-old mobile. Portrait-friendly: 9:16 safe zone, TRUE/FALSE buttons at bottom thumbs reach.",
+  "win_lose_condition": "Lose: Credibility tokens reach 0 (3 wrong answers or 2 wrong + 1 pass). Win: Answer 30 statements without losing all tokens. Both end states show GameOver scene with animated score tally, rank (S/A/B/C/D/E), and restart button. Session length 45-75 seconds, designed for ad-length play. No mid-session save."
+}
