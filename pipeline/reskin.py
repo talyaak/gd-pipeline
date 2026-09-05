@@ -130,13 +130,65 @@ def substitute_consts(source_js: str, params: dict[str, Any], copy: dict[str, st
     return result
 
 
-def run_build_script(harness_name: str, title: str, src_game_js: str | None = None) -> tuple[bool, str]:
+def inject_mraid_gating(source_js: str) -> str:
+    """
+    Inject MRAID gating wrapper around PlayScene.create().
+
+    This wraps the original create method to gate gameplay start on:
+    - mraid.getState() !== 'loading' (wait for 'ready' event if loading)
+    - mraid.isViewable() (wait for 'viewableChange' if not viewable)
+    Never calls mraid.ready() (that's fired by the host bridge).
+    """
+    # MRAID gating wrapper code - injected after PlayScene class definition,
+    # before the Phaser.Game config
+    mraid_wrapper = """
+// MRAID 3.0 gating wrapper — gate gameplay start on ready + viewable
+// Never calls mraid.ready(); that is fired BY the host bridge.
+(function() {
+    const OriginalCreate = PlayScene.prototype.create;
+    PlayScene.prototype.create = function() {
+        const self = this;
+        function proceed() {
+            OriginalCreate.call(self);
+        }
+        if (typeof mraid !== 'undefined') {
+            if (mraid.getState() === 'loading') {
+                mraid.addEventListener('ready', () => {
+                    if (mraid.isViewable()) proceed();
+                    else mraid.addEventListener('viewableChange', (v) => { if (v) proceed(); });
+                });
+                return;
+            } else if (!mraid.isViewable()) {
+                mraid.addEventListener('viewableChange', (v) => { if (v) proceed(); });
+                return;
+            }
+        }
+        proceed();
+    };
+})();
+"""
+
+    # Inject before "const config = {" which comes after the PlayScene class
+    injection_point = "const config = {"
+    idx = source_js.find(injection_point)
+    if idx != -1:
+        return source_js[:idx] + mraid_wrapper + "\n" + source_js[idx:]
+    
+    # Fallback: append at end of file (before any trailing whitespace)
+    return source_js.rstrip() + "\n" + mraid_wrapper + "\n"
+
+
+def run_build_script(harness_name: str, title: str, src_game_js: str | None = None, include_mraid: str = "false") -> tuple[bool, str]:
     """Run the standard harness build script. Returns (success, output/error)."""
     script_path = Path(__file__).parent.parent / "scripts" / "build_harness_html.sh"
     try:
         args = [str(script_path), harness_name, title]
         if src_game_js:
             args.append(src_game_js)
+        else:
+            # Placeholder to keep positional alignment for include_mraid
+            args.append(f"harness/{harness_name}.game.js")
+        args.append(include_mraid)
         result = subprocess.run(
             args,
             capture_output=True,
@@ -254,6 +306,9 @@ def main() -> int:
 
     reskinned_js = substitute_consts(source_js, params, copy, assets)
 
+    # Inject MRAID gating wrapper for ad network compliance
+    reskinned_js = inject_mraid_gating(reskinned_js)
+
     # Determine output path
     if args.output:
         out_dir = Path(args.output)
@@ -278,7 +333,7 @@ def main() -> int:
         # the master file, no matter how many briefs get built for this genre.
         output_name = f"{genre}_reskinned/{brief_path.stem}"
         (Path(__file__).parent.parent / "harness" / f"{genre}_reskinned").mkdir(parents=True, exist_ok=True)
-        success, output = run_build_script(output_name, title, str(out_js_path))
+        success, output = run_build_script(output_name, title, str(out_js_path), "true")
         if success:
             html_path = Path(__file__).parent.parent / "harness" / f"{output_name}.html"
             print(f"HTML built: {html_path}")
