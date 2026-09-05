@@ -3,8 +3,7 @@
   "params": {
     "TARGET_SCORE": { "type": "int", "min": 600, "max": 2000, "default": 1200 },
     "START_MOVES": { "type": "int", "min": 12, "max": 30, "default": 20 },
-    "COLORS": { "type": "color_array", "count": 6 },
-    "SESSION_MS": { "type": "int", "min": 30000, "max": 90000, "default": 45000 }
+    "COLORS": { "type": "color_array", "count": 6 }
   },
   "copy_slots": ["title", "cta_text", "cta_link"],
   "asset_slots": ["logo_asset_path"]
