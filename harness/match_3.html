@@ -552,14 +552,25 @@ class PlayScene extends Phaser.Scene {
     this.game.registry.set('score', 0);
   }
 
-  // ---- intro demo: ~1s auto-play of the core swap so a first-time player
-  // sees the mechanic before being asked to act. Tapping at any point skips
+  // ---- intro demo: ~2s auto-play showing the CORE FUN LOOP ---
+  // swap -> match -> explode -> cascade. Tapping at any point skips
   // straight to "begin" -- see _begin()'s demoActive handling. ----
 
   _playIntroDemo() {
     this.demoActive = true;
     this.introTimers = [];
-    this.introBanner = Juice.IntroBanner.create(this, { label: 'SWAP GEMS TO MATCH 3+' });
+    this.introBanner = Juice.IntroBanner.create(this, { label: 'SWAP TO MATCH 3+' });
+
+    // Seed the board so the demo swap at (2,3)<->(3,3) creates a horizontal match-3.
+    // We'll set (1,3), (2,3), and (4,3) to the same color, so swapping (2,3) and (3,3)
+    // puts three in a row at (1,3),(2,3),(3,3).
+    const demoColor = COLORS[0]; // pick first color for consistency
+    this.board[3][1] = { color: demoColor, sprite: this.board[3][1].sprite };
+    this.board[3][2] = { color: demoColor, sprite: this.board[3][2].sprite };
+    this.board[3][4] = { color: demoColor, sprite: this.board[3][4].sprite };
+    // Re-render the three affected sprites with the demo color
+    [1, 2, 4].forEach(c => this._recolorGemSprite(3, c, demoColor));
+
     const a = { c: 2, r: 3 }, b = { c: 3, r: 3 };
     this.introHighlight = Juice.GemSelectionHighlight.create(this, BOARD_X + a.c * CELL, BOARD_Y + a.r * CELL, CELL);
     this.introTimers.push(this.time.delayedCall(300, () => {
@@ -571,20 +582,31 @@ class PlayScene extends Phaser.Scene {
         onComplete: () => {
           if (!this.demoActive) return;
           this._swapCells(a, b);
-          this.introTimers.push(this.time.delayedCall(350, () => {
+          // Now the board has a match at (3,1),(3,2),(3,3) - resolve it!
+          this.introTimers.push(this.time.delayedCall(100, () => {
             if (!this.demoActive) return;
-            Juice.SwapAnimation.create(this, this.board[a.r][a.c].sprite, this.board[b.r][b.c].sprite, {
-              duration: 220,
-              onComplete: () => {
-                if (!this.demoActive) return;
-                this._swapCells(a, b);
-                this._endIntroDemo();
-              }
-            });
+            this.comboDepth = 0;
+            this._resolveMatches(); // this will cascade, spawn new gems, etc.
+            // Wait for cascade to finish, then end demo
+            this.introTimers.push(this.time.delayedCall(1800, () => {
+              if (!this.demoActive) return;
+              this._endIntroDemo();
+            }));
           }));
         }
       });
     }));
+  }
+
+  _recolorGemSprite(r, c, color) {
+    const cell = this.board[r][c];
+    if (!cell || !cell.sprite) return;
+    cell.color = color;
+    // Rebuild the sprite's visual (body is index 1 in container)
+    const body = cell.sprite.list[1];
+    if (body) body.fillColor = color;
+    const glow = cell.sprite.list[0];
+    if (glow) glow.fillColor = color;
   }
 
   _endIntroDemo() {
