@@ -1,0 +1,10 @@
+{
+  "harness": "idle_clicker",
+  "params": {
+    "SESSION_MS": { "type": "int", "min": 30000, "max": 90000, "default": 45000 },
+    "TARGET_ENERGY": { "type": "int", "min": 2000, "max": 15000, "default": 5000 },
+    "TAP_VALUE": { "type": "int", "min": 1, "max": 5, "default": 2 }
+  },
+  "copy_slots": ["title", "cta_text", "cta_link"],
+  "asset_slots": ["logo_asset_path"]
+}
