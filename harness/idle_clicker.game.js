@@ -43,6 +43,7 @@ class PlayScene extends Phaser.Scene {
 
   create() {
     this.state = STATE.START;
+    this.game.state = STATE.START;
     this.energy = 0;
     this.displayEnergy = 0;
     this.totalEarned = 0;
@@ -126,6 +127,7 @@ class PlayScene extends Phaser.Scene {
 
   _begin() {
     this.state = STATE.PLAYING;
+    this.game.state = STATE.PLAYING;
     this.startText.setVisible(false);
     this.sessionStart = this.time.now;
   }
@@ -193,6 +195,7 @@ class PlayScene extends Phaser.Scene {
 
   _end(won) {
     this.state = STATE.END;
+    this.game.state = STATE.END;
     if (won) this.cameras.main.flash(150, 51, 230, 255, false);
     const panel = this.add.rectangle(W / 2, H / 2, 360, 220, 0x0a0a18, 0.95).setStrokeStyle(2, won ? 0x33e6ff : 0xff3377);
     const title = this.add.text(W / 2, H / 2 - 70, won ? 'TARGET REACHED!' : "TIME'S UP", { fontFamily: 'monospace', fontSize: '26px', color: won ? '#33ffbb' : '#ff3377' }).setOrigin(0.5);
