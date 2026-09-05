@@ -1,0 +1,31 @@
+{
+  "title": "Crowd Surge",
+  "core_loop": "Guide a leader unit through an arena to absorb neutral pedestrians and grow your crowd. Your crowd follows the leader in a trailing formation. When your crowd encounters a smaller enemy crowd, you absorb them — adding their count to yours. Larger enemy crowds absorb you (game over). Survive 90 seconds and have the highest crowd count to win.",
+  "controls": "Drag or hold mouse/touch to steer the leader — the crowd follows in a smooth snake-like trail. No direct crowd control; formation emerges from movement. Touch-friendly: entire screen is a drag zone. Release to stop (crowd compresses behind leader).",
+  "mechanics": [
+    "Leader moves at 300 px/sec; crowd segments follow with 40ms positional lag per segment (natural snake trail)",
+    "Neutral pedestrians spawn at 8/sec from 4 arena corners, wander randomly at 60 px/sec — absorb on contact (+1 crowd)",
+    "3 rival AI crowds (Red/Blue/Green) roam arena, each with leader + 15-25 followers — absorb if your count > theirs (+their count), die if < theirs (instant game over)",
+    "Crowd cap: 200 units max — excess pedestrians flee instead of joining",
+    "Absorption cooldown: 0.3s after each absorb (prevents instant chain-eat of tight enemy clusters)",
+    "Arena: 800x600 with soft bounds — leader bounces, crowd segments clamp",
+    "Speed boost: double-tap/click for 2s burst at 500 px/sec (15s cooldown, visual trail effect)",
+    "Pedestrian density scales with time: 8/sec (0-30s) -> 12/sec (30-60s) -> 16/sec (60-90s)",
+    "Rival crowds grow passively at 0.5 units/sec (absorbing their own neutrals off-screen)",
+    "Final 10s: 'Sudden Death' — rival speeds +50%, pedestrian spawn stops, only crowd-vs-crowd remains"
+  ],
+  "juice": [
+    "Absorb pedestrian: micro-pop particle (leader color, 4px, 150ms) + tiny scale pulse on leader (1.1x, 80ms)",
+    "Absorb rival crowd: screen flash (rival color, 120ms), shockwave ring expands from contact point, all absorbed units burst into leader-color confetti (300ms)",
+    "Crowd trail: each segment has slight hue shift along trail (leader hue -> leader hue + 30deg), creates rainbow snake effect at max size",
+    "Speed boost: motion blur trail on leader, crowd segments stretch 1.5x length, 0.5s pitch-up sound",
+    "Near-miss (rival leader within 80px but larger): warning pulse on screen edge (rival color, 200ms) + directional arrow",
+    "Crowd compression on stop: segments spring together with elastic overshoot (200ms, cubic-out)",
+    "Pedestrian join: unit scales from 0.5x to 1x with bounce (100ms), joins trail end with subtle rotation",
+    "UI: live crowd counter (large, top-center) with comma formatting, animates +N on each absorb",
+    "Rival crowd labels: small nameplates above rival leaders (RED/BLUE/GREEN) with their count",
+    "Game over/win: animated count tally (your final vs rivals), rank badge (Tycoon/Mogul/Baron/Novice), 'Surge Again' pulse button"
+  ],
+  "mvp_scope": "Single-file HTML5 (800x600), Phaser 3, no external assets. All units are procedural circles/rounded-rects with color coding (player=cyan, neutral=gray, rivals=red/blue/green). Arena has subtle grid background. 3 rival AIs with simple steering (wander + seek nearest neutral + flee from larger/follow smaller). 90-second session timer. Crowd segments stored as linked list for O(1) trail updates. 60fps target on 5-year-old mobile. Self-contained with vendored Phaser + Juice toolkit.",
+  "win_lose_condition": "Lose: Player crowd absorbed by larger rival (instant). Win: Timer reaches 0 and player crowd count > all rival counts. Tie goes to player. Both end states show final tally screen with animated numbers, rank (Tycoon: 180+, Mogul: 140+, Baron: 100+, Novice: <100), and restart/CTA. Session is exactly 90 seconds — designed for ad-length play."
+}
