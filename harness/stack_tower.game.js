@@ -173,6 +173,8 @@ class PlayScene extends Phaser.Scene {
   _begin() {
     this.state = STATE.PLAYING;
     this.startText.setVisible(false);
+    // Initialize sessionTime on Game instance for validation
+    this.game.sessionTime = 0;
   }
 
   _end(won) {
@@ -189,6 +191,8 @@ class PlayScene extends Phaser.Scene {
 
   update(time, dt) {
     if (this.state !== STATE.PLAYING || !this.moving) return;
+    // Track session time on Game instance for validation
+    this.game.sessionTime = (this.game.sessionTime || 0) + dt;
     const m = this.moving;
     m.sprite.x += m.dir * m.speed * (dt / 1000);
     if (m.sprite.x <= m.minCenter) { m.sprite.x = m.minCenter; m.dir = 1; }
