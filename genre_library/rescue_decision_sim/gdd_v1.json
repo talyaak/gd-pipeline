@@ -1,0 +1,29 @@
+{
+  "title": "Lifeline Dispatch: 911 Hero",
+  "core_loop": "Emergency calls flood in — player is the dispatcher. Each call presents a crisis scenario and two response options (swipe LEFT for Option A, RIGHT for Option B). Choose correctly: victim rescued, reputation rises, next call escalates. Choose wrong: victim lost, reputation drops, screen shakes. Survive 10 calls (60-second shift) with reputation > 0 to win. One-tap/click per decision, zero downtime.",
+  "controls": "Swipe LEFT or RIGHT anywhere on screen (or tap left/right half) to pick Option A or B. Keyboard: Left Arrow / Right Arrow. Touch-friendly: entire left half = Option A, entire right half = Option B. No hold, drag, or multi-touch — single binary input per call.",
+  "mechanics": [
+    "10 escalating emergency calls per shift, 6-second decision window per call (countdown bar at top)",
+    "Call types: Medical (ambulance vs. airlift), Fire (engine vs. ladder), Rescue (rope vs. boat), Police (patrol vs. SWAT), Hazmat (contain vs. evacuate) — each has a 'correct' logic pattern learnable in 2-3 calls",
+    "Correct choice logic: Medical severity high → airlift, low → ambulance; Fire building height > 3 floors → ladder, else engine; Water rescue → boat, cliff/building → rope; Active shooter → SWAT, traffic → patrol; Gas leak → evacuate, chemical spill → contain",
+    "Reputation meter: starts at 50 (0-100 scale). Correct choice: +8 rep. Wrong choice: -15 rep. Perfect streak (3+ correct in a row): +3 bonus per call. Reputation ≤ 0 at any point = instant fail.",
+    "Escalation: calls 1-3 single-threat, calls 4-6 dual-threat (two simultaneous mini-calls, pick one), calls 7-10 triple-threat with 5-second window. Dual/triple calls: saving ANY victim counts as correct for that slot, but unsaved victims apply -5 rep each.",
+    "Lifeline system: one 'Supervisor Override' per shift — tap the glowing badge to auto-resolve current call correctly. Recharges on perfect streak of 5.",
+    "Audio urgency cue: heartbeat sound accelerates as decision window shrinks below 2 seconds.",
+    "Call log panel: shows last 3 outcomes (green check / red X) with rep delta, persistent across shift."
+  ],
+  "juice": [
+    "Decision flash: green screen rim (80ms) on correct, red screen rim + haptic vibration (navigator.vibrate 50ms) on wrong",
+    "Rescue particle burst: blue cross particles (medical), orange flame particles (fire), white rope particles (rescue), gold badge particles (police), green gas particles (hazmat) — 15 particles, 600ms fade",
+    "Victim silhouette: saved victims slide in from side with 'RESCUED' banner (cubic-ease 400ms), lost victims fade to grayscale with 'LOST' stamp (300ms)",
+    "Reputation meter: smooth lerp animation (200ms) with color shift (green >60, yellow 20-60, red <20), pulse glow on milestone crosses (25, 50, 75)",
+    "Countdown bar: shrinks linearly, turns amber at 3s, red at 1.5s, micro-shake at 0.5s",
+    "Supervisor Override badge: slow pulse (2s cycle), on use — screen-white flash (120ms), 'OVERRIDE' text stamp, badge dims with cooldown shimmer",
+    "Shift complete card: animated badge tier (Rookie/Pro/Elite/Legend) based on final rep, confetti burst (tier color, 30 particles, 1.5s), 'SHIFT COMPLETE' typewriter text (800ms), retry + CTA buttons via Juice toolkit",
+    "Fail card: siren wail, red vignette expands to full screen (800ms), 'SHIFT FAILED' slam-in text, final rep + victims saved/lost tally, retry button",
+    "Ambient dispatch chatter: low-volume radio static with occasional clear 'Unit responding' lines, volume ducks during decision window",
+    "Intro briefing: 'YOU ARE THE VOICE THAT SAVES LIVES. SWIPE TO DECIDE. 10 CALLS. DON'T LET THEM DOWN.' — auto-advances after 3s or tap."
+  ],
+  "mvp_scope": "Single-screen portrait dispatch UI, 720x1280 (9:16). Top: countdown bar + rep meter. Center: call card with scenario text + two option buttons (A/B). Bottom: call log (3 rows) + Supervisor Override badge. All graphics procedural: cards as rounded rects with strokes, particles as colored circles with additive blending, text via Phaser bitmap fonts. Zero external assets. Web Audio for heartbeat, siren, chatter, UI chimes. LocalStorage: best tier achieved, total victims saved across shifts. Target 60fps on 5-year-old phones. Single-file HTML5, no build step.",
+  "win_lose_condition": "Win: Complete all 10 calls with reputation > 0 — triggers tiered victory card (Rookie: rep 1-25, Pro: 26-50, Elite: 51-75, Legend: 76-100) with confetti and CTA. Lose: Reputation drops to 0 at any point — instant fail card with siren, final tally, retry. No partial credit; shift is atomic. High score = highest tier reached (persisted)."
+}
