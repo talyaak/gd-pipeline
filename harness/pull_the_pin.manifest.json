@@ -1,0 +1,13 @@
+{
+  "harness": "pull_the_pin",
+  "params": {
+    "SESSION_MS": { "type": "int", "min": 30000, "max": 90000, "default": 40000 },
+    "TARGET_COLLECTED": { "type": "int", "min": 4, "max": 10, "default": 6 },
+    "PIN_PULLS": { "type": "int", "min": 2, "max": 5, "default": 3 },
+    "BALL_COUNT": { "type": "int", "min": 6, "max": 15, "default": 10 },
+    "BALL_COLORS": { "type": "color_array", "count": 5 },
+    "GRAVITY": { "type": "int", "min": 600, "max": 1500, "default": 900 }
+  },
+  "copy_slots": ["title", "cta_text", "cta_link"],
+  "asset_slots": ["logo_asset_path"]
+}
