@@ -15,7 +15,7 @@ def test_harness_execution(tmp_path):
         'ball_sort.html',
         'stack_tower.html',
         'tower_defense.html',
-        # bullet_hell_shmup.html - no hand-built harness exists yet (STRATEGY.md priority #8)
+        'bullet_hell_shmup.html',
     ]
 
     for harness_name in harnesses:
