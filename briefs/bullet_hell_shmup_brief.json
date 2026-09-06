@@ -1,0 +1,24 @@
+{
+  "genre": "bullet_hell_shmup",
+  "palette": ["0x33e6ff", "0xff3355", "0xff9933", "0xaa66ff", "0x33ff88", "0xff33cc"],
+  "copy": {
+    "title": "Neon Bullet Hell",
+    "cta_text": "PLAY FULL VERSION",
+    "cta_link": "https://example.com/game"
+  },
+  "logo_asset_path": "briefs/assets/brand_logo.png",
+  "difficulty_tier": "hard",
+  "session_length_s": 180,
+  "target_network": "mraid",
+  "WIN_TIME_MS": 180000,
+  "PLAYER_SPEED": 320,
+  "PLAYER_FOCUS_SPEED": 160,
+  "HITBOX_RADIUS": 4,
+  "AUTO_FIRE_INTERVAL": 120,
+  "FOCUS_FIRE_INTERVAL": 80,
+  "MAX_POWER_LEVEL": 5,
+  "BOMB_COUNT": 3,
+  "INITIAL_SPAWN_INTERVAL": 2000,
+  "SPAWN_INTERVAL_MIN": 600,
+  "WAVE_INTERVAL_MS": 15000
+}

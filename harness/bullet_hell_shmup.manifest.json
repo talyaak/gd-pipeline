@@ -1,0 +1,18 @@
+{
+  "harness": "bullet_hell_shmup",
+  "params": {
+    "WIN_TIME_MS": { "type": "int", "min": 60000, "max": 300000, "default": 180000 },
+    "PLAYER_SPEED": { "type": "int", "min": 200, "max": 500, "default": 320 },
+    "PLAYER_FOCUS_SPEED": { "type": "int", "min": 80, "max": 300, "default": 160 },
+    "HITBOX_RADIUS": { "type": "int", "min": 3, "max": 8, "default": 4 },
+    "AUTO_FIRE_INTERVAL": { "type": "int", "min": 60, "max": 200, "default": 120 },
+    "FOCUS_FIRE_INTERVAL": { "type": "int", "min": 40, "max": 150, "default": 80 },
+    "MAX_POWER_LEVEL": { "type": "int", "min": 3, "max": 8, "default": 5 },
+    "BOMB_COUNT": { "type": "int", "min": 2, "max": 5, "default": 3 },
+    "INITIAL_SPAWN_INTERVAL": { "type": "int", "min": 1000, "max": 4000, "default": 2000 },
+    "SPAWN_INTERVAL_MIN": { "type": "int", "min": 300, "max": 1000, "default": 600 },
+    "WAVE_INTERVAL_MS": { "type": "int", "min": 10000, "max": 30000, "default": 15000 }
+  },
+  "copy_slots": ["title", "cta_text", "cta_link"],
+  "asset_slots": ["logo_asset_path"]
+}
