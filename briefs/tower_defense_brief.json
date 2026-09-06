@@ -1,0 +1,19 @@
+{
+  "genre": "tower_defense",
+  "copy": {
+    "title": "Tower Defense Reskin",
+    "cta_text": "PLAY FULL VERSION",
+    "cta_link": "https://example.com/game"
+  },
+  "logo_asset_path": "briefs/assets/brand_logo.png",
+  "difficulty_tier": "medium",
+  "session_length_s": 60,
+  "target_network": "mraid",
+  "BASE_HP": 10,
+  "CURRENCY_START": 100,
+  "TOWER_COST": 40,
+  "TOWER_RANGE": 100,
+  "TOWER_DMG": 2,
+  "TOWER_RATE_MS": 500,
+  "WAVE_GAP_MS": 2500
+}
