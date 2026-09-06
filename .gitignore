@@ -21,6 +21,8 @@ build/
 generated_game.html
 pipeline/vendor/node_modules/
 TASK_SUMMARY.md
+# Reskin build outputs
+harness/*_reskinned/
 # Claude Code settings
 .claude/
 # Generated game files
