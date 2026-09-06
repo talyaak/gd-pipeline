@@ -197,17 +197,12 @@ class PlayScene extends Phaser.Scene {
       const target = this.enemies.find((e) => e.alive && Math.abs(e.sprite.y - t.y) < TOWER_RANGE);
       if (!target) return;
       t.lastFired = time;
-      // TrailEmitter for projectile visual
-      Juice.TrailEmitter.create(this, { x: t.x, y: t.y, active: true }, {
-        color: 0x33e6ff,
-        size: 3,
-        life: 150,
-        interval: 25
-      });
-      // Also keep a brief line for immediate feedback
+      // Projectile visual: brief beam line + impact flash
       const beam = this.add.line(0, 0, t.x, t.y, target.sprite.x, target.sprite.y, 0x33e6ff, 0.8).setOrigin(0, 0).setLineWidth(2);
       this.fxLayer.add(beam);
       this.tweens.add({ targets: beam, alpha: 0, duration: 120, onComplete: () => beam.destroy() });
+      // Muzzle flash at tower
+      Juice.ParticleBurst.create(this, t.x, t.y, { color: 0x33e6ff, count: 4, speed: 60, size: 3 });
       target.hp -= TOWER_DMG;
       target.hpBar.width = Math.max(0, 22 * (target.hp / target.maxHp));
       if (target.hp <= 0 && target.alive) {
