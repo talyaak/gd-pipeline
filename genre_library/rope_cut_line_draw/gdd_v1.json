@@ -1,0 +1,33 @@
+{
+  "title": "Snip & Guide",
+  "core_loop": "A ball hangs suspended by one or more ropes. Swipe to cut ropes — the ball falls, swings, or rolls under physics. Guide it into the target zone (basket, portal, or marked area) by choosing which ropes to cut and in what order. Each level adds obstacles: spikes, fans, moving platforms, breakable glass, water. 20 levels across 3 tiers, 60-second session cap.",
+  "controls": "Swipe across a rope to cut it (line-segment intersection test). Touch/drag anywhere on screen — no UI buttons during play. Optional: tap-drag to draw a temporary guide line (ink) that the ball can roll along, ink depletes over 3 seconds.",
+  "mechanics": [
+    "Rope physics: distance joint (length fixed, rotation free) — ball swings realistically when single rope remains",
+    "Cut detection: swipe line segment intersects rope segment → rope destroyed, joint removed",
+    "Ball: 24px diameter circle, mass 1.0, restitution 0.3, friction 0.5",
+    "Target zone: 60px radius circle, triggers win on ball center entry + 0.5s dwell",
+    "Spikes: static triangle polygons, instant fail on contact (ball center within 18px)",
+    "Fans: rectangular zones applying constant force vector (800 px/sec^2) while ball inside",
+    "Moving platforms: kinematic bodies on 2-4 second loops (horizontal, vertical, or circular)",
+    "Breakable glass: rectangular segments, shatter on first impact (impulse > 500), debris particles",
+    "Water zones: buoyancy force (upward 600 px/sec^2), linear drag 2.0, angular drag 1.5",
+    "Ink guide line (optional): tap-drag draws Phaser.Graphics line, ball can roll on it (collision normal), ink fades 33%/sec, max 300px total length per level",
+    "Level progression: Levels 1-7 single rope, 8-14 multi-rope sequencing, 15-20 all obstacles combined",
+    "Star rating: 3 stars = target reached + all collectibles (3 stars/level) + time < par; 2 stars = target + time < par; 1 star = target reached"
+  ],
+  "juice": [
+    "Rope cut: 120ms white flash along cut segment + 6 particle splinters (brown, 300ms)",
+    "Ball swing: subtle trail emitter (6px segments, fade 200ms) active while velocity > 200",
+    "Target entry: camera flash (150ms, cyan) + 15 radial particles (gold, 600ms) + 'LEVEL COMPLETE' banner slide-down (300ms cubic-out)",
+    "Spike death: camera shake (250ms, 0.015) + screen flash red (100ms) + ball shatter into 8 wedge fragments (physics, 800ms) + fail banner",
+    "Fan active: rotating blade sprite (4 blades, 180 RPM) + wind line particles (white, 20% alpha)",
+    "Glass break: 12 shard particles with physics (random velocity 200-500) + crisp 'tink' tone (Web Audio, 800Hz, 120ms decay)",
+    "Water splash: 10 droplet particles on entry/exit + ripple shader distortion on zone surface",
+    "Ink draw: flowing line with width 4px, color teal, alpha 0.8, subtle glow bloom",
+    "Star award: each star pops in sequence (200ms delay) with scale 0→1.2→1.0 elastic + chime (C5/E5/G5)",
+    "Level transition: crossfade 400ms, next level ropes/ball fade in with stagger (rope 1: 0ms, rope 2: 100ms, ball: 200ms)"
+  ],
+  "mvp_scope": "Portrait 9:16 (720x1280). 20 hand-crafted levels in JSON (rope anchors, target, obstacles, par time, star positions). Matter.js physics (bundled, ~80KB gzipped) for rope joints, rigid bodies, collision. All graphics procedural: ropes = line strips, ball = circle with gradient, spikes = triangles, fans = rectangles + rotating blades, glass = rects, water = rect with shader. Web Audio procedural SFX (cut, chime, tink, splash, fail). Single HTML file, self-contained, 60fps mobile target. MRAID-compliant: muted audio until first touch, mraid.isViewable() gate, custom close support.",
+  "win_lose_condition": "WIN: Ball center enters target zone and remains for 0.5 seconds → level complete, star calculation, advance to next level (or victory screen on level 20). LOSE: Ball contacts spikes (instant) OR falls below screen (y > 1350) OR session timer reaches 60s → fail screen with retry / level select. No lives — instant retry. Stars persist in localStorage per level."
+}
