@@ -1,0 +1,18 @@
+{
+  "genre": "ball_sort",
+  "palette": ["0x33e6ff", "0xff33cc", "0xffe14d", "0x33ff88"],
+  "copy": {
+    "title": "Color Sort Puzzle",
+    "cta_text": "PLAY FULL VERSION",
+    "cta_link": "https://example.com/game"
+  },
+  "logo_asset_path": "",
+  "difficulty_tier": "normal",
+  "session_length_s": 60,
+  "target_network": "mraid",
+  "MOVE_LIMIT": 30,
+  "SESSION_MS": 60000,
+  "TUBE_CAPACITY": 4,
+  "EMPTY_TUBES": 2,
+  "COLORS": ["0x33e6ff", "0xff33cc", "0xffe14d", "0x33ff88"]
+}
