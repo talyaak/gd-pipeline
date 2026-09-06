@@ -1,0 +1,16 @@
+{
+  "genre": "endless_runner",
+  "palette": ["0x33e6ff", "0xff33cc", "0xffe14d", "0x33ff88", "0xff9933", "0xaa66ff"],
+  "copy": {
+    "title": "Neon Rush",
+    "cta_text": "PLAY FULL VERSION",
+    "cta_link": "https://example.com/game"
+  },
+  "logo_asset_path": "",
+  "difficulty_tier": "easy",
+  "session_length_s": 45,
+  "target_network": "mraid",
+  "LANE_SWITCH_MS": 120,
+  "SWIPE_THRESHOLD": 25,
+  "PLAYER_Y": 600
+}

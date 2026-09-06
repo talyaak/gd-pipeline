@@ -1,0 +1,19 @@
+{
+  "genre": "stack_tower",
+  "palette": ["0x33e6ff", "0xff33cc", "0xffe14d", "0x33ff88", "0xff9933", "0xaa66ff"],
+  "copy": {
+    "title": "Stack Master",
+    "cta_text": "PLAY FULL VERSION",
+    "cta_link": "https://example.com/game"
+  },
+  "logo_asset_path": "",
+  "difficulty_tier": "normal",
+  "session_length_s": 50,
+  "target_network": "mraid",
+  "TARGET_LAYERS": 15,
+  "PERFECT_TOLERANCE": 6,
+  "BASE_SPEED": 140,
+  "SPEED_STEP": 8,
+  "MAX_SPEED": 320,
+  "PALETTE": ["0x33e6ff", "0xff33cc", "0xffe14d", "0x33ff88", "0xff9933", "0xaa66ff"]
+}
