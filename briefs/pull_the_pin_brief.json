@@ -1,0 +1,19 @@
+{
+  "genre": "pull_the_pin",
+  "palette": ["0x33e6ff", "0xff33cc", "0xffe14d", "0x33ff88", "0xff9933"],
+  "copy": {
+    "title": "Pin Pull Rescue",
+    "cta_text": "PLAY FULL VERSION",
+    "cta_link": "https://example.com"
+  },
+  "logo_asset_path": "briefs/assets/brand_logo.png",
+  "difficulty_tier": "normal",
+  "session_length_s": 50,
+  "target_network": "mraid",
+  "SESSION_MS": 50000,
+  "TARGET_COLLECTED": 7,
+  "PIN_PULLS": 3,
+  "BALL_COUNT": 12,
+  "BALL_COLORS": ["0x33e6ff", "0xff33cc", "0xffe14d", "0x33ff88", "0xff9933"],
+  "GRAVITY": 1000
+}
