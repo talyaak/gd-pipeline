@@ -104,7 +104,7 @@ class PlayScene extends Phaser.Scene {
     const pad = this.buildPads.find((b) => Math.abs(p.x - b.x) < 24 && Math.abs(p.y - b.y) < 24);
     if (!pad || pad.tower) return;
     if (this.currency < TOWER_COST) {
-      this.cameras.main.shake(80, 0.004);
+      Juice.ScreenShake.create(this, { intensity: 0.004, duration: 80 });
       return;
     }
     this.currency -= TOWER_COST;
@@ -182,7 +182,8 @@ class PlayScene extends Phaser.Scene {
       if (e.sprite.y >= BASE_Y - 20) {
         this.baseHp -= 1;
         this.baseHpText.setText(String(this.baseHp));
-        this.cameras.main.shake(120, 0.006);
+        Juice.ScreenShake.create(this, { intensity: 0.006, duration: 120 });
+        Juice.CameraFlash.create(this, { color: 0xff3377, duration: 100 });
         e.alive = false;
         e.sprite.destroy(); e.hpBar.destroy();
         this.enemies.splice(i, 1);
@@ -196,6 +197,14 @@ class PlayScene extends Phaser.Scene {
       const target = this.enemies.find((e) => e.alive && Math.abs(e.sprite.y - t.y) < TOWER_RANGE);
       if (!target) return;
       t.lastFired = time;
+      // TrailEmitter for projectile visual
+      Juice.TrailEmitter.create(this, { x: t.x, y: t.y, active: true }, {
+        color: 0x33e6ff,
+        size: 3,
+        life: 150,
+        interval: 25
+      });
+      // Also keep a brief line for immediate feedback
       const beam = this.add.line(0, 0, t.x, t.y, target.sprite.x, target.sprite.y, 0x33e6ff, 0.8).setOrigin(0, 0).setLineWidth(2);
       this.fxLayer.add(beam);
       this.tweens.add({ targets: beam, alpha: 0, duration: 120, onComplete: () => beam.destroy() });
@@ -204,6 +213,7 @@ class PlayScene extends Phaser.Scene {
       if (target.hp <= 0 && target.alive) {
         target.alive = false;
         Juice.ParticleBurst.create(this, target.sprite.x, target.sprite.y, { color: 0xff3377, count: 8 });
+        Juice.ScorePopup.create(this, target.sprite.x, target.sprite.y - 15, '+10', { color: '#ffe14d', size: '18px', rise: 25, duration: 600 });
         target.sprite.destroy(); target.hpBar.destroy();
         const idx = this.enemies.indexOf(target);
         if (idx >= 0) this.enemies.splice(idx, 1);
@@ -225,6 +235,7 @@ class PlayScene extends Phaser.Scene {
       if (this.waveIndex >= WAVES.length) {
         this.time.delayedCall(300, () => this._end(true));
       } else {
+        Juice.CameraFlash.create(this, { color: 0x33e6ff, duration: 150 });
         this.time.delayedCall(WAVE_GAP_MS, () => { this.waveAdvancing = false; this._startWave(); });
       }
     }
