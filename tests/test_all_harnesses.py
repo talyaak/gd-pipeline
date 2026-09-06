@@ -4,6 +4,8 @@ from pathlib import Path
 from pipeline.execute import run_execution_report
 import tempfile
 
+HARNESS_DIR = Path(__file__).parent.parent / "harness"
+
 @pytest.mark.slow
 def test_harness_execution(tmp_path):
     """Test that all harnesses load and run correctly."""
@@ -19,10 +21,9 @@ def test_harness_execution(tmp_path):
     ]
 
     for harness_name in harnesses:
-        html_path = Path(f'/workspace/harness/{harness_name}')
+        html_path = HARNESS_DIR / harness_name
         if not html_path.exists():
-            print(f"SKIP: {harness_name} not found")
-            continue
+            raise FileNotFoundError(f"Harness file not found: {html_path}")
 
         html = html_path.read_text()
         out_dir = Path(tempfile.mkdtemp())
