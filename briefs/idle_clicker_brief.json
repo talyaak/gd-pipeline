@@ -1,0 +1,13 @@
+{
+  "genre": "idle_clicker",
+  "palette": ["0x33e6ff", "0xff33cc", "0xffe14d", "0x33ff88"],
+  "copy": {
+    "title": "Cosmic Tap Tycoon",
+    "cta_text": "PLAY FULL VERSION",
+    "cta_link": "https://example.com"
+  },
+  "logo_asset_path": "",
+  "SESSION_MS": 45000,
+  "TARGET_ENERGY": 5000,
+  "TAP_VALUE": 2
+}
