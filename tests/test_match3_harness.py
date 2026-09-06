@@ -4,10 +4,12 @@ from pathlib import Path
 from pipeline.execute import run_execution_report
 import tempfile
 
+HARNESS_DIR = Path(__file__).parent.parent / "harness"
+
 @pytest.mark.slow
 def test_match3_harness_execution(tmp_path):
     """Test that the match_3 harness loads and runs correctly."""
-    html = Path('/workspace/harness/match_3.html').read_text()
+    html = (HARNESS_DIR / "match_3.html").read_text()
     out_dir = Path(tempfile.mkdtemp())
     report = run_execution_report(html, out_dir)
     
