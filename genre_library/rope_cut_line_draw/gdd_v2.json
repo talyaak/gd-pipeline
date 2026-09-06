@@ -1,0 +1,34 @@
+{
+  "title": "Draft & Drop",
+  "core_loop": "A ball drops from the top of the screen. Draw ink lines (ramps, walls, curves) with your finger to guide it into the target zone — ink depletes as you draw and regenerates slowly. 25 levels across 3 tiers, 75-second session cap. Each level adds hazards: spikes, fans, portals, breakable floors, moving targets.",
+  "controls": "Drag to draw ink lines (Phaser.Graphics, max 400px total per level). Ink regenerates at 50px/sec when not drawing. Tap existing line to erase it (refunds 80% ink). Double-tap to clear all lines. No rope-cutting — pure drawing/physics.",
+  "mechanics": [
+    "Ball: 28px diameter, mass 1.2, restitution 0.25, friction 0.6 — heavier, stickier feel than v1",
+    "Ink physics: drawn lines become static Matter.js edges (collision only, no rotation), ball rolls/slides on them",
+    "Ink budget: 400px max per level, regenerates 50px/sec when pointer up, hard cap 400px",
+    "Line erase: tap any segment -> refunds 80% of its length, 150ms cooldown per segment",
+    "Target zone: 55px radius, win on ball center entry + 0.8s dwell (longer than v1's 0.5s)",
+    "Spikes: static triangles, instant fail on contact (ball center within 20px)",
+    "Fans: rectangular zones, constant force 900 px/sec^2, visual rotating blades (4 blades, 200 RPM)",
+    "Portals: linked pairs (entry->exit), preserve momentum vector rotated to exit angle, 1.5s cooldown",
+    "Breakable floors: thin rectangles, shatter on impact impulse > 600, 12 physics shards + 'crack' tone",
+    "Moving targets: target zone follows 3-5 second kinematic loop (figure-8, horizontal sweep, vertical bounce)",
+    "Level progression: 1-8 single target static, 9-17 portals + fans, 18-25 all hazards + moving target",
+    "Star rating: 3 stars = target + all 3 ink-efficiency tokens (use <33%/66%/100% budget) + time < par; 2 stars = target + time < par; 1 star = target reached"
+  ],
+  "juice": [
+    "Ink draw: flowing line width 5px, color teal (#00e6b8), alpha 0.85, subtle glow bloom (8px blur), follows finger with 1-frame lag for weight",
+    "Ink regen: budget bar pulses cyan at 50px/sec tick, soft particle drift upward from bar",
+    "Line erase: segment dissolves into 6 teal sparkles (200ms) + refund chime (Web Audio, 600Hz, 80ms)",
+    "Ball roll: continuous trail emitter (5px segments, fade 180ms, teal 40% alpha) active while velocity > 150",
+    "Target entry: camera flash 200ms cyan + 20 radial particles (gold, 800ms) + 'ZONE REACHED' banner slide-down (400ms cubic-out)",
+    "Spike death: camera shake 300ms 0.018 + screen flash red 120ms + ball shatter 10 wedge fragments (physics, 1000ms) + fail banner",
+    "Fan active: rotating blade sprite + wind line particles (white, 25% alpha) + low hum (Web Audio, 120Hz sine, 10% volume)",
+    "Portal transit: entry flash magenta, exit flash cyan, ball gains chromatic aberration trail 500ms, 'warp' tone (FM synth, 400->800Hz, 150ms)",
+    "Floor break: 12 shard particles with physics (random velocity 250-600) + crisp 'tink' (800Hz, 120ms) + debris dust puff",
+    "Star award: each star pops in sequence (250ms delay) with scale 0->1.3->1.0 elastic + chime cascade (C5/E5/G5/C6)",
+    "Level transition: crossfade 500ms, next level elements fade in with stagger (static: 0ms, fans: 150ms, portals: 300ms, target: 400ms)"
+  ],
+  "mvp_scope": "Portrait 9:16 (720x1280). 25 hand-crafted levels in JSON (ink budget, target, hazards, portal links, par time, star positions). Matter.js physics (bundled, ~80KB gzipped) for ball, static edges, portals, kinematic movers. All graphics procedural: ball = circle with radial gradient, ink = Graphics lines with glow filter, spikes = triangles, fans = rects + rotating blades, portals = paired rings with shader, floors = thin rects. Web Audio procedural SFX (draw, erase, roll, chime, warp, tink, fail). Single HTML file, self-contained, 60fps mobile target. MRAID-compliant: muted audio until first touch, mraid.isViewable() gate, custom close support.",
+  "win_lose_condition": "WIN: Ball center enters target zone and remains for 0.8 seconds -> level complete, star calculation (ink efficiency + time), advance to next level (or victory screen on level 25). LOSE: Ball contacts spikes (instant) OR falls below screen (y > 1400) OR session timer reaches 75s -> fail screen with retry / level select. No lives -- instant retry. Stars and best times persist in localStorage per level."
+}
