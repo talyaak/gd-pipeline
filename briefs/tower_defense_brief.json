@@ -9,6 +9,7 @@
   "difficulty_tier": "medium",
   "session_length_s": 60,
   "target_network": "mraid",
+  "visual_theme": "retro",
   "BASE_HP": 10,
   "CURRENCY_START": 100,
   "TOWER_COST": 40,

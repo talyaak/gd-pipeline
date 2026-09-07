@@ -1,0 +1,210 @@
+{
+  "version": 1,
+  "name": "retro",
+  "extends": "base",
+  "palette": {
+    "primary": "#00ff00",
+    "secondary": "#ffff00",
+    "accent": "#ff00ff",
+    "background": "#000000",
+    "surface": "#111111",
+    "text": "#00ff00",
+    "textMuted": "#008800",
+    "success": "#00ff00",
+    "warning": "#ffff00",
+    "danger": "#ff0000"
+  },
+  "gradients": {
+    "background": {
+      "type": "linear",
+      "from": [0, 0],
+      "to": [0, 1],
+      "stops": [
+        { "stop": 0.0, "color": "palette.background" },
+        { "stop": 1.0, "color": "#001100" }
+      ]
+    },
+    "buttonPrimary": {
+      "type": "linear",
+      "from": [0, 0],
+      "to": [0, 1],
+      "stops": [
+        { "stop": 0.0, "color": "palette.primary" },
+        { "stop": 1.0, "color": "#008800" }
+      ]
+    },
+    "scanlines": {
+      "type": "linear",
+      "from": [0, 0],
+      "to": [0, 1],
+      "stops": [
+        { "stop": 0.0, "color": "palette.background", "alpha": 1.0 },
+        { "stop": 0.5, "color": "palette.primary", "alpha": 0.03 },
+        { "stop": 1.0, "color": "palette.background", "alpha": 1.0 }
+      ]
+    }
+  },
+  "shapes": {
+    "gem": {
+      "type": "PixelRect",
+      "radius": 16,
+      "feather": 0,
+      "quality": 1,
+      "glow": { "color": "palette.primary", "alpha": 0.4, "scale": 1.2 },
+      "body": { "color": "palette.primary", "stroke": { "width": 2, "color": "palette.text", "alpha": 1.0 } },
+      "shine": { "offset": [-4, -4], "radius": 3, "color": "palette.secondary", "alpha": 0.8 }
+    },
+    "boardBackground": {
+      "type": "PixelRect",
+      "padding": 6,
+      "bgColor": "palette.surface",
+      "bgAlpha": 0.95,
+      "borderColor": "palette.primary",
+      "borderAlpha": 0.8,
+      "borderWidth": 3,
+      "radius": 0
+    },
+    "particle": {
+      "type": "PixelRect",
+      "radius": 2,
+      "feather": 0,
+      "quality": 1,
+      "color": "palette.accent"
+    }
+  },
+  "ui": {
+    "button": {
+      "states": {
+        "normal": "palette.primary",
+        "hover": "palette.secondary",
+        "pressed": "palette.accent",
+        "disabled": "#333333"
+      },
+      "text": { "fontSize": "24px", "fill": "palette.background", "fontFamily": "monospace" },
+      "scaleHover": 1.0,
+      "scalePressed": 1.0,
+      "transitionMs": 0
+    },
+    "progressBar": {
+      "background": "palette.surface",
+      "fill": "palette.primary",
+      "text": "palette.text",
+      "height": 18,
+      "radius": 0
+    },
+    "popup": {
+      "width": 380,
+      "height": 280,
+      "background": "palette.background",
+      "borderColor": "palette.primary",
+      "borderWidth": 3,
+      "overlayAlpha": 0.8,
+      "titleStyle": { "fontSize": "32px", "fill": "palette.primary", "fontFamily": "monospace" },
+      "messageStyle": { "fontSize": "22px", "fill": "palette.text", "fontFamily": "monospace" },
+      "buttonStyle": "ref:ui.button"
+    }
+  },
+  "particles": {
+    "matchBurst": {
+      "count": 16,
+      "life": 500,
+      "speed": 100,
+      "angleVariance": 180,
+      "startSize": 6,
+      "endSize": 1,
+      "startColor": "palette.accent",
+      "endColor": "palette.primary",
+      "startAlpha": 1.0,
+      "endAlpha": 0,
+      "gravity": 40
+    },
+    "comboTrail": {
+      "emitRate": 25,
+      "life": 400,
+      "speed": 35,
+      "angleVariance": 30,
+      "startSize": 4,
+      "endSize": 1,
+      "startColor": "palette.success",
+      "endColor": "palette.primary",
+      "startAlpha": 0.9,
+      "endAlpha": 0
+    },
+    "idleGain": {
+      "count": 8,
+      "life": 800,
+      "speed": 25,
+      "angleVariance": 360,
+      "startSize": 5,
+      "endSize": 1,
+      "startColor": "palette.secondary",
+      "endColor": "palette.primary",
+      "startAlpha": 0.7,
+      "endAlpha": 0,
+      "gravity": -20
+    }
+  },
+  "juice": {
+    "screenShake": { "intensity": 6, "duration": 100 },
+    "cameraFlash": { "color": "palette.secondary", "duration": 60, "alpha": 0.3 },
+    "scorePopup": {
+      "fontSize": "26px",
+      "fill": "palette.secondary",
+      "stroke": "palette.background",
+      "strokeThickness": 3,
+      "floatDistance": 45,
+      "floatDuration": 700,
+      "fadeDuration": 700
+    },
+    "selectionHighlight": {
+      "color": "palette.secondary",
+      "alpha": 0.8,
+      "pulseDuration": 400,
+      "pulseAlphaRange": [0.5, 1.0]
+    },
+    "swapAnimation": {
+      "duration": 100,
+      "ease": "Linear",
+      "revertShake": true
+    },
+    "cascade": {
+      "fallSpeed": 550,
+      "bounce": 0.0,
+      "newGemDelay": 50,
+      "matchFlashDuration": 80,
+      "matchFlashColor": "palette.accent"
+    },
+    "introBanner": {
+      "label": "PRESS START",
+      "fontSize": "20px",
+      "fill": "palette.secondary",
+      "background": "palette.background",
+      "slideDuration": 350
+    },
+    "counter": {
+      "warnThreshold": 5,
+      "normalColor": "palette.text",
+      "warnColor": "palette.danger",
+      "fontSize": "18px",
+      "fontFamily": "monospace"
+    },
+    "gameOverPanel": {
+      "won": {
+        "title": "STAGE CLEAR",
+        "titleColor": "palette.success",
+        "background": "palette.surface",
+        "borderColor": "palette.success"
+      },
+      "lost": {
+        "title": "GAME OVER",
+        "titleColor": "palette.danger",
+        "background": "palette.surface",
+        "borderColor": "palette.danger"
+      },
+      "scoreColor": "palette.secondary",
+      "targetColor": "palette.textMuted",
+      "buttonStyle": "ref:ui.button",
+      "ctaText": "INSERT COIN"
+    }
+  }
+}

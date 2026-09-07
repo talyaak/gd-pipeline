@@ -10,6 +10,7 @@
   "difficulty_tier": "normal",
   "session_length_s": 50,
   "target_network": "mraid",
+  "visual_theme": "neon",
   "TARGET_LAYERS": 15,
   "PERFECT_TOLERANCE": 6,
   "BASE_SPEED": 140,

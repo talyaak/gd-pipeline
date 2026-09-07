@@ -7,6 +7,7 @@
     "cta_link": "https://example.com"
   },
   "logo_asset_path": "",
+  "visual_theme": "minimal",
   "SESSION_MS": 45000,
   "TARGET_ENERGY": 5000,
   "TAP_VALUE": 2

@@ -10,6 +10,7 @@
   "difficulty_tier": "normal",
   "session_length_s": 50,
   "target_network": "mraid",
+  "visual_theme": "retro",
   "SESSION_MS": 50000,
   "TARGET_COLLECTED": 7,
   "PIN_PULLS": 3,

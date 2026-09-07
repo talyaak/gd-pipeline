@@ -10,6 +10,7 @@
   "difficulty_tier": "normal",
   "session_length_s": 60,
   "target_network": "mraid",
+  "visual_theme": "minimal",
   "MOVE_LIMIT": 30,
   "SESSION_MS": 60000,
   "TUBE_CAPACITY": 4,
