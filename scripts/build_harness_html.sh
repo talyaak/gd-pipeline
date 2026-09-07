@@ -23,6 +23,14 @@ INCLUDE_MRAID="${4:-false}"  # optional: include mraid.js (for reskin/ad builds)
   echo
   cat pipeline/vendor/juice.js
   echo
+  cat pipeline/vendor/art.js
+  echo
+  cat pipeline/vendor/ui.js
+  echo
+  cat pipeline/vendor/particle.js
+  echo
+  cat pipeline/vendor/visual_asset_engine.js
+  echo
   if [ "$INCLUDE_MRAID" = "true" ]; then
     cat pipeline/vendor/mraid.js
     echo

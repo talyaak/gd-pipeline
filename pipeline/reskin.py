@@ -18,12 +18,40 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
 
 def load_json(path: Path) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def apply_visual_theme(source_js: str, theme_name: str, theme_spec: Optional[Dict] = None) -> str:
+    """
+    Inject visual theme into the harness .game.js.
+
+    If theme_spec is provided, uses it directly (for inline themes).
+    Otherwise, loads from the theme name (expects theme to be available in
+    window.VisualAssetEngine.fromName() at runtime).
+
+    Injects window.__VISUAL_THEME__ = {name, spec} before the Phaser config.
+    """
+    if theme_spec is not None:
+        # Inline theme: serialize the spec
+        theme_json = json.dumps(theme_spec, separators=(',', ':'))
+        injection = f"\n// Visual theme injected by reskin pipeline\nwindow.__VISUAL_THEME__ = {theme_json};\n"
+    else:
+        # Named theme: just set the name, harness will load via VisualAssetEngine.fromName()
+        injection = f"\n// Visual theme injected by reskin pipeline\nwindow.__VISUAL_THEME__ = {{name: \"{theme_name}\"}};\n"
+
+    # Inject before "const config = {" which comes after the PlayScene class
+    injection_point = "const config = {"
+    idx = source_js.find(injection_point)
+    if idx != -1:
+        return source_js[:idx] + injection + "\n" + source_js[idx:]
+
+    # Fallback: append at end of file
+    return source_js.rstrip() + injection + "\n"
 
 
 def validate_brief(brief: dict, manifest: dict) -> list[str]:
@@ -308,6 +336,19 @@ def main() -> int:
 
     # Inject MRAID gating wrapper for ad network compliance
     reskinned_js = inject_mraid_gating(reskinned_js)
+
+    # Apply visual theme if specified in brief
+    visual_theme = brief.get("visual_theme")
+    if visual_theme:
+        # Check if it's a theme name or inline spec
+        if isinstance(visual_theme, str):
+            # Theme name - inject reference, harness loads via VisualAssetEngine.fromName()
+            reskinned_js = apply_visual_theme(reskinned_js, visual_theme)
+            print(f"Applied visual theme: {visual_theme}")
+        elif isinstance(visual_theme, dict):
+            # Inline theme spec
+            reskinned_js = apply_visual_theme(reskinned_js, "inline", visual_theme)
+            print("Applied inline visual theme spec")
 
     # Determine output path
     if args.output:
