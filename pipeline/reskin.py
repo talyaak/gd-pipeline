@@ -115,7 +115,7 @@ def validate_brief(brief: dict, manifest: dict) -> list[str]:
     return errors
 
 
-def substitute_consts(source_js: str, params: dict[str, Any], copy: dict[str, str], assets: dict[str, str]) -> str:
+def substitute_consts(source_js: str, params: dict[str, Any], copy: dict[str, str], assets: dict[str, str]) -> tuple[str, list[str]]:
     """
     Substitute const values in the harness .game.js file.
 
@@ -125,8 +125,13 @@ def substitute_consts(source_js: str, params: dict[str, Any], copy: dict[str, st
         const START_MOVES = 20;
 
     With new values from the brief. Also handles string constants for copy/asset slots.
+
+    Returns:
+        (reskinned_js, warnings): warnings list is empty on full success, or contains
+        messages for each param that failed to match (failed_noop).
     """
     result = source_js
+    warnings = []
 
     # Substitute numeric/array params
     for key, value in params.items():
@@ -143,19 +148,25 @@ def substitute_consts(source_js: str, params: dict[str, Any], copy: dict[str, st
         # Use \g<1> syntax to avoid ambiguity with digits in formatted value
         pattern = rf"(const\s+{re.escape(key)}\s*=\s*)[^;]+(\s*;)"
         replacement = rf"\g<1>{formatted}\g<2>"
+        # Check if pattern actually matches in the source (before substitution)
+        matched = re.search(pattern, result) is not None
         new_result = re.sub(pattern, replacement, result)
-        if new_result == result:
+        if not matched:
             # Also try with trailing comment
             pattern = rf"(const\s+{re.escape(key)}\s*=\s*)[^;]+(\s*;\s*//.*)?"
             replacement = rf"\g<1>{formatted}\g<2>"
+            matched = re.search(pattern, result) is not None
             new_result = re.sub(pattern, replacement, result)
+        if not matched:
+            # Neither pattern matched - this is a failed no-op
+            warnings.append(f"failed_noop: param '{key}' not found in harness .game.js (no const declaration to substitute)")
         result = new_result
 
     # Note: copy/asset slots are not consts in the .game.js -- they're used at HTML
     # build time (title in <title>, logo as asset reference). The reskin step only
     # substitutes gameplay params. The HTML build can read copy/asset from the brief.
 
-    return result
+    return result, warnings
 
 
 def inject_mraid_gating(source_js: str) -> str:
@@ -332,7 +343,15 @@ def main() -> int:
     copy = brief.get("copy", {})
     assets = {k: brief[k] for k in manifest.get("asset_slots", []) if k in brief}
 
-    reskinned_js = substitute_consts(source_js, params, copy, assets)
+    reskinned_js, warnings = substitute_consts(source_js, params, copy, assets)
+
+    # Fail loudly if any param failed to match (failed_noop) - per contract,
+    # an unmatched manifest param must be an explicit failure, not a silent pass-through
+    if warnings:
+        print("Substitution errors:", file=sys.stderr)
+        for w in warnings:
+            print(f"  - {w}", file=sys.stderr)
+        return 1
 
     # Inject MRAID gating wrapper for ad network compliance
     reskinned_js = inject_mraid_gating(reskinned_js)
