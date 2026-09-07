@@ -1,0 +1,207 @@
+{
+  "version": 1,
+  "name": "base",
+  "palette": {
+    "primary": "#33e6ff",
+    "secondary": "#ff33cc",
+    "accent": "#ffe14d",
+    "background": "#0a0a18",
+    "surface": "#14142a",
+    "text": "#ffffff",
+    "textMuted": "#8888aa",
+    "success": "#33ff88",
+    "warning": "#ff9933",
+    "danger": "#ff3355"
+  },
+  "gradients": {
+    "background": {
+      "type": "radial",
+      "center": [0.5, 0.5],
+      "radius": 1.0,
+      "stops": [
+        { "stop": 0.0, "color": "palette.background" },
+        { "stop": 1.0, "color": "#050510" }
+      ]
+    },
+    "buttonPrimary": {
+      "type": "linear",
+      "from": [0, 0],
+      "to": [0, 1],
+      "stops": [
+        { "stop": 0.0, "color": "palette.primary" },
+        { "stop": 1.0, "color": "#0099cc" }
+      ]
+    },
+    "surfaceHighlight": {
+      "type": "linear",
+      "from": [0, 0],
+      "to": [0, 1],
+      "stops": [
+        { "stop": 0.0, "color": "palette.surface" },
+        { "stop": 1.0, "color": "palette.background" }
+      ]
+    }
+  },
+  "shapes": {
+    "gem": {
+      "type": "SoftCircle",
+      "radius": 20,
+      "feather": 4,
+      "quality": 2,
+      "glow": { "color": "palette.primary", "alpha": 0.25, "scale": 1.3 },
+      "body": { "color": "palette.primary", "stroke": { "width": 2, "color": "#ffffff", "alpha": 0.7 } },
+      "shine": { "offset": [-6, -6], "radius": 6, "color": "#ffffff", "alpha": 0.5 }
+    },
+    "boardBackground": {
+      "type": "SoftRect",
+      "padding": 8,
+      "bgColor": "palette.surface",
+      "bgAlpha": 0.9,
+      "borderColor": "palette.primary",
+      "borderAlpha": 0.4,
+      "borderWidth": 2,
+      "radius": 10
+    },
+    "particle": {
+      "type": "SoftCircle",
+      "radius": 4,
+      "feather": 2,
+      "quality": 1,
+      "color": "palette.accent"
+    }
+  },
+  "ui": {
+    "button": {
+      "states": {
+        "normal": "palette.primary",
+        "hover": "gradients.buttonPrimary",
+        "pressed": "#0077aa",
+        "disabled": "#555555"
+      },
+      "text": { "fontSize": "24px", "fill": "palette.text" },
+      "scaleHover": 1.05,
+      "scalePressed": 0.95,
+      "transitionMs": 100
+    },
+    "progressBar": {
+      "background": "palette.surface",
+      "fill": "gradients.buttonPrimary",
+      "text": "palette.text",
+      "height": 20,
+      "radius": 4
+    },
+    "popup": {
+      "width": 400,
+      "height": 300,
+      "background": "palette.background",
+      "borderColor": "palette.primary",
+      "borderWidth": 2,
+      "overlayAlpha": 0.7,
+      "titleStyle": { "fontSize": "32px", "fill": "palette.text" },
+      "messageStyle": { "fontSize": "24px", "fill": "palette.text" },
+      "buttonStyle": "ref:ui.button"
+    }
+  },
+  "particles": {
+    "matchBurst": {
+      "count": 12,
+      "life": 600,
+      "speed": 120,
+      "angleVariance": 180,
+      "startSize": 6,
+      "endSize": 0,
+      "startColor": "palette.accent",
+      "endColor": "palette.primary",
+      "startAlpha": 1,
+      "endAlpha": 0,
+      "gravity": 50
+    },
+    "comboTrail": {
+      "emitRate": 30,
+      "life": 400,
+      "speed": 40,
+      "angleVariance": 30,
+      "startSize": 4,
+      "endSize": 1,
+      "startColor": "palette.success",
+      "endColor": "palette.primary",
+      "startAlpha": 0.8,
+      "endAlpha": 0
+    },
+    "idleGain": {
+      "count": 8,
+      "life": 800,
+      "speed": 30,
+      "angleVariance": 360,
+      "startSize": 5,
+      "endSize": 0,
+      "startColor": "palette.accent",
+      "endColor": "palette.primary",
+      "startAlpha": 0.7,
+      "endAlpha": 0,
+      "gravity": -20
+    }
+  },
+  "juice": {
+    "screenShake": { "intensity": 8, "duration": 120 },
+    "cameraFlash": { "color": "palette.accent", "duration": 80, "alpha": 0.3 },
+    "scorePopup": {
+      "fontSize": "28px",
+      "fill": "palette.accent",
+      "stroke": "#000000",
+      "strokeThickness": 3,
+      "floatDistance": 40,
+      "floatDuration": 800,
+      "fadeDuration": 800
+    },
+    "selectionHighlight": {
+      "color": "palette.accent",
+      "alpha": 0.6,
+      "pulseDuration": 600,
+      "pulseAlphaRange": [0.3, 0.8]
+    },
+    "swapAnimation": {
+      "duration": 150,
+      "ease": "Cubic.easeOut",
+      "revertShake": true
+    },
+    "cascade": {
+      "fallSpeed": 600,
+      "bounce": 0.15,
+      "newGemDelay": 60,
+      "matchFlashDuration": 100,
+      "matchFlashColor": "palette.accent"
+    },
+    "introBanner": {
+      "label": "TAP TO START",
+      "fontSize": "20px",
+      "fill": "palette.accent",
+      "background": "palette.surface",
+      "slideDuration": 400
+    },
+    "counter": {
+      "warnThreshold": 5,
+      "normalColor": "palette.text",
+      "warnColor": "palette.danger",
+      "fontSize": "18px"
+    },
+    "gameOverPanel": {
+      "won": {
+        "title": "LEVEL COMPLETE",
+        "titleColor": "palette.success",
+        "background": "palette.surface",
+        "borderColor": "palette.success"
+      },
+      "lost": {
+        "title": "GAME OVER",
+        "titleColor": "palette.danger",
+        "background": "palette.surface",
+        "borderColor": "palette.danger"
+      },
+      "scoreColor": "palette.accent",
+      "targetColor": "palette.textMuted",
+      "buttonStyle": "ref:ui.button",
+      "ctaText": "PLAY NOW"
+    }
+  }
+}
