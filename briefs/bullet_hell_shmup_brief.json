@@ -10,6 +10,7 @@
   "difficulty_tier": "hard",
   "session_length_s": 180,
   "target_network": "mraid",
+  "visual_theme": "neon",
   "WIN_TIME_MS": 180000,
   "PLAYER_SPEED": 320,
   "PLAYER_FOCUS_SPEED": 160,

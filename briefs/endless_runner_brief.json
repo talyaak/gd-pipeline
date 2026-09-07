@@ -10,6 +10,7 @@
   "difficulty_tier": "easy",
   "session_length_s": 45,
   "target_network": "mraid",
+  "visual_theme": "neon",
   "LANE_SWITCH_MS": 120,
   "SWIPE_THRESHOLD": 25,
   "PLAYER_Y": 600
