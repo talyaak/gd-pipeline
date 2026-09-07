@@ -53,14 +53,15 @@ def design(state: RunState) -> dict:
         else:
             raise ValueError("No JSON found in response")
     except Exception as e:
-        data = {
-            "title": "Endless Runner",
-            "core_loop": "Run forward, jump to dodge obstacles",
-            "controls": "Space/tap to jump",
-            "mechanics": ["run", "jump", "obstacle spawning"],
-            "juice": ["particles", "screen shake", "sound effects"],
-            "mvp_scope": "One endless level with increasing speed",
-            "win_lose_condition": "Survive as long as possible, lose on collision",
+        # Return structured error state for parse failures - do NOT silently fallback
+        return {
+            "design": {
+                "status": "failed_needs_rework",
+                "attempt": attempt,
+                "artifact": None,
+                "review": None,
+                "error": f"[syntax] JSON parse failed: {e}",
+            }
         }
     result = GameDesignDocument(**data)
     return {
