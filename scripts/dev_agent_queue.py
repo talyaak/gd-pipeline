@@ -99,6 +99,26 @@ def pid_alive(pid):
     return Path(f"/proc/{pid}").exists()
 
 
+DAILY_QUOTA_MARKER = "free-models-per-day"
+
+
+def hit_daily_quota_wall(name):
+    """Check this task's own log for the DAILY (not per-minute) free-tier cap.
+
+    Distinct from the per-minute rate limit: a per-minute hit is worth
+    retrying soon, a per-day hit means retrying again today is pure waste
+    no matter how many attempts we spend. Detected via plain substring
+    match on the log file -- deterministic, no LLM judgment.
+    """
+    log_file = LOGS_DIR / f"{name}.log"
+    if not log_file.exists():
+        return False
+    try:
+        return DAILY_QUOTA_MARKER in log_file.read_text(errors="replace")
+    except OSError:
+        return False
+
+
 def find_running_pid_for(name):
     """Match a live hermes process to a task by its /proc/<pid>/cwd target."""
     wt = str(worktree_path(name).resolve())
@@ -135,6 +155,17 @@ def rate_limit_hits_today():
 
 def reap(state):
     """Deterministic completion check: alive process? real commit? terminal state."""
+    today = subprocess.run(["date", "-u", "+%Y-%m-%d"], capture_output=True, text=True).stdout.strip()
+
+    # Daily quota resets each UTC day: any task parked in quota_exhausted from
+    # a previous day becomes pending again, attempts untouched (it never
+    # burned an attempt for a day-quota hit in the first place).
+    for name, s in state.items():
+        if s["status"] == "quota_exhausted" and s.get("quota_date") != today:
+            s["status"] = "pending"
+            s["quota_date"] = None
+            log(f"{name}: new UTC day ({today}) -> released from quota_exhausted back to pending")
+
     for name, s in state.items():
         if s["status"] != "running":
             continue
@@ -145,6 +176,12 @@ def reap(state):
         if has_commit(name):
             s["status"] = "done"
             log(f"{name}: process ended, real commit found -> done")
+        elif hit_daily_quota_wall(name):
+            # Not a task-specific failure -- don't burn an attempt on it.
+            # Nothing will succeed again today; park it until the UTC date rolls.
+            s["status"] = "quota_exhausted"
+            s["quota_date"] = today
+            log(f"{name}: process ended, hit DAILY free-tier quota wall -> parked (not counted as an attempt), retries {today}")
         else:
             s["attempts"] += 1
             if s["attempts"] >= MAX_ATTEMPTS:
@@ -255,10 +292,15 @@ def main():
         pending = [n for n, s in state.items() if s["status"] == "pending"]
         stuck = [n for n, s in state.items() if s["status"] == "stuck"]
         done = [n for n, s in state.items() if s["status"] == "done"]
-        if not pending and not stuck:
+        waiting_on_quota = [n for n, s in state.items() if s["status"] == "quota_exhausted"]
+        if not pending and not stuck and not waiting_on_quota:
             log(f"queue complete: {len(done)}/{len(QUEUE)} done, nothing left to run")
-        elif stuck:
+        elif stuck and not waiting_on_quota:
             log(f"queue stalled: {len(stuck)} task(s) stuck after {MAX_ATTEMPTS} attempts: {stuck} -- needs human review")
+        elif waiting_on_quota and not stuck:
+            log(f"queue waiting: {len(waiting_on_quota)} task(s) parked on daily free-tier quota, will resume automatically at UTC date rollover: {waiting_on_quota}")
+        elif waiting_on_quota and stuck:
+            log(f"queue mixed: {len(stuck)} stuck (needs human) {stuck}; {len(waiting_on_quota)} waiting on daily quota (auto-resumes) {waiting_on_quota}")
 
     save_state(state)
 
