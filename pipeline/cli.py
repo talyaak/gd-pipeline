@@ -6,6 +6,7 @@ from langgraph.types import Command
 
 from pipeline.graph import build_graph
 from pipeline.output import new_run_dir, stage_dir, write_json, write_text
+from pipeline.cost_tracker import summarize, compute_repair_metrics
 
 
 def _prompt_gdd_approval(gdd: dict) -> dict:
@@ -89,6 +90,26 @@ def main() -> None:
 
     summary = {step: final_state.get(step, {}).get("status") for step in steps}
     write_json(run_dir, "pipeline_summary", summary)
+
+    # Add repair-loop metrics to summary
+    repair_metrics = compute_repair_metrics(final_state)
+    summary["repair_metrics"] = repair_metrics
+    write_json(run_dir, "pipeline_summary", summary)
+
+    # Print cost summary and repair metrics
+    cost_summary = summarize()
+    print(f"\n--- Cost Summary (last 24h) ---")
+    print(f"  Total calls: {cost_summary.get('total_calls', 0)}")
+    print(f"  Total cost: ${cost_summary.get('total_cost_usd', 0.0):.4f}")
+    if cost_summary.get("cost_by_node"):
+        for node, cost in cost_summary["cost_by_node"].items():
+            print(f"  {node}: ${cost:.4f}")
+    if cost_summary.get("anomalies"):
+        print(f"  Anomalies: {len(cost_summary['anomalies'])}")
+    print(f"\n--- Repair Metrics ---")
+    print(f"  First-pass success rate: {repair_metrics['first_pass_success_rate']:.1%}")
+    print(f"  Repair success rate: {repair_metrics['repair_success_rate']:.1%}")
+    print(f"  Avg repair count per stage: {repair_metrics['avg_repair_count_per_stage']:.2f}")
 
     if code.get("status") != "passed":
         print(f"\nPipeline did not produce a passing game.html (status: {code.get('status')})", file=sys.stderr)

@@ -22,9 +22,19 @@ from langchain_core.callbacks import BaseCallbackHandler
 LOG_PATH = Path(os.environ.get("PIPELINE_COST_LOG", "pipeline_cost_log.jsonl"))
 
 # USD per million tokens. Best-known published rates as of this code's writing -
-# verify against console.anthropic.com/settings/billing if these look stale;
+# verify against console.anthropic.com/settings/billing or openrouter.ai/models if these look stale;
 # pricing can change and this is a local estimate, not a billing source of truth.
+# OpenRouter pricing (per million tokens) for models used by this pipeline:
+# - anthropic/claude-sonnet-4: input $3.00, output $15.00
+# - anthropic/claude-3-haiku: input $0.25, output $1.25
+# Direct Anthropic API pricing:
+# - claude-sonnet-4-5-20250929: input $3.00, output $15.00
+# - claude-haiku-4-5-20251001: input $1.00, output $5.00
 PRICING_PER_MTOK = {
+    # OpenRouter models (provider/model format)
+    "anthropic/claude-sonnet-4": {"input": 3.00, "output": 15.00},
+    "anthropic/claude-3-haiku": {"input": 0.25, "output": 1.25},
+    # Direct Anthropic API models (dated IDs)
     "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
     "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},
 }
@@ -36,10 +46,63 @@ ANOMALY_MIN_HISTORY = 5
 
 
 def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float | None:
+    """Estimate cost in USD for a given model and token counts."""
+    if not model:
+        return None
+    # Normalize model name for OpenRouter slugs (they use provider/model format)
     rates = PRICING_PER_MTOK.get(model)
     if rates is None:
         return None
     return (input_tokens / 1_000_000) * rates["input"] + (output_tokens / 1_000_000) * rates["output"]
+
+
+def compute_repair_metrics(final_state: dict) -> dict:
+    """Compute repair-loop metrics from final pipeline state.
+    
+    Metrics computed from existing attempt/status data (no new state tracking):
+    - first_pass_success_rate: stages that passed on attempt 1 / total stages that ran
+    - repair_success_rate: stages that eventually passed after repairs / total stages that needed repair
+    - avg_repair_count: average number of repair attempts per stage that ran
+    """
+    # Stages that have attempt/status data (the repair loop stages)
+    repair_stages = ["code", "execution", "review"]
+    
+    total_stages = 0
+    first_pass_success = 0
+    repair_needed = 0
+    repair_succeeded = 0
+    total_repair_attempts = 0
+    
+    for stage in repair_stages:
+        stage_data = final_state.get(stage, {})
+        if not stage_data:
+            continue
+        attempt = stage_data.get("attempt", 1)
+        status = stage_data.get("status")
+        
+        total_stages += 1
+        total_repair_attempts += attempt
+        
+        if attempt == 1 and status == "passed":
+            first_pass_success += 1
+        elif attempt > 1:
+            repair_needed += 1
+            if status == "passed":
+                repair_succeeded += 1
+    
+    first_pass_rate = first_pass_success / total_stages if total_stages > 0 else 0.0
+    repair_rate = repair_succeeded / repair_needed if repair_needed > 0 else 1.0
+    avg_repairs = (total_repair_attempts - total_stages) / total_stages if total_stages > 0 else 0.0
+    
+    return {
+        "first_pass_success_rate": round(first_pass_rate, 4),
+        "repair_success_rate": round(repair_rate, 4),
+        "avg_repair_count_per_stage": round(avg_repairs, 4),
+        "stages_analyzed": total_stages,
+        "first_pass_successes": first_pass_success,
+        "repairs_needed": repair_needed,
+        "repairs_succeeded": repair_succeeded,
+    }
 
 
 def _recent_costs(node: str, limit: int = 20) -> list[float]:
