@@ -101,6 +101,30 @@ def pid_alive(pid):
 
 DAILY_QUOTA_MARKER = "free-models-per-day"
 
+# Transient infra failures: worth retrying soon, never worth spending one of
+# the task's real MAX_ATTEMPTS on -- those are reserved for genuine task
+# difficulty, not "the free upstream provider hiccuped." Capped separately
+# (TRANSIENT_CAP) so a permanently-broken provider still eventually surfaces
+# to a human instead of retrying forever.
+TRANSIENT_MARKERS = [
+    "Service temporarily overloaded",
+    "Upstream error from",
+    "HTTP 502",
+    "HTTP 503",
+    "Gateway Timeout",
+]
+TRANSIENT_CAP = 10
+
+
+def _log_text(name):
+    log_file = LOGS_DIR / f"{name}.log"
+    if not log_file.exists():
+        return ""
+    try:
+        return log_file.read_text(errors="replace")
+    except OSError:
+        return ""
+
 
 def hit_daily_quota_wall(name):
     """Check this task's own log for the DAILY (not per-minute) free-tier cap.
@@ -110,13 +134,15 @@ def hit_daily_quota_wall(name):
     no matter how many attempts we spend. Detected via plain substring
     match on the log file -- deterministic, no LLM judgment.
     """
-    log_file = LOGS_DIR / f"{name}.log"
-    if not log_file.exists():
-        return False
-    try:
-        return DAILY_QUOTA_MARKER in log_file.read_text(errors="replace")
-    except OSError:
-        return False
+    return DAILY_QUOTA_MARKER in _log_text(name)
+
+
+def hit_transient_infra_failure(name):
+    """Check for a known-transient provider/network hiccup (not a daily cap,
+    not a real task failure) -- e.g. an upstream inference provider being
+    briefly overloaded. Worth retrying again soon, not worth an attempt."""
+    text = _log_text(name)
+    return any(marker in text for marker in TRANSIENT_MARKERS)
 
 
 def find_running_pid_for(name):
@@ -182,6 +208,17 @@ def reap(state):
             s["status"] = "quota_exhausted"
             s["quota_date"] = today
             log(f"{name}: process ended, hit DAILY free-tier quota wall -> parked (not counted as an attempt), retries {today}")
+        elif hit_transient_infra_failure(name):
+            # A provider hiccup, not a task problem -- retry soon, don't burn
+            # a real attempt, but cap separately so a permanently-broken
+            # provider still surfaces to a human eventually.
+            s["transient_retries"] = s.get("transient_retries", 0) + 1
+            if s["transient_retries"] >= TRANSIENT_CAP:
+                s["status"] = "stuck"
+                log(f"{name}: process ended, transient infra failure but transient_retries={s['transient_retries']} >= {TRANSIENT_CAP} -> stuck (needs human, provider may be down)")
+            else:
+                s["status"] = "pending"
+                log(f"{name}: process ended, transient infra failure (retry {s['transient_retries']}/{TRANSIENT_CAP}) -> requeued, no attempt spent")
         else:
             s["attempts"] += 1
             if s["attempts"] >= MAX_ATTEMPTS:
