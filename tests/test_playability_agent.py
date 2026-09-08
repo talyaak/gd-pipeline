@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from pipeline.playability_agent import check_playability_agentic
+from pipeline.playability_agent import PlayabilitySkipped, check_playability_agentic
 
 SIMPLE_HTML = "<!DOCTYPE html><html><body>test</body></html>"
 
@@ -82,3 +82,15 @@ def test_server_always_shut_down_even_on_failure(monkeypatch):
     with pytest.raises(RuntimeError):
         check_playability_agentic(SIMPLE_HTML)
     assert shutdown_calls == [True]
+
+
+def test_claude_cli_missing_raises_playability_skipped(monkeypatch):
+    """When `claude` CLI is not found, PlayabilitySkipped is raised (not a generic failure)."""
+    monkeypatch.setattr("pipeline.playability_agent._serve_dir", _fake_serve_dir)
+
+    def _file_not_found(*a, **kw):
+        raise FileNotFoundError("[Errno 2] No such file or directory: 'claude'")
+
+    monkeypatch.setattr("pipeline.playability_agent.subprocess.run", _file_not_found)
+    with pytest.raises(PlayabilitySkipped, match="claude CLI not found"):
+        check_playability_agentic(SIMPLE_HTML)

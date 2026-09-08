@@ -1,4 +1,5 @@
 from pipeline.nodes.validate_execute import validate_execute
+from pipeline.playability_agent import PlayabilitySkipped
 from pipeline.schemas import ExecutionReport, PlayabilityReport
 
 GOOD_HTML = (
@@ -97,3 +98,20 @@ def test_fully_clean_and_playable_passes(monkeypatch):
     result = validate_execute(_state())
 
     assert result["execution"]["status"] == "passed"
+
+
+def test_playability_skipped_when_claude_cli_missing(monkeypatch):
+    """When claude CLI is missing, playability check is SKIPPED (not failed)."""
+    report = _clean_report()
+    monkeypatch.setattr("pipeline.nodes.validate_execute.run_execution_report", lambda html, out_dir: report)
+
+    def _raise_skipped(*a, **kw):
+        raise PlayabilitySkipped("claude CLI not found in PATH; playability check skipped")
+
+    monkeypatch.setattr("pipeline.playability_agent.check_playability_agentic", _raise_skipped)
+
+    result = validate_execute(_state())
+
+    assert result["execution"]["status"] == "skipped"
+    assert "skipped" in result["execution"]["error"].lower()
+    assert "claude" in result["execution"]["error"].lower()
