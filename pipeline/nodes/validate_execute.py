@@ -4,7 +4,7 @@ import gzip
 from pipeline.execute import run_execution_report
 from pipeline.output import stage_dir, write_json
 from pipeline.schemas import RunState
-from pipeline.validate import check_html_game
+from pipeline.validate import check_html_game, SyntaxCheckUnavailable
 
 # Size gate: gzipped HTML must be under 500KB
 MAX_GZIP_SIZE_KB = 500
@@ -68,13 +68,26 @@ def validate_execute(state: RunState) -> dict:
     code = state.get("code", {})
     attempt = code.get("attempt", 0)
     html = code.get("artifact", {}).get("html", "")
-    
+
     # Get spec artifact for timing targets
     spec_artifact = state.get("spec", {}).get("artifact") or {}
 
     out_dir = stage_dir(Path(state.get("run_dir", "")), 5, "execution", attempt)
 
-    static_issues = check_html_game(html)
+    # Static checks - guard against SyntaxCheckUnavailable (missing/broken `node`)
+    try:
+        static_issues = check_html_game(html)
+    except SyntaxCheckUnavailable as exc:
+        result = {
+            "status": "failed_needs_rework",
+            "attempt": attempt,
+            "artifact": None,
+            "review": None,
+            "error": f"JS syntax check unavailable: {exc}",
+        }
+        write_json(out_dir, "execution", result)
+        return {"execution": result}
+
     if static_issues:
         result = {
             "status": "failed_needs_rework",
@@ -82,20 +95,6 @@ def validate_execute(state: RunState) -> dict:
             "artifact": None,
             "review": None,
             "error": "; ".join(static_issues),
-        }
-        write_json(out_dir, "execution", result)
-        return {"execution": result}
-
-    # Size gate: check gzipped HTML size
-    gzipped_html = gzip.compress(html.encode("utf-8"))
-    gzip_size_kb = len(gzipped_html) / 1024
-    if gzip_size_kb > MAX_GZIP_SIZE_KB:
-        result = {
-            "status": "failed_needs_rework",
-            "attempt": attempt,
-            "artifact": None,
-            "review": None,
-            "error": f"Gzipped HTML size ({gzip_size_kb:.1f} KB) exceeds limit ({MAX_GZIP_SIZE_KB} KB)",
         }
         write_json(out_dir, "execution", result)
         return {"execution": result}
@@ -108,7 +107,7 @@ def validate_execute(state: RunState) -> dict:
         and report.canvas_rendered
         and report.input_response_detected
     )
-    
+
     # Additional timing metric validation (only if basic runtime passed)
     timing_violations = []
     if runtime_ok:
@@ -149,6 +148,15 @@ def validate_execute(state: RunState) -> dict:
         if not report.loaded:
             all_errors.append("page failed to load")
         all_errors.extend(timing_violations)
+
+    # Size gate: check gzipped HTML size against FINAL shipped HTML (after all injections)
+    # This must run AFTER run_execution_report to measure the actual shipped artifact
+    if runtime_ok and report.final_html:
+        gzipped_html = gzip.compress(report.final_html.encode("utf-8"))
+        gzip_size_kb = len(gzipped_html) / 1024
+        if gzip_size_kb > MAX_GZIP_SIZE_KB:
+            runtime_ok = False
+            all_errors.append(f"Gzipped HTML size ({gzip_size_kb:.1f} KB) exceeds limit ({MAX_GZIP_SIZE_KB} KB)")
 
     result = {
         "status": "passed" if runtime_ok else "failed_needs_rework",
