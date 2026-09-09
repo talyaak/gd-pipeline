@@ -27,3 +27,13 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["pipeline*"]
+
+# config.py lives at repo root as a standalone module (not under pipeline/),
+# imported bare (`import config`) by several pipeline/*.py files. Without this,
+# an editable install only exposes the pipeline* package -- config.py only
+# resolved locally by accident, because `python -m pytest` puts cwd on
+# sys.path; the plain `pytest` CLI (what CI actually runs) does not, which is
+# why CI failed collecting any test that imports pipeline.graph at module
+# level while every local run looked fine.
+[tool.setuptools]
+py-modules = ["config"]
