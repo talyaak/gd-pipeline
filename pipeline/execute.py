@@ -477,6 +477,142 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                 console_errors.append(f"Semantic validation error: {exc}")
                 semantic_ok = False
 
+            # CTA Validation: Check that the scene has a real ctaButton and clicking it
+            # invokes mraid.open(...) or window.open(...)
+            cta_ok = True
+            cta_exists = False
+            cta_clicked = False
+            cta_action_called = False
+            try:
+                # Stub mraid.open and window.open NOW (after page load, so mraid is available)
+                page.evaluate("""
+                    // Stub mraid.open if mraid exists
+                    if (typeof window.mraid !== 'undefined' && window.mraid.open) {
+                        const originalOpen = window.mraid.open.bind(window.mraid);
+                        window.mraid.open = function(url) {
+                            window.__mraid_open_called = true;
+                            window.__mraid_open_url = url;
+                            return originalOpen(url);
+                        };
+                    }
+
+                    // Stub window.open
+                    const originalWindowOpen = window.open.bind(window);
+                    window.open = function(url, target, features) {
+                        window.__window_open_called = true;
+                        window.__window_open_url = url;
+                        return originalWindowOpen(url, target, features);
+                    };
+                """)
+
+                # Reset tracking flags AFTER stubs are installed (page load may have called window.open)
+                page.evaluate("""
+                    window.__mraid_open_called = false;
+                    window.__window_open_called = false;
+                    window.__mraid_open_url = null;
+                    window.__window_open_url = null;
+                """)
+
+                # Check if the active scene has a ctaButton
+                cta_exists = page.evaluate("""() => {
+                    const game = window.__GAME__;
+                    if (!game) return false;
+
+                    // Check all active scenes for ctaButton
+                    // In Phaser 3, scene.active/visible are on scene.sys.settings
+                    if (game.scene && game.scene.scenes) {
+                        for (const scene of game.scene.scenes) {
+                            const isVisible = scene.sys?.settings?.visible === true;
+                            const isActive = scene.sys?.settings?.active === true;
+                            if (isVisible && isActive && scene.ctaButton) {
+                                // Verify it's a real Phaser game object (has setVisible, on, etc.)
+                                if (typeof scene.ctaButton.setVisible === 'function' &&
+                                    typeof scene.ctaButton.on === 'function') {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                    return false;
+                }""")
+
+                if not cta_exists:
+                    console_errors.append("CTA validation: no valid ctaButton found on active scene")
+                    cta_ok = False
+                else:
+                    # Try to make CTA visible and click it
+                    # Some games hide CTA until game over; we force it visible
+                    # Use Phaser's input system to properly trigger the click handler
+                    cta_clicked = page.evaluate("""() => {
+                        const game = window.__GAME__;
+                        if (!game || !game.scene || !game.scene.scenes) return false;
+
+                        for (const scene of game.scene.scenes) {
+                            const isVisible = scene.sys?.settings?.visible === true;
+                            const isActive = scene.sys?.settings?.active === true;
+                            if (isVisible && isActive && scene.ctaButton) {
+                                // Force CTA visible
+                                scene.ctaButton.setVisible(true);
+                                if (scene.ctaText) scene.ctaText.setVisible(true);
+
+                                const btn = scene.ctaButton;
+                                const bounds = btn.getBounds();
+                                if (!bounds) return false;
+
+                                // Use Phaser's input manager to properly trigger the handler
+                                const inputManager = scene.input;
+                                const pointer = inputManager.activePointer;
+
+                                // Set pointer position to button center
+                                pointer.x = bounds.centerX;
+                                pointer.y = bounds.centerY;
+                                pointer.isDown = true;
+                                pointer.buttons = 1;
+                                pointer.button = 0;
+                                pointer.pointerId = 1;
+                                pointer.pointerType = 'mouse';
+                                pointer.position = { x: bounds.centerX, y: bounds.centerY };
+                                pointer.camera = scene.cameras.main;
+
+                                // Emit pointerdown on the input manager (Phaser's way)
+                                inputManager.emit('pointerdown', pointer, null, btn);
+                                
+                                // Also emit directly on the button for good measure
+                                btn.emit('pointerdown', pointer, null, btn);
+
+                                return true;
+                            }
+                        }
+                        return false;
+                    }""")
+
+                    if not cta_clicked:
+                        console_errors.append("CTA validation: failed to click CTA button")
+                        cta_ok = False
+                    else:
+                        # Wait a bit for the click handler to execute
+                        page.wait_for_timeout(500)
+
+                        # Check if mraid.open or window.open was called
+                        cta_action_called = page.evaluate("""() => {
+                            return window.__mraid_open_called === true || window.__window_open_called === true;
+                        }""")
+
+                        if not cta_action_called:
+                            console_errors.append("CTA validation: CTA click did not invoke mraid.open() or window.open()")
+                            cta_ok = False
+                        else:
+                            # Log which one was called for debugging
+                            which = page.evaluate("""() => {
+                                if (window.__mraid_open_called) return 'mraid.open(' + window.__mraid_open_url + ')';
+                                if (window.__window_open_called) return 'window.open(' + window.__window_open_url + ')';
+                                return 'none';
+                            }""")
+                            print(f"CTA validation passed: {which}")
+            except Exception as exc:
+                console_errors.append(f"CTA validation error: {exc}")
+                cta_ok = False
+
             duration_ms = LOAD_WAIT_MS + 3 * INPUT_WAIT_MS + POST_INPUT_WAIT_MS + POST_INPUT_WAIT_MS + OBSERVATION_PERIOD_MS
 
             # Measure time-to-first-interaction
@@ -497,6 +633,9 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
         console_errors=console_errors,
         canvas_rendered=canvas_rendered,
         input_response_detected=input_response_detected,
+        cta_exists=cta_exists,
+        cta_clicked=cta_clicked,
+        cta_action_called=cta_action_called,
         screenshot_before_path=str(before_path),
         screenshot_after_path=str(after_path),
         duration_ms=duration_ms,
