@@ -81,6 +81,10 @@ class ExecutionReport(BaseModel):
     console_errors: list[str] = Field(default_factory=list)
     canvas_rendered: bool = False
     input_response_detected: bool = False
+    # CTA validation fields
+    cta_exists: bool = False
+    cta_clicked: bool = False
+    cta_action_called: bool = False
     screenshot_before_path: Optional[str] = None
     screenshot_after_path: Optional[str] = None
     duration_ms: Optional[int] = None
