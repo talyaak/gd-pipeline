@@ -86,6 +86,7 @@ def main() -> None:
     final_html = (execution.get("artifact") or {}).get("final_html")
     if code.get("status") == "passed" and final_html:
         write_text(run_dir, "game.html", final_html)
+        print(f"\ngame.html written to {run_dir / 'game.html'}")
 
     summary = {step: final_state.get(step, {}).get("status") for step in steps}
     write_json(run_dir, "pipeline_summary", summary)
@@ -93,8 +94,6 @@ def main() -> None:
     if code.get("status") != "passed":
         print(f"\nPipeline did not produce a passing game.html (status: {code.get('status')})", file=sys.stderr)
         sys.exit(1)
-
-    print(f"\ngame.html written to {run_dir / 'game.html'}")
 
 
 if __name__ == "__main__":

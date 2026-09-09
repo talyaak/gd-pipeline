@@ -4,7 +4,7 @@
 **FACT** Multi-agent pipeline that turns a game genre/concept into a playable single-file HTML5 game (Phaser 3, no external assets) and proves it runs in real Chromium before declaring success (README.md:3-5, 12-15).
 
 ## 2. PIPELINE ARCHITECTURE
-**FACT** 7-node LangGraph: `research → design → [human_review_gdd] → spec → codegen → validate_execute → review` with conditional edges for rework loops capped at `MAX_CODE_ATTEMPTS=2` (config.py:16, graph.py:15-30, 70-76).
+**FACT** 7-node LangGraph: `research → design → [human_review_gdd] → spec → codegen → validate_execute → review` with conditional edges for rework loops capped at `MAX_CODE_ATTEMPTS=3` (config.py:22, graph.py:15-30, 70-76).
 
 ## 3. STATE SCHEMA
 **FACT** `RunState` TypedDict tracks `run_id`, `run_dir`, `brief`, and per-stage `StageResult` with `status`, `attempt`, `artifact`, `review`, `error` (schemas.py:62-80).
@@ -19,7 +19,7 @@
 **FACT** One-shot conversion of GDD to `ImplementationSpec` (schemas.py:24-41) including entities, state machine, balance table, and mandatory `example_chunks` for procedural genres (spec.py:4-36).
 
 ## 7. CODEGEN NODE
-**FACT** Generates single HTML file via `GENERATION_MODEL` with 48k token ceiling (config.py:30). Enforces: CDN Phaser, procedural textures only, Web Audio API, `dt` delta-time variable, class-before-use ordering (codegen.py:9-33, 64-108).
+**FACT** Generates single HTML file via `GENERATION_MODEL` with 16k token ceiling (config.py:35). Enforces: CDN Phaser, procedural textures only, Web Audio API, `dt` delta-time variable, class-before-use ordering (codegen.py:9-33, 64-108).
 
 ## 8. VALIDATION CATEGORIES — SYNTAX
 **FACT** `pipeline.validate.check_html_game()` runs regex + `node --check` on extracted `<script>` content. Catches: missing `<!DOCTYPE html>`, banned delta-time names (`deltaTime`, `elapsedTime`, etc.), asset loader calls (`load.image`, `load.audio`, etc.), external asset file refs (.png, .mp3, etc.), missing `Phaser.Game`, missing `update()` (validate.py:26-73).
@@ -31,7 +31,7 @@
 **FACT** `pipeline.execute.run_execution_report()` launches real Chromium via Playwright, serves HTML on localhost, captures console errors, page errors, measures canvas rendering, input response via screenshot diff (execute.py:24-86).
 
 ## 11. VALIDATION CATEGORIES — BROWSER
-**FACT** Browser harness: blocks external network except CDN, waits 2s load + 0.5s input + 1.5s post-input, takes before/after screenshots, detects input response by byte inequality (execute.py:10-13, 51-70).
+**FACT** Browser harness: blocks ALL external network requests — no CDN allowlist (execute.py:10-13, 203, 51-70). Waits 2s load + 0.5s input + 1.5s post-input, takes before/after screenshots, detects input response by byte inequality.
 
 ## 12. VALIDATION CATEGORIES — GAMEPLAY
 **WEAK INFERENCE** Gameplay correctness inferred from `canvas_rendered=True` + `input_response_detected=True` + zero console errors. No semantic gameplay assertions (win/lose, score, progression) validated.
@@ -80,7 +80,7 @@
 | **DANGEROUS ASSUMPTIONS** | (1) `canvas_rendered` + `input_response` ≈ playable game (execute.py:70). (2) LLM review score ≥7 correlates with human fun (review.py:46). (3) Single `Space` keypress + center click covers all control schemes (execute.py:61-63). (4) `node --check` catches all JS errors (misses runtime ReferenceError from class ordering — test_validate.py:44-47). |
 | **TECHNICAL DEBT** | No structured logging; `print()` in CLI. No metrics/telemetry. `config.py` mixes env defaults with comments-as-docs. `execute.py` hardcodes 127.0.0.1 + port allocation — flaky under parallel runs. |
 | **OVERENGINEERING** | LangGraph + SqliteSaver for 7-node linear-ish pipeline; could be simple Python loop. `StageResult` TypedDict with `total=False` allows missing keys silently. |
-| **NEXT BOTTLENECK** | **Token truncation in codegen**: 48k tokens may still truncate complex genres (config.py:27-30 comment admits 16k was insufficient). No truncation detection or summary-based re-prompting. |
+| **NEXT BOTTLENECK** | **Token truncation in codegen**: 16k tokens may still truncate complex genres (config.py:33-35 comment admits 8192 was insufficient). No truncation detection or summary-based re-prompting. |
 
 ## 23. WHAT CLAUDE BUILT vs ACTUAL vs INTENDED
 **FACT** Built: Working end-to-end pipeline with real browser execution gate, per-attempt persistence, human-in-the-loop, bounded rework loops, mocked test suite. **ACTUAL**: Generates games that load, render canvas, respond to input — but gameplay depth unvalidated; static validator misses class-ordering runtime errors; no CI. **INTENDED**: "Proves the result actually runs before calling it done" (README.md:14-15) — achieved for runtime load/execute, not for gameplay correctness. **SINGLE NEXT ACTION**: Add semantic gameplay assertions in `run_execution_report` (e.g., wait for win/lose state, verify score increases, confirm state machine transitions) to close the gameplay validation gap.
