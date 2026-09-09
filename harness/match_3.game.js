@@ -9,6 +9,7 @@
 // Uses Juice toolkit (pipeline/vendor/juice.js) for shared juice utilities.
 
 const W = 450, H = 800;
+const CTA_LINK = "https://example.com/game";
 const COLS = 7;
 const ROWS = 7;
 const CELL = 58; // bigger than the old 46 -- more room in portrait, better touch target
@@ -396,7 +397,10 @@ class PlayScene extends Phaser.Scene {
       target: TARGET_SCORE,
       best: this.best,
       onRetry: () => this.scene.restart(),
-      onCTA: () => {}
+      onCTA: () => {
+        if (typeof mraid !== 'undefined' && mraid.open) { mraid.open(CTA_LINK); }
+        else { window.open(CTA_LINK, '_blank'); }
+      }
     });
   }
 

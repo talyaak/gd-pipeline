@@ -164,6 +164,9 @@ class GameOverPanel {
     const bestT = scene.add.text(cx, cy + 1, 'Best: ' + best, { fontFamily: 'monospace', fontSize: '14px', color: '#ffe14d' }).setOrigin(0.5);
     const retry = scene.add.text(cx, cy + 43, 'TAP TO RETRY', { fontFamily: 'monospace', fontSize: '16px', color: '#0a0a18', backgroundColor: '#33e6ff', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     const cta = scene.add.text(cx, cy + 87, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    // Expose the CTA button on the scene so runtime validation (pipeline/execute.py)
+    // can find and click it -- it looks for scene.ctaButton specifically.
+    scene.ctaButton = cta;
 
     scene.tweens.add({ targets: [panel, title, scoreT, bestT, retry, cta], alpha: { from: 0, to: 1 }, duration: 250 });
 
