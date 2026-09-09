@@ -46,52 +46,14 @@ def visual_spec(state: RunState) -> dict:
             spec=json.dumps(spec_artifact, indent=2)
         ))
     except Exception as e:
-        # Fallback visual spec if LLM fails
+        # LLM invoke failure: return explicit failure, NOT a silent canned fallback
         return {
             "visual_spec": {
-                "status": "passed",
+                "status": "failed_needs_rework",
                 "attempt": 1,
-                "artifact": {
-                    "color_palette": {
-                        "primary": "#00ff00",
-                        "secondary": "#0000ff",
-                        "background": "#000000",
-                        "accent": "#ffff00",
-                        "ui_normal": "#00aa00",
-                        "ui_hover": "#00cc00",
-                        "ui_pressed": "#008800",
-                        "ui_disabled": "#555555"
-                    },
-                    "shape_language": "rounded",
-                    "particle_style": "soft glow bursts",
-                    "ui_kit": {
-                        "button_states": {
-                            "normal": "#00aa00",
-                            "hover": "#00cc00",
-                            "pressed": "#008800",
-                            "disabled": "#555555"
-                        },
-                        "progress_bar": {
-                            "background": "#333333",
-                            "fill": "#00aa00",
-                            "text": "#ffffff"
-                        },
-                        "text_styles": {
-                            "title": {"fontSize": "32px", "fill": "#ffffff"},
-                            "ui": {"fontSize": "24px", "fill": "#ffffff"},
-                            "score": {"fontSize": "28px", "fill": "#ffff00"}
-                        }
-                    },
-                    "juice_prescriptions": [
-                                            "// Particle burst: var emitter = new ParticleEmitter({x: 100, y: 100, speed: 100, startSize: 5, endSize: 2, life: 500}); emitter.burst(20);",
-                                            "// Screen shake: this.cameras.main.shake(100, 0.01);",
-                                            "// Hit pause: this.time.delayedCall(50); // 50ms freeze",
-                                            "// Visual feedback pulse: this.tweens.add({targets: sprite, scaleX: 1.2, yoyo: true, duration: 50});",
-                                            "// Audio feedback: // this.sound.play('sfx_name'); // Play sound effect (Web Audio API)"
-                                        ]
-                },
+                "artifact": None,
                 "review": None,
-                "error": None,
+                "error": f"[invoke_error] LLM invoke failed: {e}",
             }
         }
     
@@ -107,45 +69,15 @@ def visual_spec(state: RunState) -> dict:
         else:
             raise ValueError("No JSON found in response")
     except Exception as e:
-        # Fallback to basic visual spec on parse error
-        data = {
-            "color_palette": {
-                "primary": "#00ff00",
-                "secondary": "#0000ff",
-                "background": "#000000",
-                "accent": "#ffff00",
-                "ui_normal": "#00aa00",
-                "ui_hover": "#00cc00",
-                "ui_pressed": "#008800",
-                "ui_disabled": "#555555"
-            },
-            "shape_language": "rounded",
-            "particle_style": "soft glow bursts",
-            "ui_kit": {
-                "button_states": {
-                    "normal": "#00aa00",
-                    "hover": "#00cc00",
-                    "pressed": "#008800",
-                    "disabled": "#555555"
-                },
-                "progress_bar": {
-                    "background": "#333333",
-                    "fill": "#00aa00",
-                    "text": "#ffffff"
-                },
-                "text_styles": {
-                    "title": {"fontSize": "32px", "fill": "#ffffff"},
-                    "ui": {"fontSize": "24px", "fill": "#ffffff"},
-                    "score": {"fontSize": "28px", "fill": "#ffff00"}
-                }
-            },
-            "juice_prescriptions": [
-                        "// Particle burst: var emitter = new ParticleEmitter({x: 100, y: 100, speed: 100, startSize: 5, endSize: 2, life: 500}); emitter.burst(20);",
-                        "// Screen shake: this.cameras.main.shake(100, 0.01);",
-                        "// Hit pause: this.time.delayedCall(50); // 50ms freeze",
-                        "// Visual feedback pulse: this.tweens.add({targets: sprite, scaleX: 1.2, yoyo: true, duration: 50});",
-                        "// Audio feedback: // this.sound.play('sfx_name'); // Play sound effect (Web Audio API)"
-                    ]
+        # JSON parse failure: return explicit failure, NOT a silent canned fallback
+        return {
+            "visual_spec": {
+                "status": "failed_needs_rework",
+                "attempt": 1,
+                "artifact": None,
+                "review": None,
+                "error": f"[parse_error] Failed to parse LLM response as JSON: {e}",
+            }
         }
     
     # Validate required keys
