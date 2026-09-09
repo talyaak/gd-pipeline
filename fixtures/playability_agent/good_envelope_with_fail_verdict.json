@@ -1,0 +1,8 @@
+{
+  "type": "result",
+  "result": {
+    "playable": false,
+    "reasoning": "Game crashes on startup. Null reference error in GameManager."
+  },
+  "sessionId": "test-session-999"
+}
