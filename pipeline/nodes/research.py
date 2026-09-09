@@ -46,13 +46,15 @@ def research(state: RunState) -> dict:
         else:
             raise ValueError("No JSON found in response")
     except Exception as e:
-        # Fallback
-        data = {
-            "core_mechanics": ["run", "jump", "dodge"],
-            "juice": ["particles", "screen shake", "sound effects"],
-            "progression": "ramps up",
-            "common_mistakes": ["too hard early", "unfair obstacles"],
-            "reference_games": ["Crossy Road", "Temple Run"],
+        # Return structured error state for parse failures - do NOT silently fallback
+        return {
+            "research": {
+                "status": "failed_needs_rework",
+                "attempt": 1,
+                "artifact": None,
+                "review": None,
+                "error": f"[syntax] JSON parse failed: {e}",
+            }
         }
     # Ensure progression is a string
     if isinstance(data.get("progression"), list):
