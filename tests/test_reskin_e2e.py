@@ -44,7 +44,10 @@ def test_reskin_match_3(tmp_path):
     copy = brief.get("copy", {})
     assets = {k: brief[k] for k in manifest.get("asset_slots", []) if k in brief}
 
-    reskinned_js = substitute_consts(source_js, params, copy, assets)
+    reskinned_js, warnings = substitute_consts(source_js, params, copy, assets)
+    # Fail if any param failed to match (failed_noop)
+    assert not warnings, f"Substitution failed_noop: {warnings}"
+
     reskinned_js = inject_mraid_gating(reskinned_js)
 
     # Build HTML
@@ -92,7 +95,10 @@ def test_reskin_endless_runner(tmp_path):
     copy = brief.get("copy", {})
     assets = {k: brief[k] for k in manifest.get("asset_slots", []) if k in brief}
 
-    reskinned_js = substitute_consts(source_js, params, copy, assets)
+    reskinned_js, warnings = substitute_consts(source_js, params, copy, assets)
+    # Fail if any param failed to match (failed_noop)
+    assert not warnings, f"Substitution failed_noop: {warnings}"
+
     reskinned_js = inject_mraid_gating(reskinned_js)
 
     # Build HTML
@@ -140,7 +146,10 @@ def test_reskin_idle_clicker(tmp_path):
     copy = brief.get("copy", {})
     assets = {k: brief[k] for k in manifest.get("asset_slots", []) if k in brief}
 
-    reskinned_js = substitute_consts(source_js, params, copy, assets)
+    reskinned_js, warnings = substitute_consts(source_js, params, copy, assets)
+    # Fail if any param failed to match (failed_noop)
+    assert not warnings, f"Substitution failed_noop: {warnings}"
+
     reskinned_js = inject_mraid_gating(reskinned_js)
 
     # Build HTML
