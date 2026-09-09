@@ -1,0 +1,8 @@
+{
+  "type": "result",
+  "result": {
+    "playable": true,
+    "reasoning": "Game runs smoothly at 60fps. Controls are responsive. No bugs found."
+  },
+  "sessionId": "test-session-456"
+}
