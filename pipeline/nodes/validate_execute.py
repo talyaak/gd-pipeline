@@ -3,6 +3,7 @@ import gzip
 
 from pipeline.execute import run_execution_report
 from pipeline.output import stage_dir, write_json
+from pipeline.playability_agent import PlayabilitySkipped
 from pipeline.schemas import RunState
 from pipeline.validate import check_html_game, SyntaxCheckUnavailable
 
@@ -124,6 +125,7 @@ def validate_execute(state: RunState) -> dict:
     # just vision on two static screenshots) opens the game and plays with it.
     # An error running the check itself must never be treated as a pass.
     playability_error = None
+    playability_skipped = False
     if runtime_ok:
         try:
             from pipeline.playability_agent import check_playability_agentic
@@ -131,6 +133,10 @@ def validate_execute(state: RunState) -> dict:
             if not playability.playable:
                 runtime_ok = False
                 playability_error = f"Playability check failed: {playability.reasoning}"
+        except PlayabilitySkipped as exc:
+            # claude CLI not available — check is SKIPPED, not failed
+            playability_skipped = True
+            playability_error = f"Playability check skipped: {exc}"
         except Exception as exc:
             runtime_ok = False
             playability_error = f"Playability check errored (treated as failure, not a pass): {exc}"
@@ -159,7 +165,7 @@ def validate_execute(state: RunState) -> dict:
             all_errors.append(f"Gzipped HTML size ({gzip_size_kb:.1f} KB) exceeds limit ({MAX_GZIP_SIZE_KB} KB)")
 
     result = {
-        "status": "passed" if runtime_ok else "failed_needs_rework",
+        "status": "skipped" if playability_skipped else ("passed" if runtime_ok else "failed_needs_rework"),
         "attempt": attempt,
         "artifact": report.model_dump(),
         "review": None,

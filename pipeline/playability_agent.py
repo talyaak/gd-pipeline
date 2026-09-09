@@ -59,6 +59,14 @@ DEFAULT_TIMEOUT_SECONDS = 180
 DEFAULT_MAX_BUDGET_USD = 0.50
 
 
+class PlayabilitySkipped(Exception):
+    """Raised when the playability check cannot run because the `claude` CLI is not available.
+
+    This is distinct from a failure -- it means the check was SKIPPED, not that it ran and failed.
+    """
+    pass
+
+
 def check_playability_agentic(
     html: str,
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
@@ -72,6 +80,8 @@ def check_playability_agentic(
     non-zero exit) -- never silently treated as a pass. This matches how a
     missing `node` binary is handled in validate.py's syntax check: an
     unavailable check is not the same as a passed one.
+
+    Raises PlayabilitySkipped if the `claude` CLI binary is not found.
     """
     tmp_dir = Path(tempfile.mkdtemp(prefix="playability_agent_"))
     (tmp_dir / "game.html").write_text(html, encoding="utf-8")
@@ -90,12 +100,17 @@ def check_playability_agentic(
         ]
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_seconds)
+        except FileNotFoundError:
+            raise PlayabilitySkipped("claude CLI not found in PATH; playability check skipped") from None
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(f"playability agent timed out after {timeout_seconds}s") from exc
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or "").strip()[:500]
             raise RuntimeError(f"playability agent invocation failed (exit {proc.returncode}): {detail}")
-        return _parse_agent_output(proc.stdout)
+        report = _parse_agent_output(proc.stdout)
+        # Log cost if available in the response envelope
+        _log_playability_cost_from_envelope(proc.stdout)
+        return report
     finally:
         httpd.shutdown()
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -112,3 +127,37 @@ def _parse_agent_output(stdout: str) -> PlayabilityReport:
     if isinstance(result, str):
         result = json.loads(result)
     return PlayabilityReport(**result)
+
+
+def _log_playability_cost(model: str, cost_usd: float) -> None:
+    """Write a cost log entry for the playability agent, mirroring CostTrackingCallback format."""
+    import time
+    from pipeline.cost_tracker import LOG_PATH
+    entry = {
+        "ts": time.time(),
+        "iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "node": "playability_agent",
+        "model": model,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": round(cost_usd, 6),
+        "anomaly": False,
+        "anomaly_reason": None,
+    }
+    with LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def _log_playability_cost_from_envelope(stdout: str) -> None:
+    """Extract cost info from claude CLI JSON output envelope and log it."""
+    try:
+        envelope = json.loads(stdout)
+        # The claude CLI with --output-format json returns an envelope with
+        # cost info at top level: {"type": "result", "result": {...}, "cost_usd": 0.123, "duration_ms": 456, ...}
+        cost = envelope.get("cost_usd")
+        if cost is not None:
+            model = envelope.get("model", "claude-code-playability")
+            _log_playability_cost(model, float(cost))
+    except Exception:
+        # Cost logging must never break the pipeline
+        pass
