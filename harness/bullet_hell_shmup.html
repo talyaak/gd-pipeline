@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Prism Warden - Bullet Hell Harness</title>
+<title>bullet_hell_shmup - Harness</title>
 <style>html,body{margin:0;background:#0a0a18;overflow:hidden;height:100%;width:100%;position:fixed;touch-action:none;}#game-root{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}canvas{display:block;touch-action:none;}</style>
 </head><body>
 <div id="game-root"></div>
@@ -173,6 +173,9 @@ class GameOverPanel {
     const bestT = scene.add.text(cx, cy + 1, 'Best: ' + best, { fontFamily: 'monospace', fontSize: '14px', color: '#ffe14d' }).setOrigin(0.5);
     const retry = scene.add.text(cx, cy + 43, 'TAP TO RETRY', { fontFamily: 'monospace', fontSize: '16px', color: '#0a0a18', backgroundColor: '#33e6ff', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     const cta = scene.add.text(cx, cy + 87, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    // Expose the CTA button on the scene so runtime validation (pipeline/execute.py)
+    // can find and click it -- it looks for scene.ctaButton specifically.
+    scene.ctaButton = cta;
 
     scene.tweens.add({ targets: [panel, title, scoreT, bestT, retry, cta], alpha: { from: 0, to: 1 }, duration: 250 });
 
@@ -455,6 +458,1718 @@ window.Juice = {
   IntroBanner,
   TapHint
 };
+// Procedural Art Library for HTML5 Playable Ads
+// Provides soft shapes, noise textures, gradients, and procedural sprite generation
+// Designed to work alongside Phaser 3 in single-file HTML5 games
+// Replaces hard-edged graphics.fillRect()/fillCircle() with visually superior alternatives
+
+(function() {
+  'use strict';
+
+  // Utility function to clamp a value between min and max
+  function clamp(value, min, max) {
+    return Math.max(min, Math.max(value, max));
+  }
+
+  // Utility function to lerp (linear interpolate) between two values
+  function lerp(start, end, t) {
+    return start + (end - start) * t;
+  }
+
+  // Utility function for smoothstep interpolation (smoother than lerp)
+  function smoothstep(edge0, edge1, x) {
+    // Scale x to be between 0 and 1
+    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+    // Evaluate polynomial
+    return x * x * (3 - 2 * x);
+  }
+
+  // SoftShape base class
+  class SoftShape {
+    constructor(scene, options = {}) {
+      this.scene = scene;
+      this.options = Object.assign({
+        // Default options
+        color: 0xffffff, // white color
+        alpha: 1.0,      // full opacity
+        feather: 4,      // feathering amount for soft edges
+        quality: 2       // rendering quality (higher = better but slower)
+      }, options);
+      
+      // Create the display object
+      this.displayObject = null;
+    }
+    
+    // Create the soft shape and return a Phaser GameObject
+    create() {
+      // To be implemented by subclasses
+      return null;
+    }
+    
+    // Destroy the display object
+    destroy() {
+      if (this.displayObject) {
+        this.displayObject.destroy();
+        this.displayObject = null;
+      }
+    }
+    
+    // Set visibility
+    setVisible(visible) {
+      if (this.displayObject) {
+        this.displayObject.setVisible(visible);
+      }
+    }
+    
+    // Set alpha/opacity
+    setAlpha(alpha) {
+      this.options.alpha = alpha;
+      if (this.displayObject) {
+        this.displayObject.setAlpha(alpha);
+      }
+    }
+    
+    // Set tint/color
+    setTint(color) {
+      this.options.color = color;
+      if (this.displayObject) {
+        this.displayObject.setTint(color);
+      }
+    }
+  }
+
+  // SoftCircle class - creates a soft-edged circle
+  class SoftCircle extends SoftShape {
+    constructor(scene, x, y, radius, options = {}) {
+      super(scene, options);
+      this.x = x;
+      this.y = y;
+      this.radius = radius;
+    }
+    
+    create() {
+      // Create a RenderTexture for the soft circle
+      const diameter = (this.radius + this.options.feather) * 2;
+      const renderTexture = this.scene.make.renderTexture({
+        width: diameter,
+        height: diameter
+      });
+      
+      const graphics = this.scene.add.graphics();
+      
+      // Draw multiple concentric circles with varying alpha to create soft edge
+      const steps = this.options.quality * 2;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        // Radius varies from (radius - feather) to (radius + feather)
+        const currentRadius = this.radius + (t - 0.5) * 2 * this.options.feather;
+        // Alpha creates a soft edge: 0 at feather edges, 1 in the middle
+        let alpha;
+        if (t < 0.25) {
+          alpha = t * 4; // 0 to 1 over first 25%
+        } else if (t > 0.75) {
+          alpha = (1 - t) * 4; // 1 to 0 over last 25%
+        } else {
+          alpha = 1; // full opacity in middle 50%
+        }
+        
+        graphics.clear();
+        graphics.fillStyle(this.options.color, alpha * this.options.alpha);
+        graphics.fillCircle(diameter/2, diameter/2, Math.max(0, currentRadius));
+        
+        // Render the graphics to the render texture
+        renderTexture.draw(graphics, {
+          x: 0,
+          y: 0
+        });
+      }
+      
+      graphics.destroy();
+      
+      // Position the render texture at the requested coordinates
+      renderTexture.setPosition(this.x - diameter/2, this.y - diameter/2);
+      
+      this.displayObject = renderTexture;
+      return renderTexture;
+    }
+  }
+
+  // SoftRect class - creates a soft-edged rectangle
+  class SoftRect extends SoftShape {
+    constructor(scene, x, y, width, height, options = {}) {
+      super(scene, options);
+      this.x = x;
+      this.y = y;
+      this.width = width;
+      this.height = height;
+    }
+    
+    create() {
+      // Create a RenderTexture for the soft rectangle
+      const feather = this.options.feather;
+      const renderTexture = this.scene.make.renderTexture({
+        width: this.width + feather * 2,
+        height: this.height + feather * 2
+      });
+      
+      const graphics = this.scene.add.graphics();
+      
+      // Draw multiple rectangles with varying alpha to create soft edge
+      const steps = this.options.quality * 2;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        // Size varies from (width - feather*2, height - feather*2) to (width + feather*2, height + feather*2)
+        const currentWidth = this.width + (t - 0.5) * 2 * feather * 2;
+        const currentHeight = this.height + (t - 0.5) * 2 * feather * 2;
+        // Alpha creates a soft edge
+        let alpha;
+        if (t < 0.25) {
+          alpha = t * 4;
+        } else if (t > 0.75) {
+          alpha = (1 - t) * 4;
+        } else {
+          alpha = 1;
+        }
+        
+        graphics.clear();
+        graphics.fillStyle(this.options.color, alpha * this.options.alpha);
+        graphics.fillRect(
+          feather + (this.width - currentWidth) / 2,
+          feather + (this.height - currentHeight) / 2,
+          Math.max(0, currentWidth),
+          Math.max(0, currentHeight)
+        );
+        
+        // Render the graphics to the render texture
+        renderTexture.draw(graphics, {
+          x: 0,
+          y: 0
+        });
+      }
+      
+      graphics.destroy();
+      
+      // Position the render texture at the requested coordinates
+      renderTexture.setPosition(this.x - feather, this.y - feather);
+      
+      this.displayObject = renderTexture;
+      return renderTexture;
+    }
+  }
+
+  // Noise generator for procedural textures
+  class Noise {
+    // Simple value noise
+    static valueNoise2D(x, y, seed = 0) {
+      // Hash function
+      const hash = (i) => {
+        let h = seed + i;
+        h = Math.sin(h * 12.9898) * 43758.5453;
+        return h - Math.floor(h);
+      };
+      
+      // Get integer coordinates
+      const x0 = Math.floor(x);
+      const x1 = x0 + 1;
+      const y0 = Math.floor(y);
+      const y1 = y0 + 1;
+      
+      // Get fractional parts
+      const sx = x - x0;
+      const sy = y - y0;
+      
+      // Calculate noise values at corners
+      const n0 = hash(x0 + y0 * 57);
+      const n1 = hash(x1 + y0 * 57);
+      const n2 = hash(x0 + y1 * 57);
+      const n3 = hash(x1 + y1 * 57);
+      
+      // Interpolate
+      const ix0 = lerp(n0, n1, sx);
+      const ix1 = lerp(n2, n3, sx);
+      return lerp(ix0, ix1, sy);
+    }
+    
+    // Generate a noise texture
+    static generateTexture(scene, width, height, options = {}) {
+      const settings = Object.assign({
+        scale: 0.1,
+        octaves: 1,
+        persistence: 0.5,
+        lacunarity: 2.0,
+        offsetX: 0,
+        offsetY: 0,
+        color1: 0x000000, // black
+        color2: 0xffffff  // white
+      }, options);
+      
+      // Create a RenderTexture for the noise
+      const renderTexture = scene.make.renderTexture({
+        width: width,
+        height: height
+      });
+      
+      const graphics = scene.add.graphics();
+      
+      // Sample noise for each pixel (simplified - in practice would use batching)
+      const imageData = [];
+      for (let py = 0; py < height; py++) {
+        for (let px = 0; px < width; px++) {
+          // Sample noise
+          const nx = (px + settings.offsetX) * settings.scale;
+          const ny = (py + settings.offsetY) * settings.scale;
+          
+          // Simple value noise (could be improved with Perlin/simplex)
+          let noise = Noise.valueNoise2D(nx, ny, 0);
+          
+          // Apply multiple octaves for more interesting noise
+          if (settings.octaves > 1) {
+            let amplitude = 1.0;
+            let frequency = 1.0;
+            let noiseSum = 0;
+            let maxAmplitude = 0;
+            
+            for (let o = 0; o < settings.octaves; o++) {
+              noiseSum += Noise.valueNoise2D(nx * frequency, ny * frequency, o * 123.456) * amplitude;
+              maxAmplitude += amplitude;
+              amplitude *= settings.persistence;
+              frequency *= settings.lacunarity;
+            }
+            
+            noise = noiseSum / maxAmplitude;
+          }
+          
+          // Normalize to 0-1 range
+          noise = (noise + 1) / 2; // Assuming noise is -1 to 1
+          
+          // Interpolate between colors
+          const r1 = (settings.color1 >> 16) & 0xff;
+          const g1 = (settings.color1 >> 8) & 0xff;
+          const b1 = settings.color1 & 0xff;
+          
+          const r2 = (settings.color2 >> 16) & 0xff;
+          const g2 = (settings.color2 >> 8) & 0xff;
+          const b2 = settings.color2 & 0xff;
+          
+          const r = Math.round(lerp(r1, r2, noise));
+          const g = Math.round(lerp(g1, g2, noise));
+          const b = Math.round(lerp(b1, b2, noise));
+          
+          imageData.push((r << 16) | (g << 8) | b);
+        }
+      }
+      
+      // For simplicity, we'll just fill with a single color based on noise average
+      // A full implementation would update the texture pixel by pixel
+      // This is a placeholder for the noise texture functionality
+      graphics.fillStyle(settings.color1, 0.5);
+      graphics.fillRect(0, 0, width, height);
+      
+      renderTexture.draw(graphics, {
+        x: 0,
+        y: 0
+      });
+      
+      graphics.destroy();
+      
+      this.displayObject = renderTexture;
+      return renderTexture;
+    }
+  }
+
+  // Gradient utilities
+  class Gradient {
+    // Create a linear gradient function
+    static linear(x0, y0, x1, y1, colorStops) {
+      return (x, y) => {
+        // Calculate position along the gradient line
+        const dx = x1 - x0;
+        const dy = y1 - y0;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        
+        if (length === 0) {
+          return colorStops[0].color;
+        }
+        
+        // Project point onto the line
+        const t = ((x - x0) * dx + (y - y0) * dy) / (length * length);
+        const clampedT = clamp(t, 0, 1);
+        
+        // Find the color segment
+        for (let i = 0; i < colorStops.length - 1; i++) {
+          if (clampedT >= colorStops[i].stop && clampedT <= colorStops[i + 1].stop) {
+            const segmentT = (clampedT - colorStops[i].stop) / (colorStops[i + 1].stop - colorStops[i].stop);
+            return Gradient._interpolateColor(colorStops[i].color, colorStops[i + 1].color, segmentT);
+          }
+        }
+        
+        // Return last color if beyond end
+        return colorStops[colorStops.length - 1].color;
+      };
+    }
+    
+    // Create a radial gradient function
+    static radial(cx, cy, radius, colorStops) {
+      return (x, y) => {
+        // Calculate distance from center
+        const dx = x - cx;
+        const dy = y - cy;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Normalize distance to 0-1 range (clamped to radius)
+        const t = clamp(distance / radius, 0, 1);
+        
+        // Find the color segment
+        for (let i = 0; i < colorStops.length - 1; i++) {
+          if (t >= colorStops[i].stop && t <= colorStops[i + 1].stop) {
+            const segmentT = (t - colorStops[i].stop) / (colorStops[i + 1].stop - colorStops[i].stop);
+            return Gradient._interpolateColor(colorStops[i].color, colorStops[i + 1].color, segmentT);
+          }
+        }
+        
+        // Return last color if beyond end
+        return colorStops[colorStops.length - 1].color;
+      };
+    }
+    
+    // Interpolate between two colors
+    static _interpolateColor(color1, color2, t) {
+      const r1 = (color1 >> 16) & 0xff;
+      const g1 = (color1 >> 8) & 0xff;
+      const b1 = color1 & 0xff;
+      
+      const r2 = (color2 >> 16) & 0xff;
+      const g2 = (color2 >> 8) & 0xff;
+      const b2 = color2 & 0xff;
+      
+      const r = Math.round(lerp(r1, r2, t));
+      const g = Math.round(lerp(g1, g2, t));
+      const b = Math.round(lerp(b1, b2, t));
+      
+      return (r << 16) | (g << 8) | b;
+    }
+  }
+
+  // Expose globally
+  window.Art = {
+    SoftShape: SoftShape,
+    SoftCircle: SoftCircle,
+    SoftRect: SoftRect,
+    Noise: Noise,
+    Gradient: Gradient
+  };
+  
+  // Also expose directly for convenience
+  window.SoftCircle = SoftCircle;
+  window.SoftRect = SoftRect;
+  window.Noise = Noise;
+  window.Gradient = Gradient;
+  
+})();
+// Procedural UI Kit for HTML5 Playable Ads
+// Provides reusable UI components (Button, ProgressBar, Popup) with states, transitions, and theming
+// Designed to work alongside Phaser 3 in single-file HTML5 games
+
+(function() {
+  'use strict';
+
+  // Utility function to ease between two values
+  function ease(start, end, t, easeFn = Phaser.Math.Easing.Sine.InOut) {
+    return start + (end - start) * easeFn(t);
+  }
+
+  // Button class with states: normal, hover, pressed, disabled
+  class Button {
+    /**
+     * @param {Phaser.Scene} scene - The scene to add the button to
+     * @param {number} x - X position
+     * @param {number} y - Y position
+     * @param {string} text - Button text
+     * @param {object} styles - Style configuration from visual spec
+     * @param {function} callback - Function to call when button is clicked
+     * @param {number} width - Button width (optional, auto-calculated if not provided)
+     * @param {number} height - Button height (optional, auto-calculated if not provided)
+     */
+    constructor(scene, x, y, text, styles, callback, width = null, height = null) {
+      this.scene = scene;
+      this.x = x;
+      this.y = y;
+      this.text = text;
+      this.styles = styles || {};
+      this.callback = callback;
+      this.enabled = true;
+      this.hovered = false;
+      this.pressed = false;
+      
+      // Default styles if not provided
+      this.defaultStyles = {
+        button_states: {
+          normal: '#00aa00',
+          hover: '#00cc00', 
+          pressed: '#008800',
+          disabled: '#555555'
+        },
+        text_styles: {
+          ui: {fontSize: '24px', fill: '#ffffff'}
+        }
+      };
+      
+      // Create button background
+      this.bg = scene.add.rectangle(x, y, width || 200, height || 60, 0x00aa00);
+      this.bg.setOrigin(0.5);
+      this.bg.setDepth(1);
+      
+      // Create button text
+      this.label = scene.add.text(x, y, text, this._getStyle('text_styles.ui'));
+      this.label.setOrigin(0.5);
+      this.label.setDepth(2);
+      
+      // Set initial state
+      this._updateStyle('normal');
+      
+      // Make interactive
+      this.bg.setInteractive({ useHandCursor: true });
+      this.bg.on('pointerover', this._onPointerOver, this);
+      this.bg.on('pointerout', this._onPointerOut, this);
+      this.bg.on('pointerdown', this._onPointerDown, this);
+      this.bg.on('pointerup', this._onPointerUp, this);
+      this.bg.on('pointerupoutside', this._onPointerUpOutside, this);
+    }
+    
+    _getStyle(path) {
+      const parts = path.split('.');
+      let value = this.styles;
+      for (const part of parts) {
+        if (value[part] !== undefined) {
+          value = value[part];
+        } else {
+          // Fallback to default styles
+          let defaultValue = this.defaultStyles;
+          for (const defPart of parts) {
+            if (defaultValue[defPart] !== undefined) {
+              defaultValue = defaultValue[defPart];
+            } else {
+              return null;
+            }
+          }
+          return defaultValue;
+        }
+      }
+      return value;
+    }
+    
+    _updateStyle(state) {
+      if (!this.enabled && state !== 'disabled') return;
+      
+      let color;
+      if (this.enabled) {
+        switch(state) {
+          case 'normal': color = this._getStyle('button_states.normal'); break;
+          case 'hover': color = this._getStyle('button_states.hover'); break;
+          case 'pressed': color = this._getStyle('button_states.pressed'); break;
+          default: color = this._getStyle('button_states.normal');
+        }
+      } else {
+        color = this._getStyle('button_states.disabled');
+      }
+      
+      if (color) {
+        // Handle both visual spec format (string: "#rrggbb") and codegen format (object: { bg: 0xrrggbb })
+        let fillColor;
+        if (typeof color === 'object' && color.bg !== undefined) {
+          fillColor = color.bg;
+        } else if (typeof color === 'string') {
+          fillColor = parseInt(color.replace('#', '0x'), 16);
+        } else {
+          // Assume it's already a number (0xRRGGBB)
+          fillColor = color;
+        }
+        this.bg.setFillStyle(fillColor);
+      }
+    }
+    
+    _onPointerOver() {
+      if (!this.enabled) return;
+      this.hovered = true;
+      this._updateStyle('hover');
+      // Scale up slightly on hover
+      this.scene.tweens.add({
+        targets: this.bg,
+        scaleX: 1.05,
+        scaleY: 1.05,
+        duration: 100,
+        ease: 'Sine.easeInOut'
+      });
+      this.scene.tweens.add({
+        targets: this.label,
+        scaleX: 1.05,
+        scaleY: 1.05,
+        duration: 100,
+        ease: 'Sine.easeInOut'
+      });
+    }
+    
+    _onPointerOut() {
+      if (!this.enabled) return;
+      this.hovered = false;
+      if (!this.pressed) {
+        this._updateStyle('normal');
+      }
+      // Scale back to normal
+      this.scene.tweens.add({
+        targets: this.bg,
+        scaleX: 1,
+        scaleY: 1,
+        duration: 100,
+        ease: 'Sine.easeInOut'
+      });
+      this.scene.tweens.add({
+        targets: this.label,
+        scaleX: 1,
+        scaleY: 1,
+        duration: 100,
+        ease: 'Sine.easeInOut'
+      });
+    }
+    
+    _onPointerDown() {
+      if (!this.enabled) return;
+      this.pressed = true;
+      this._updateStyle('pressed');
+      // Scale down slightly on press
+      this.scene.tweens.add({
+        targets: this.bg,
+        scaleX: 0.95,
+        scaleY: 0.95,
+        duration: 100,
+        ease: 'Sine.easeInOut'
+      });
+      this.scene.tweens.add({
+        targets: this.label,
+        scaleX: 0.95,
+        scaleY: 0.95,
+        duration: 100,
+        ease: 'Sine.easeInOut'
+      });
+    }
+    
+    _onPointerUp() {
+      if (!this.enabled) return;
+      if (this.hovered && this.pressed) {
+        this.pressed = false;
+        this._updateStyle('hover');
+        // Scale back to hover state
+        this.scene.tweens.add({
+          targets: this.bg,
+          scaleX: 1.05,
+          scaleY: 1.05,
+          duration: 100,
+          ease: 'Sine.easeInOut'
+        });
+        this.scene.tweens.add({
+          targets: this.label,
+          scaleX: 1.05,
+          scaleY: 1.05,
+          duration: 100,
+          ease: 'Sine.easeInOut'
+        });
+        // Execute callback
+        if (this.callback) this.callback();
+      } else {
+        this._onPointerOut();
+      }
+    }
+    
+    _onPointerUpOutside() {
+      if (!this.enabled) return;
+      this.pressed = false;
+      this._updateStyle('normal');
+      // Scale back to normal
+      this.scene.tweens.add({
+        targets: this.bg,
+        scaleX: 1,
+        scaleY: 1,
+        duration: 100,
+        ease: 'Sine.easeInOut'
+      });
+      this.scene.tweens.add({
+        targets: this.label,
+        scaleX: 1,
+        scaleY: 1,
+        duration: 100,
+        ease: 'Sine.easeInOut'
+      });
+    }
+    
+    setEnabled(enabled) {
+      this.enabled = enabled;
+      if (enabled) {
+        if (this.hovered) {
+          this._updateStyle('hover');
+        } else if (this.pressed) {
+          this._updateStyle('pressed');
+        } else {
+          this._updateStyle('normal');
+        }
+      } else {
+        this._updateStyle('disabled');
+      }
+      this.bg.setInteractive(enabled ? { useHandCursor: true } : false);
+    }
+    
+    setText(text) {
+      this.text = text;
+      this.label.setText(text);
+    }
+    
+    destroy() {
+      this.bg.destroy();
+      this.label.destroy();
+      this.bg.removeAllListeners();
+      this.label.removeAllListeners();
+    }
+    setVisible(visible) {
+      if (this.bg) this.bg.setVisible(visible);
+      if (this.label) this.label.setVisible(visible);
+    }
+    setDepth(depth) {
+      if (this.bg) this.bg.setDepth(depth);
+      if (this.label) this.label.setDepth(depth + 1);
+      return this;
+    }
+  }
+
+  // ProgressBar class
+  class ProgressBar {
+    /**
+     * @param {Phaser.Scene} scene - The scene to add the progress bar to
+     * @param {number} x - X position
+     * @param {number} y - Y position
+     * @param {number} width - Width of the progress bar
+     * @param {number} height - Height of the progress bar
+     * @param {object} styles - Style configuration from visual spec
+     */
+    constructor(scene, x, y, width, height, styles) {
+      this.scene = scene;
+      this.x = x;
+      this.y = y;
+      this.width = width;
+      this.height = height;
+      this.styles = styles || {};
+      this.value = 0; // 0 to 1
+      
+      // Default styles if not provided
+      this.defaultStyles = {
+        progress_bar: {
+          background: '#333333',
+          fill: '#00aa00',
+          text: '#ffffff'
+        },
+        text_styles: {
+          ui: {fontSize: '20px', fill: '#ffffff'}
+        }
+      };
+      
+      // Create background
+      this.bg = scene.add.rectangle(x, y, width, height, 0x333333);
+      this.bg.setOrigin(0.5);
+      this.bg.setDepth(1);
+      
+      // Create fill bar
+      this.fill = scene.add.rectangle(x - width/2 + 2, y, width - 4, height - 4, 0x00aa00);
+      this.fill.setOrigin(0, 0.5);
+      this.fill.setDepth(2);
+      
+      // Create text label
+      this.label = scene.add.text(x, y, '0%', this._getStyle('text_styles.ui'));
+      this.label.setOrigin(0.5);
+      this.label.setDepth(3);
+      
+      this._updateDisplay();
+    }
+    
+    _getStyle(path) {
+      const parts = path.split('.');
+      let value = this.styles;
+      for (const part of parts) {
+        if (value[part] !== undefined) {
+          value = value[part];
+        } else {
+          // Fallback to default styles
+          let defaultValue = this.defaultStyles;
+          for (const defPart of parts) {
+            if (defaultValue[defPart] !== undefined) {
+              defaultValue = defaultValue[defPart];
+            } else {
+              return null;
+            }
+          }
+          return defaultValue;
+        }
+      }
+      return value;
+    }
+    
+    setValue(value) {
+      this.value = Phaser.Math.Clamp(value, 0, 1);
+      this._updateDisplay();
+    }
+    
+    getValue() {
+      return this.value;
+    }
+    
+    _updateDisplay() {
+      // Update fill width
+      const fillWidth = (this.width - 4) * this.value;
+      this.fill.setWidth(fillWidth);
+      this.fill.setPosition(this.x - this.width/2 + 2, this.y);
+      
+      // Update text
+      const percent = Math.round(this.value * 100);
+      this.label.setText(`${percent}%`);
+      
+      // Update colors - handle both visual spec format (string: "#rrggbb") and codegen format (object: { bg: 0xrrggbb })
+      const bgColor = this._getStyle('progress_bar.background');
+      const fillColor = this._getStyle('progress_bar.fill');
+      const textColor = this._getStyle('progress_bar.text');
+      
+      function parseColor(color) {
+        if (typeof color === 'object' && color.bg !== undefined) {
+          return color.bg;
+        } else if (typeof color === 'string') {
+          return parseInt(color.replace('#', '0x'), 16);
+        } else {
+          // Assume it's already a number (0xRRGGBB)
+          return color;
+        }
+      }
+      
+      if (bgColor) {
+        this.bg.setFillStyle(parseColor(bgColor));
+      }
+      if (fillColor) {
+        this.fill.setFillStyle(parseColor(fillColor));
+      }
+      if (textColor) {
+        this.label.setStyle({ fill: textColor });
+      }
+    }
+    
+    destroy() {
+      this.bg.destroy();
+      this.fill.destroy();
+      this.label.destroy();
+    }
+    setVisible(visible) {
+      if (this.bg) this.bg.setVisible(visible);
+      if (this.fill) this.fill.setVisible(visible);
+      if (this.label) this.label.setVisible(visible);
+    }
+  }
+
+  // Popup class for dialogs and overlays
+  class Popup {
+    /**
+     * @param {Phaser.Scene} scene - The scene to add the popup to
+     * @param {object} config - Popup configuration
+     * @param {number} config.width - Width of popup
+     * @param {number} config.height - Height of popup
+     * @param {string} config.title - Title text (optional)
+     * @param {string} config.message - Message text (optional)
+     * @param {array} config.buttons - Array of button configs {text, callback}
+     * @param {object} styles - Style configuration from visual spec
+     */
+    constructor(scene, config = {}, styles) {
+      this.scene = scene;
+      this.config = {
+        width: config.width || 400,
+        height: config.height || 300,
+        title: config.title || '',
+        message: config.message || '',
+        buttons: config.buttons || []
+      };
+      this.styles = styles || {};
+      this.enabled = true;
+      
+      // Default styles if not provided
+      this.defaultStyles = {
+        color_palette: {
+          background: '#000000',
+          ui_normal: '#00aa00',
+          ui_hover: '#00cc00',
+          ui_pressed: '#008800',
+          ui_disabled: '#555555'
+        },
+        button_states: {
+          normal: '#00aa00',
+          hover: '#00cc00', 
+          pressed: '#008800',
+          disabled: '#555555'
+        },
+        text_styles: {
+          title: {fontSize: '32px', fill: '#ffffff'},
+          ui: {fontSize: '24px', fill: '#ffffff'}
+        }
+      };
+      
+      // Create background (dark overlay)
+      this.background = scene.add.rectangle(
+        scene.cameras.main.width/2, 
+        scene.cameras.main.height/2, 
+        scene.cameras.main.width, 
+        scene.cameras.main.height, 
+        0x000000
+      );
+      this.background.setOrigin(0.5);
+      this.background.setAlpha(0.7);
+      this.background.setDepth(1);
+      this.background.setInteractive(); // Block clicks to underlying game
+      
+      // Create popup container
+      this.container = scene.add.container(
+        scene.cameras.main.width/2,
+        scene.cameras.main.height/2
+      );
+      this.container.setDepth(2);
+      
+      // Create popup background
+      this.popupBg = scene.add.rectangle(0, 0, this.config.width, this.config.height, 0x000000);
+      this.popupBg.setOrigin(0.5);
+      this.popupBg.setDepth(1);
+      
+      // Create popup border
+      this.popupBorder = scene.add.rectangle(0, 0, this.config.width, this.config.height, 0x00aa00);
+      this.popupBorder.setOrigin(0.5);
+      this.popupBorder.setStrokeStyle(2, 0x00aa00);
+      this.popupBorder.setFillStyle(0x000000);
+      this.popupBorder.setDepth(2);
+      
+      // Create title text (if provided)
+      this.titleText = null;
+      if (this.config.title) {
+        this.titleText = scene.add.text(0, -this.config.height/2 + 40, this.config.title, this._getStyle('text_styles.title'));
+        this.titleText.setOrigin(0.5);
+        this.titleText.setDepth(3);
+        this.container.add(this.titleText);
+      }
+      
+      // Create message text (if provided)
+      this.messageText = null;
+      if (this.config.message) {
+        this.messageText = scene.add.text(0, this.titleText ? -this.config.height/2 + 80 : 0, this.config.message, this._getStyle('text_styles.ui'));
+        this.messageText.setOrigin(0.5);
+        this.messageText.setWordWrapWidth(this.config.width - 40);
+        this.messageText.setAlign('center');
+        this.messageText.setDepth(3);
+        this.container.add(this.messageText);
+      }
+      
+      // Create buttons
+      this.buttonObjects = [];
+      if (this.config.buttons.length > 0) {
+        const buttonWidth = 120;
+        const buttonHeight = 50;
+        const buttonSpacing = 20;
+        const totalButtonsWidth = (buttonWidth * this.config.buttons.length) + (buttonSpacing * (this.config.buttons.length - 1));
+        const startX = -totalButtonsWidth/2;
+        
+        this.config.buttons.forEach((buttonConfig, index) => {
+          const buttonX = startX + (index * (buttonWidth + buttonSpacing));
+          const buttonY = this.config.height/2 - 60;
+          
+          const button = new Button(
+            scene,
+            buttonX,
+            buttonY,
+            buttonConfig.text,
+            this.styles,
+            buttonConfig.callback,
+            buttonWidth,
+            buttonHeight
+          );
+          
+          this.buttonObjects.push(button);
+          this.container.add(button.bg);
+          this.container.add(button.label);
+        });
+      }
+      
+      // Add all elements to container
+      this.container.add(this.popupBg);
+      this.container.add(this.popupBorder);
+      
+      // Start hidden
+      this.hide();
+    }
+    
+    _getStyle(path) {
+      const parts = path.split('.');
+      let value = this.styles;
+      for (const part of parts) {
+        if (value[part] !== undefined) {
+          value = value[part];
+        } else {
+          // Fallback to default styles
+          let defaultValue = this.defaultStyles;
+          for (const defPart of parts) {
+            if (defaultValue[defPart] !== undefined) {
+              defaultValue = defaultValue[defPart];
+            } else {
+              return null;
+            }
+          }
+          return defaultValue;
+        }
+      }
+      return value;
+    }
+    
+    show() {
+      if (!this.enabled) return;
+      this.background.setVisible(true);
+      this.container.setVisible(true);
+      
+      // Add popup-in animation
+      this.container.scaleX = 0.5;
+      this.container.scaleY = 0.5;
+      this.container.alpha = 0;
+      
+      this.scene.tweens.add({
+        targets: this.container,
+        scaleX: 1,
+        scaleY: 1,
+        alpha: 1,
+        duration: 300,
+        ease: 'Back.easeOut'
+      });
+      
+      this.background.setInteractive();
+    }
+    
+    hide() {
+      this.background.setVisible(false);
+      this.container.setVisible(false);
+      this.background.disableInteractive();
+    }
+    
+    setTitle(title) {
+      this.config.title = title;
+      if (this.titleText) {
+        this.titleText.setText(title);
+      } else if (title) {
+        this.titleText = this.scene.add.text(0, -this.config.height/2 + 40, title, this._getStyle('text_styles.title'));
+        this.titleText.setOrigin(0.5);
+        this.titleText.setDepth(3);
+        this.container.add(this.titleText, 0); // Add at beginning
+      }
+    }
+    
+    setMessage(message) {
+      this.config.message = message;
+      if (this.messageText) {
+        this.messageText.setText(message);
+      } else if (message) {
+        this.messageText = this.scene.add.text(0, this.titleText ? -this.config.height/2 + 80 : 0, message, this._getStyle('text_styles.ui'));
+        this.messageText.setOrigin(0.5);
+        this.messageText.setWordWrapWidth(this.config.width - 40);
+        this.messageText.setAlign('center');
+        this.messageText.setDepth(3);
+        this.container.add(this.messageText, this.titleText ? 1 : 0); // Add after title if exists
+      }
+    }
+    
+    destroy() {
+      // Destroy all button objects
+      this.buttonObjects.forEach(button => {
+        button.destroy();
+      });
+      
+      this.background.destroy();
+      this.popupBg.destroy();
+      this.popupBorder.destroy();
+      if (this.titleText) this.titleText.destroy();
+      if (this.messageText) this.messageText.destroy();
+      this.container.removeAll(true);
+      this.container.destroy();
+    }
+    setVisible(visible) {
+      if (this.background) this.background.setVisible(visible);
+      if (this.container) this.container.setVisible(visible);
+      if (this.popupBg) this.popupBg.setVisible(visible);
+      if (this.popupBorder) this.popupBorder.setVisible(visible);
+      if (this.titleText) this.titleText.setVisible(visible);
+      if (this.messageText) this.messageText.setVisible(visible);
+      this.buttonObjects.forEach(button => {
+        if (button.bg) button.bg.setVisible(visible);
+        if (button.label) button.label.setVisible(visible);
+      });
+    }
+  }
+
+  // Expose globally
+  window.UIKit = {
+    Button: Button,
+    ProgressBar: ProgressBar,
+    Popup: Popup
+  };
+  
+  // Also expose directly for convenience
+  window.Button = Button;
+  window.ProgressBar = ProgressBar;
+  window.Popup = Popup;
+  
+})();
+// Procedural Particle Library for HTML5 Playable Ads
+// Provides lightweight particle effects without external dependencies
+// Designed to work alongside Phaser 3 in single-file HTML5 games
+
+(function() {
+  'use strict';
+
+  // Simple 2D vector class
+  class Vector2 {
+    constructor(x = 0, y = 0) {
+      this.x = x;
+      this.y = y;
+    }
+    
+    add(v) {
+      return new Vector2(this.x + v.x, this.y + v.y);
+    }
+    
+    subtract(v) {
+      return new Vector2(this.x - v.x, this.y - v.y);
+    }
+    
+    multiply(scalar) {
+      return new Vector2(this.x * scalar, this.y * scalar);
+    }
+    
+    divide(scalar) {
+      return new Vector2(this.x / scalar, this.y / scalar);
+    }
+    
+    length() {
+      return Math.sqrt(this.x * this.x + this.y * this.y);
+    }
+    
+    normalize() {
+      const len = this.length();
+      if (len > 0) {
+        return new Vector2(this.x / len, this.y / len);
+      }
+      return new Vector2(0, 0);
+    }
+    
+    clone() {
+      return new Vector2(this.x, this.y);
+    }
+  }
+
+  // Particle class representing a single particle
+  class Particle {
+    constructor(x, y, options = {}) {
+      this.position = new Vector2(x, y);
+      this.velocity = new Vector2(
+        options.vx || 0,
+        options.vy || 0
+      );
+      this.acceleration = new Vector2(
+        options.ax || 0,
+        options.ay || 0
+      );
+      
+      this.life = options.life || 1000; // milliseconds
+      this.maxLife = this.life;
+      this.age = 0;
+      
+      this.startSize = options.startSize || 5;
+      this.endSize = options.endSize || this.startSize;
+      this.size = this.startSize;
+      
+      this.startColor = options.startColor || '#ffffff';
+      this.endColor = options.endColor || this.startColor;
+      this.color = this.startColor;
+      
+      this.startAlpha = options.startAlpha !== undefined ? options.startAlpha : 1;
+      this.endAlpha = options.endAlpha !== undefined ? options.endAlpha : this.startAlpha;
+      this.alpha = this.startAlpha;
+      
+      this.rotation = options.rotation || 0;
+      this.rotationSpeed = options.rotationSpeed || 0;
+      
+      this.active = true;
+    }
+    
+    update(deltaTime) {
+      if (!this.active) return;
+      
+      // Update physics
+      this.velocity = this.velocity.add(this.acceleration.multiply(deltaTime));
+      this.position = this.position.add(this.velocity.multiply(deltaTime));
+      
+      // Update life
+      this.age += deltaTime;
+      if (this.age >= this.life) {
+        this.active = false;
+        return;
+      }
+      
+      // Update size (linear interpolation)
+      const lifeRatio = this.age / this.life;
+      this.size = this.startSize + (this.endSize - this.startSize) * lifeRatio;
+      
+      // Update alpha (linear interpolation)
+      this.alpha = this.startAlpha + (this.endAlpha - this.startAlpha) * lifeRatio;
+      
+      // Update rotation
+      this.rotation += this.rotationSpeed * deltaTime;
+    }
+  }
+
+  // ParticleEmitter class manages a group of particles
+  class ParticleEmitter {
+    constructor(options = {}) {
+      this.position = new Vector2(
+        options.x || 0,
+        options.y || 0
+      );
+      
+      this.particles = [];
+      this.maxParticles = options.maxParticles || 100;
+      this.particleCount = 0;
+      
+      // Emission properties
+      this.emitRate = options.emitRate || 0; // particles per second
+      this.emitTimer = 0;
+      this.isEmitting = options.isEmitting !== undefined ? options.isEmitting : true;
+      
+      // Particle properties (defaults)
+      this.options = {
+        life: options.life || 1000,
+        speed: options.speed || 50,
+        angle: options.angle || 0, // degrees
+        angleVariance: options.angleVariance || 0,
+        startSize: options.startSize || 5,
+        endSize: options.endSize || 5,
+        startColor: options.startColor || '#ffffff',
+        endColor: options.endColor || options.startColor,
+        startAlpha: options.startAlpha !== undefined ? options.startAlpha : 1,
+        endAlpha: options.endAlpha !== undefined ? options.endAlpha : options.startAlpha,
+        gravity: options.gravity || 0,
+        wind: options.wind || 0,
+        rotationSpeed: options.rotationSpeed || 0,
+        sizeVariance: options.sizeVariance || 0
+      };
+      
+      // Callbacks
+      this.onParticleUpdate = options.onParticleUpdate || null;
+      this.onParticleExpire = options.onParticleExpire || null;
+    }
+    
+    // Emit a single particle
+    emit() {
+      if (this.particleCount >= this.maxParticles) return null;
+      
+      // Calculate emission angle with variance
+      const angleRad = (this.options.angle + 
+                       (Math.random() * 2 - 1) * this.options.angleVariance) * 
+                       Math.PI / 180;
+      
+      // Calculate speed with variance
+      const speed = this.options.speed + 
+                   (Math.random() * 2 - 1) * this.options.speed * 0.1; // 10% variance
+      
+      const vx = Math.cos(angleRad) * speed;
+      const vy = Math.sin(angleRad) * speed;
+      
+      // Size with variance
+      const sizeVariance = this.options.sizeVariance || 0;
+      const startSize = this.options.startSize + 
+                      (Math.random() * 2 - 1) * sizeVariance;
+      
+      const particle = new Particle(
+        this.position.x,
+        this.position.y,
+        {
+          vx: vx,
+          vy: vy,
+          ay: this.options.gravity, // gravity affects Y acceleration
+          life: this.options.life,
+          startSize: startSize,
+          endSize: this.options.endSize + 
+                 (Math.random() * 2 - 1) * sizeVariance,
+          startColor: this.options.startColor,
+          endColor: this.options.endColor,
+          startAlpha: this.options.startAlpha,
+          endAlpha: this.options.endAlpha,
+          rotationSpeed: this.options.rotationSpeed
+        }
+      );
+      
+      this.particles.push(particle);
+      this.particleCount++;
+      
+      return particle;
+    }
+    
+    // Update all particles
+    update(deltaTime) {
+      // Update emitter timer for continuous emission
+      if (this.isEmitting && this.emitRate > 0) {
+        this.emitTimer += deltaTime;
+        const emitInterval = 1000 / this.emitRate; // ms per particle
+        
+        while (this.emitTimer >= emitInterval && 
+               this.particleCount < this.maxParticles) {
+          this.emit();
+          this.emitTimer -= emitInterval;
+        }
+      }
+      
+      // Update all particles
+      for (let i = this.particles.length - 1; i >= 0; i--) {
+        const particle = this.particles[i];
+        particle.update(deltaTime);
+        
+        // Call update callback if provided
+        if (this.onParticleUpdate) {
+          this.onParticleUpdate(particle, i);
+        }
+        
+        // Remove expired particles
+        if (!particle.active) {
+          if (this.onParticleExpire) {
+            this.onParticleExpire(particle, i);
+          }
+          this.particles.splice(i, 1);
+          this.particleCount--;
+        }
+      }
+    }
+    
+    // Emit a burst of particles
+    burst(count) {
+      const emitted = [];
+      for (let i = 0; i < count && this.particleCount < this.maxParticles; i++) {
+        const particle = this.emit();
+        if (particle) emitted.push(particle);
+      }
+      return emitted;
+    }
+    
+    // Clear all particles
+    clear() {
+      this.particles = [];
+      this.particleCount = 0;
+    }
+    
+    // Get active particle count
+    getCount() {
+      return this.particleCount;
+    }
+  }
+
+  // Expose globally
+  window.ParticleEngine = {
+    Vector2: Vector2,
+    Particle: Particle,
+    ParticleEmitter: ParticleEmitter
+  };
+  
+  // Also expose directly for convenience
+  window.Vector2 = Vector2;
+  window.Particle = Particle;
+  window.ParticleEmitter = ParticleEmitter;
+  
+})();
+// Visual Asset Engine — unified parameterized interface for game visuals from declarative JSON spec
+// Provides: VisualAssetEngine.load(spec), .fromName(name), .merge(base, override), .validate(spec)
+// Resolves: palette.* refs, gradients.* refs, ref: cross-section refs, extends inheritance
+// Output: ResolvedTheme with all colors as 0xRRGGBB numbers, gradients as callable functions
+
+(function() {
+  'use strict';
+
+  // ============================================================================
+  // UTILITIES
+  // ============================================================================
+
+  function isHexColor(str) {
+    return typeof str === 'string' && /^#?[0-9a-fA-F]{6}$/.test(str);
+  }
+
+  function hexToNumber(hex) {
+    if (typeof hex === 'number') return hex;
+    if (!isHexColor(hex)) return 0xffffff;
+    return parseInt(hex.replace('#', ''), 16);
+  }
+
+  function deepClone(obj) {
+    return JSON.parse(JSON.stringify(obj));
+  }
+
+  function deepMerge(target, source) {
+    const result = deepClone(target);
+    for (const key of Object.keys(source)) {
+      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+        result[key] = deepMerge(result[key] || {}, source[key]);
+      } else {
+        result[key] = deepClone(source[key]);
+      }
+    }
+    return result;
+  }
+
+  // ============================================================================
+  // GRADIENT FUNCTIONS
+  // ============================================================================
+
+  function createLinearGradient(stops) {
+    // stops: [{ stop: 0.0, color: 0xRRGGBB }, ...] sorted by stop
+    const sorted = [...stops].sort((a, b) => a.stop - b.stop);
+    return function(t) {
+      t = Math.max(0, Math.min(1, t));
+      if (t <= sorted[0].stop) return sorted[0].color;
+      if (t >= sorted[sorted.length - 1].stop) return sorted[sorted.length - 1].color;
+      for (let i = 0; i < sorted.length - 1; i++) {
+        if (t >= sorted[i].stop && t <= sorted[i + 1].stop) {
+          const localT = (t - sorted[i].stop) / (sorted[i + 1].stop - sorted[i].stop);
+          const c1 = sorted[i].color;
+          const c2 = sorted[i + 1].color;
+          const r = Math.round(((c1 >> 16) & 0xff) + (((c2 >> 16) & 0xff) - ((c1 >> 16) & 0xff)) * localT);
+          const g = Math.round(((c1 >> 8) & 0xff) + (((c2 >> 8) & 0xff) - ((c1 >> 8) & 0xff)) * localT);
+          const b = Math.round((c1 & 0xff) + ((c2 & 0xff) - (c1 & 0xff)) * localT);
+          return (r << 16) | (g << 8) | b;
+        }
+      }
+      return sorted[sorted.length - 1].color;
+    };
+  }
+
+  function createRadialGradient(stops, center, radius) {
+    const sorted = [...stops].sort((a, b) => a.stop - b.stop);
+    const cx = center[0], cy = center[1];
+    return function(x, y, w, h) {
+      const dx = (x / w) - cx;
+      const dy = (y / h) - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy) / radius;
+      return createLinearGradient(stops)(dist);
+    };
+  }
+
+  function buildGradient(gradSpec, palette) {
+    if (!gradSpec || !gradSpec.type) return null;
+    const resolvedStops = gradSpec.stops.map(s => ({
+      stop: s.stop,
+      color: resolveColorRef(s.color, palette)
+    }));
+    if (gradSpec.type === 'linear') {
+      return createLinearGradient(resolvedStops);
+    } else if (gradSpec.type === 'radial') {
+      return createRadialGradient(resolvedStops, gradSpec.center || [0.5, 0.5], gradSpec.radius || 1.0);
+    }
+    return null;
+  }
+
+  // ============================================================================
+  // REFERENCE RESOLUTION
+  // ============================================================================
+
+  function resolveColorRef(value, palette) {
+    if (typeof value === 'number') return value;
+    if (typeof value !== 'string') return 0xffffff;
+
+    // palette.* reference
+    if (value.startsWith('palette.')) {
+      const key = value.slice(8);
+      return hexToNumber(palette[key] || '#ffffff');
+    }
+    // Direct hex color
+    if (isHexColor(value)) {
+      return hexToNumber(value);
+    }
+    return 0xffffff;
+  }
+
+  function resolveValue(value, context, palette, gradients, visitedRefs = new Set()) {
+    if (value === null || value === undefined) return value;
+    if (typeof value !== 'string') return value;
+
+    // palette.* reference
+    if (value.startsWith('palette.')) {
+      const key = value.slice(8);
+      return hexToNumber(palette[key] || '#ffffff');
+    }
+
+    // gradients.* reference - returns the gradient function
+    if (value.startsWith('gradients.')) {
+      const key = value.slice(10);
+      return gradients[key] || null;
+    }
+
+    // ref: cross-section reference
+    if (value.startsWith('ref:')) {
+      const refPath = value.slice(4);
+      if (visitedRefs.has(refPath)) {
+        throw new Error(`Circular reference detected: ${refPath}`);
+      }
+      visitedRefs.add(refPath);
+      const result = resolveRefPath(context, refPath, palette, gradients, visitedRefs);
+      visitedRefs.delete(refPath);
+      return result;
+    }
+
+    // Direct hex color
+    if (isHexColor(value)) {
+      return hexToNumber(value);
+    }
+
+    return value;
+  }
+
+  function resolveRefPath(root, path, palette, gradients, visitedRefs) {
+    const parts = path.split('.');
+    let current = root;
+    for (const part of parts) {
+      if (current === null || current === undefined || typeof current !== 'object') {
+        return undefined;
+      }
+      current = current[part];
+    }
+    // If the resolved value is itself a reference, resolve it recursively
+    if (typeof current === 'string' && (current.startsWith('palette.') || current.startsWith('gradients.') || current.startsWith('ref:'))) {
+      return resolveValue(current, root, palette, gradients, visitedRefs);
+    }
+    return current;
+  }
+
+  function resolveObject(obj, context, palette, gradients, visitedRefs = new Set()) {
+    if (obj === null || obj === undefined) return obj;
+    if (Array.isArray(obj)) {
+      return obj.map(item => resolveObject(item, context, palette, gradients, visitedRefs));
+    }
+    if (typeof obj === 'object') {
+      const result = {};
+      for (const [key, value] of Object.entries(obj)) {
+        result[key] = resolveObject(value, context, palette, gradients, visitedRefs);
+      }
+      return result;
+    }
+    return resolveValue(obj, context, palette, gradients, visitedRefs);
+  }
+
+  // ============================================================================
+  // SPEC VALIDATION
+  // ============================================================================
+
+  function validateSpec(spec) {
+    if (!spec || typeof spec !== 'object') {
+      throw new Error('Visual spec must be an object');
+    }
+    if (spec.version !== 1) {
+      throw new Error(`Unsupported visual spec version: ${spec.version}. Expected 1.`);
+    }
+    if (!spec.name || typeof spec.name !== 'string') {
+      throw new Error('Visual spec must have a string "name" field');
+    }
+
+    // Validate extends chain for cycles
+    if (spec.extends) {
+      if (typeof spec.extends !== 'string') {
+        throw new Error('"extends" must be a string');
+      }
+      // Note: actual cycle detection across files happens at load time
+    }
+
+    // Validate palette
+    if (spec.palette) {
+      if (typeof spec.palette !== 'object') throw new Error('"palette" must be an object');
+      for (const [key, value] of Object.entries(spec.palette)) {
+        if (!isHexColor(value) && typeof value !== 'number') {
+          throw new Error(`palette.${key}: expected hex color string or number, got ${typeof value}`);
+        }
+      }
+    }
+
+    // Validate gradients
+    if (spec.gradients) {
+      if (typeof spec.gradients !== 'object') throw new Error('"gradients" must be an object');
+      for (const [key, grad] of Object.entries(spec.gradients)) {
+        if (!grad || typeof grad !== 'object') throw new Error(`gradients.${key}: must be an object`);
+        if (!grad.type || !['linear', 'radial'].includes(grad.type)) {
+          throw new Error(`gradients.${key}: type must be "linear" or "radial"`);
+        }
+        if (!Array.isArray(grad.stops) || grad.stops.length < 2) {
+          throw new Error(`gradients.${key}: stops must be an array with at least 2 entries`);
+        }
+        for (const stop of grad.stops) {
+          if (typeof stop.stop !== 'number' || stop.stop < 0 || stop.stop > 1) {
+            throw new Error(`gradients.${key}: stop must be a number between 0 and 1`);
+          }
+          if (!isHexColor(stop.color) && !stop.color.startsWith('palette.')) {
+            throw new Error(`gradients.${key}: stop color must be hex or palette.* ref`);
+          }
+        }
+      }
+    }
+
+    // Validate shapes
+    if (spec.shapes) {
+      if (typeof spec.shapes !== 'object') throw new Error('"shapes" must be an object');
+      for (const [key, shape] of Object.entries(spec.shapes)) {
+        if (!shape || typeof shape !== 'object') throw new Error(`shapes.${key}: must be an object`);
+        if (!shape.type || !['SoftCircle', 'SoftRect'].includes(shape.type)) {
+          throw new Error(`shapes.${key}: type must be "SoftCircle" or "SoftRect"`);
+        }
+      }
+    }
+
+    // Validate ui
+    if (spec.ui) {
+      if (typeof spec.ui !== 'object') throw new Error('"ui" must be an object');
+      // ui validation is permissive - structure varies by component
+    }
+
+    // Validate particles
+    if (spec.particles) {
+      if (typeof spec.particles !== 'object') throw new Error('"particles" must be an object');
+    }
+
+    // Validate juice
+    if (spec.juice) {
+      if (typeof spec.juice !== 'object') throw new Error('"juice" must be an object');
+    }
+
+    // Check for circular refs in the spec itself (ref: cycles within same file)
+    const visited = new Set();
+    function checkRefs(obj, path = '') {
+      if (!obj || typeof obj !== 'object') return;
+      if (Array.isArray(obj)) {
+        obj.forEach((item, i) => checkRefs(item, `${path}[${i}]`));
+        return;
+      }
+      for (const [key, value] of Object.entries(obj)) {
+        const currentPath = path ? `${path}.${key}` : key;
+        if (typeof value === 'string' && value.startsWith('ref:')) {
+          if (visited.has(value)) {
+            throw new Error(`Circular ref: ${value} at ${currentPath}`);
+          }
+          visited.add(value);
+          checkRefs(value, currentPath);
+          visited.delete(value);
+        } else {
+          checkRefs(value, currentPath);
+        }
+      }
+    }
+    checkRefs(spec);
+  }
+
+  // ============================================================================
+  // MAIN ENGINE CLASS
+  // ============================================================================
+
+  class VisualAssetEngine {
+    static themeCache = new Map();
+
+    // Load a visual spec, resolve all references, return a frozen theme object
+    static load(spec) {
+      validateSpec(spec);
+
+      // Handle inheritance
+      let workingSpec = spec;
+      if (spec.extends) {
+        const baseSpec = this.themeCache.get(spec.extends);
+        if (!baseSpec) {
+          throw new Error(`Base theme "${spec.extends}" not loaded. Load base theme first or include inline.`);
+        }
+        workingSpec = deepMerge(baseSpec._rawSpec, spec);
+      }
+
+      // Build palette (convert all to 0xRRGGBB numbers)
+      const rawPalette = workingSpec.palette || {};
+      const palette = {};
+      for (const [key, value] of Object.entries(rawPalette)) {
+        palette[key] = hexToNumber(value);
+      }
+
+      // Build gradients (create callable functions)
+      const rawGradients = workingSpec.gradients || {};
+      const gradients = {};
+      for (const [key, gradSpec] of Object.entries(rawGradients)) {
+        gradients[key] = buildGradient(gradSpec, palette);
+      }
+
+      // Build context for cross-section refs (raw spec for ref: resolution)
+      const context = {
+        palette: rawPalette,
+        gradients: rawGradients,
+        shapes: workingSpec.shapes || {},
+        ui: workingSpec.ui || {},
+        particles: workingSpec.particles || {},
+        juice: workingSpec.juice || {}
+      };
+
+      // Resolve all sections
+      const resolved = {
+        _rawSpec: workingSpec,
+        palette,
+        gradients,
+        shapes: resolveObject(workingSpec.shapes || {}, context, palette, gradients),
+        ui: resolveObject(workingSpec.ui || {}, context, palette, gradients),
+        particles: resolveObject(workingSpec.particles || {}, context, palette, gradients),
+        juice: resolveObject(workingSpec.juice || {}, context, palette, gradients)
+      };
+
+      // Cache by name
+      this.themeCache.set(spec.name, resolved);
+      return resolved;
+    }
+
+    // Create a theme from a name (loads from window.THEME_SPECS if available)
+    static fromName(name) {
+      // Check cache first
+      if (this.themeCache.has(name)) {
+        return this.themeCache.get(name);
+      }
+
+      // Try to load from window.THEME_SPECS (injected by build)
+      if (window.THEME_SPECS && window.THEME_SPECS[name]) {
+        return this.load(window.THEME_SPECS[name]);
+      }
+
+      throw new Error(`Theme "${name}" not found. Available: ${Array.from(this.themeCache.keys()).join(', ')}`);
+    }
+
+    // Merge two themes (later overrides earlier, deep merge)
+    static merge(base, override) {
+      if (!base || !override) return base || override;
+      return deepMerge(base, override);
+    }
+
+    // Validate a spec without resolving (throws on invalid structure)
+    static validate(spec) {
+      validateSpec(spec);
+    }
+
+    // Register a theme spec by name (for fromName to work without window.THEME_SPECS)
+    static registerTheme(name, spec) {
+      this.themeCache.set(name, this.load(spec));
+      return this.themeCache.get(name);
+    }
+
+    // Clear cache (for testing)
+    static clearCache() {
+      this.themeCache.clear();
+    }
+  }
+
+  // Expose globally
+  window.VisualAssetEngine = VisualAssetEngine;
+
+})();
 // Hand-built bullet hell shmup harness. Every value here is hardcoded and tuned by
 // actually playing the game -- same approach as harness/endless_runner.game.js.
 // This genre is STRATEGY.md priority #8. Do not add a config layer here; pull
@@ -463,6 +2178,7 @@ window.Juice = {
 // Uses Juice toolkit (pipeline/vendor/juice.js) for shared juice utilities.
 
 const W = 450, H = 800;
+const CTA_LINK = "https://example.com/game";
 const PLAYER_X = W / 2, PLAYER_Y = H - 80;
 const PLAYER_SPEED = 320;           // px/sec normal
 const PLAYER_FOCUS_SPEED = 160;     // px/sec with Shift held
@@ -844,7 +2560,10 @@ class PlayScene extends Phaser.Scene {
       target: 0,
       best: this.best,
       onRetry: () => this.scene.restart(),
-      onCTA: () => {}
+      onCTA: () => {
+        if (typeof mraid !== 'undefined' && mraid.open) { mraid.open(CTA_LINK); }
+        else { window.open(CTA_LINK, '_blank'); }
+      }
     });
   }
 
@@ -864,7 +2583,10 @@ class PlayScene extends Phaser.Scene {
       target: 0,
       best: this.best,
       onRetry: () => this.scene.restart(),
-      onCTA: () => {}
+      onCTA: () => {
+        if (typeof mraid !== 'undefined' && mraid.open) { mraid.open(CTA_LINK); }
+        else { window.open(CTA_LINK, '_blank'); }
+      }
     });
   }
 

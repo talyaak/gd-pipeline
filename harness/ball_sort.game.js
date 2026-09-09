@@ -20,6 +20,7 @@ const MOVE_LIMIT = 30;
 const SESSION_MS = 60000;
 
 const W = 450, H = 800;
+const CTA_LINK = "https://example.com/game";
 const TUBE_W = 54;
 const TUBE_H = TUBE_CAPACITY * 34 + 20;
 // 6 tubes in one row needs ~700px (the old 800x450 layout) -- doesn't fit a
@@ -148,7 +149,7 @@ class PlayScene extends Phaser.Scene {
 
   _onPointerDown(p) {
     if (this.state === STATE.START) { this._begin(); return; }
-    if (this.state === STATE.END) { this.scene.restart(); return; }
+    if (this.state === STATE.END) { return; } // GameOverPanel's own TAP TO RETRY button handles restart; a blanket restart-on-any-tap here raced with clicking the CTA button
     if (this.state !== STATE.PLAYING) return;
     const idx = this._tubeAt(p.x, p.y);
     if (idx === null) return;
@@ -215,7 +216,10 @@ class PlayScene extends Phaser.Scene {
       target: 0,
       best: 0,
       onRetry: () => this.scene.restart(),
-      onCTA: () => {}
+      onCTA: () => {
+        if (typeof mraid !== 'undefined' && mraid.open) { mraid.open(CTA_LINK); }
+        else { window.open(CTA_LINK, '_blank'); }
+      }
     });
   }
 

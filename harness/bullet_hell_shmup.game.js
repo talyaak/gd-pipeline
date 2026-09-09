@@ -6,6 +6,7 @@
 // Uses Juice toolkit (pipeline/vendor/juice.js) for shared juice utilities.
 
 const W = 450, H = 800;
+const CTA_LINK = "https://example.com/game";
 const PLAYER_X = W / 2, PLAYER_Y = H - 80;
 const PLAYER_SPEED = 320;           // px/sec normal
 const PLAYER_FOCUS_SPEED = 160;     // px/sec with Shift held
@@ -387,7 +388,10 @@ class PlayScene extends Phaser.Scene {
       target: 0,
       best: this.best,
       onRetry: () => this.scene.restart(),
-      onCTA: () => {}
+      onCTA: () => {
+        if (typeof mraid !== 'undefined' && mraid.open) { mraid.open(CTA_LINK); }
+        else { window.open(CTA_LINK, '_blank'); }
+      }
     });
   }
 
@@ -407,7 +411,10 @@ class PlayScene extends Phaser.Scene {
       target: 0,
       best: this.best,
       onRetry: () => this.scene.restart(),
-      onCTA: () => {}
+      onCTA: () => {
+        if (typeof mraid !== 'undefined' && mraid.open) { mraid.open(CTA_LINK); }
+        else { window.open(CTA_LINK, '_blank'); }
+      }
     });
   }
 

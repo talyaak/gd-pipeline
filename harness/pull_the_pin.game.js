@@ -14,6 +14,7 @@
 // falling and resting on shelves, not a general rigid-body simulation.
 
 const W = 450, H = 800;
+const CTA_LINK = "https://example.com/game";
 const GRAVITY = 900;
 const WALL_L = 70, WALL_R = 380;
 const CHAMBER_TOP = 140, CHAMBER_BOTTOM = 680;
@@ -127,7 +128,7 @@ class PlayScene extends Phaser.Scene {
 
   _onPointerDown(p) {
     if (this.state === STATE.START) { this._begin(); return; }
-    if (this.state === STATE.END) { this.scene.restart(); return; }
+    if (this.state === STATE.END) { return; } // GameOverPanel's own TAP TO RETRY button handles restart; a blanket restart-on-any-tap here raced with clicking the CTA button
     if (this.state !== STATE.PLAYING) return;
     if (this.pullsLeft <= 0) return;
 
@@ -194,7 +195,12 @@ class PlayScene extends Phaser.Scene {
     const scoreT = this.add.text(cx, cy - 25, 'Collected: ' + this.collected + ' / ' + TARGET_COLLECTED, { fontFamily: 'monospace', fontSize: '18px', color: '#33e6ff' }).setOrigin(0.5);
     const pullsT = this.add.text(cx, cy + 1, (PIN_PULLS - this.pullsLeft) + ' pins pulled', { fontFamily: 'monospace', fontSize: '13px', color: '#8899ff' }).setOrigin(0.5);
     const restart = this.add.text(cx, cy + 43, 'TAP TO RETRY', { fontFamily: 'monospace', fontSize: '16px', color: '#0a0a18', backgroundColor: '#33e6ff', padding: { x: 14, y: 8 } }).setOrigin(0.5);
-    const cta = this.add.text(cx, cy + 87, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5);
+    const cta = this.add.text(cx, cy + 87, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    this.ctaButton = cta;
+    cta.on('pointerdown', () => {
+      if (typeof mraid !== 'undefined' && mraid.open) { mraid.open(CTA_LINK); }
+      else { window.open(CTA_LINK, '_blank'); }
+    });
     this.tweens.add({ targets: [panel, title, scoreT, pullsT, restart, cta], alpha: { from: 0, to: 1 }, duration: 250 });
   }
 

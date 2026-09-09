@@ -513,6 +513,28 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                     window.__window_open_url = null;
                 """)
 
+                # Force the end state directly rather than hoping the generic
+                # play simulation above happened to win/lose the game within
+                # its fixed interaction window -- that's genre-dependent and
+                # unreliable for anything that isn't fast to fail (a puzzle
+                # game needing real matches, a wave-survival game, etc). Every
+                # harness exposes its game-over entry point as either _end(won)
+                # or _die() on the active scene; call whichever exists so the
+                # end-card (and therefore the CTA button) reliably appears.
+                page.evaluate("""() => {
+                    const game = window.__GAME__;
+                    if (!game || !game.scene || !game.scene.scenes) return;
+                    for (const scene of game.scene.scenes) {
+                        const isVisible = scene.sys?.settings?.visible === true;
+                        const isActive = scene.sys?.settings?.active === true;
+                        if (!isVisible || !isActive) continue;
+                        if (scene.ctaButton) return; // already ended, nothing to force
+                        if (typeof scene._end === 'function') { scene._end(true); return; }
+                        if (typeof scene._die === 'function') { scene._die(); return; }
+                    }
+                }""")
+                page.wait_for_timeout(300)
+
                 # Check if the active scene has a ctaButton
                 cta_exists = page.evaluate("""() => {
                     const game = window.__GAME__;

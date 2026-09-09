@@ -7,6 +7,7 @@
 // waves -- not the free-placement multi-tower economy a full game would have.
 
 const W = 450, H = 800;
+const CTA_LINK = "https://example.com/game";
 // Path runs top-to-bottom instead of the old left-to-right -- a horizontal
 // lane across only 450px of width felt cramped and gave enemies barely any
 // runway; a vertical lane uses the portrait screen's actual long axis and
@@ -98,7 +99,7 @@ class PlayScene extends Phaser.Scene {
 
   _onPointerDown(p) {
     if (this.state === STATE.START) { this._begin(); return; }
-    if (this.state === STATE.END) { this.scene.restart(); return; }
+    if (this.state === STATE.END) { return; } // GameOverPanel's own TAP TO RETRY button handles restart; a blanket restart-on-any-tap here raced with clicking the CTA button
     if (this.state !== STATE.PLAYING) return;
 
     const pad = this.buildPads.find((b) => Math.abs(p.x - b.x) < 24 && Math.abs(p.y - b.y) < 24);
@@ -163,7 +164,10 @@ class PlayScene extends Phaser.Scene {
       target: this.totalEnemies,
       best: 0,
       onRetry: () => this.scene.restart(),
-      onCTA: () => {}
+      onCTA: () => {
+        if (typeof mraid !== 'undefined' && mraid.open) { mraid.open(CTA_LINK); }
+        else { window.open(CTA_LINK, '_blank'); }
+      }
     });
   }
 

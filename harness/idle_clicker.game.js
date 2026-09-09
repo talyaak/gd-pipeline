@@ -7,6 +7,7 @@
 // in without a reason a playable ad session actually has.
 
 const W = 450, H = 800;
+const CTA_LINK = "https://example.com/game";
 const SESSION_MS = 45000;
 const TARGET_ENERGY = 5000;
 const TAP_VALUE = 2;
@@ -210,7 +211,12 @@ class PlayScene extends Phaser.Scene {
     const tapsT = this.add.text(W / 2, H / 2 + 1, this.taps + ' taps  •  ' + Object.values(this.owned).reduce((a, b) => a + b, 0) + ' generators', { fontFamily: 'monospace', fontSize: '13px', color: '#8899ff' }).setOrigin(0.5);
     const restart = this.add.text(W / 2, H / 2 + 43, 'TAP TO RETRY', { fontFamily: 'monospace', fontSize: '16px', color: '#0a0a18', backgroundColor: '#33e6ff', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive();
     restart.on('pointerdown', () => this.scene.restart());
-    const cta = this.add.text(W / 2, H / 2 + 87, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5);
+    const cta = this.add.text(W / 2, H / 2 + 87, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    this.ctaButton = cta;
+    cta.on('pointerdown', () => {
+      if (typeof mraid !== 'undefined' && mraid.open) { mraid.open(CTA_LINK); }
+      else { window.open(CTA_LINK, '_blank'); }
+    });
     this.tweens.add({ targets: [panel, title, scoreT, tapsT, restart, cta], alpha: { from: 0, to: 1 }, duration: 250 });
 
     if (won) {

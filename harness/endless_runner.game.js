@@ -7,6 +7,7 @@
 // is confirmed fun by actually playing it.
 
 const W = 450, H = 800;
+const CTA_LINK = "https://example.com/game";
 const LANES_X = [95, 225, 355];
 const PLAYER_Y = 620;
 const LANE_SWITCH_MS = 140;
@@ -229,7 +230,12 @@ class PlayScene extends Phaser.Scene {
     const scoreT = this.add.text(cx, cy - 25, 'Score: ' + Math.floor(this.score), { fontFamily: 'monospace', fontSize: '20px', color: '#33e6ff' }).setOrigin(0.5);
     const bestT = this.add.text(cx, cy + 3, 'Best: ' + this.best, { fontFamily: 'monospace', fontSize: '16px', color: '#ffe14d' }).setOrigin(0.5);
     const restart = this.add.text(cx, cy + 45, 'TAP TO RESTART', { fontFamily: 'monospace', fontSize: '16px', color: '#0a0a18', backgroundColor: '#33e6ff', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive();
-    const cta = this.add.text(cx, cy + 90, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5);
+    const cta = this.add.text(cx, cy + 90, 'PLAY FULL VERSION', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff', backgroundColor: '#ff3377', padding: { x: 14, y: 8 } }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    this.ctaButton = cta;
+    cta.on('pointerdown', () => {
+      if (typeof mraid !== 'undefined' && mraid.open) { mraid.open(CTA_LINK); }
+      else { window.open(CTA_LINK, '_blank'); }
+    });
     this.tweens.add({ targets: [panel, title, scoreT, bestT, restart, cta], alpha: { from: 0, to: 1 }, duration: 250 });
   }
 
