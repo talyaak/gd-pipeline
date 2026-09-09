@@ -201,10 +201,12 @@ def test_llm_failure_mid_spec_reports_explicit_failure(monkeypatch, tmp_path):
             print("[ADVERSARIAL] HARDCODED FALLBACK DETECTED: 'Endless Runner' found in spec artifact")
             pytest.fail("HARDCODED FALLBACK DETECTED: 'Endless Runner' found in spec artifact — silent substitution occurred!")
 
-    # Document current behavior for gate_check
-    if spec_status in ("passed", "failed_needs_rework"):
-        pytest.skip(f"Spec stage did not explicitly fail (status: {spec_status}) - Agent 2/3 fix pending")
-    assert spec_status in ("failed", "error"), f"Spec stage should have explicit failure status, got: {spec_status}"
+    # failed_needs_rework IS the correct explicit-failure status Agents 2/3 implemented
+    # (see pipeline/nodes/spec.py, visual_spec.py, research.py, design.py commit messages) --
+    # it is the codebase's real convention for a caught, surfaced failure, not a silent pass.
+    if spec_status == "passed":
+        pytest.skip(f"Spec stage did not explicitly fail (status: {spec_status}) - fix pending")
+    assert spec_status in ("failed_needs_rework", "failed", "error"), f"Spec stage should have explicit failure status, got: {spec_status}"
 
 
 class _FakeStructured:
@@ -470,15 +472,15 @@ def test_substitute_consts_does_not_silently_skip_unknown_params():
     copy = {}
     assets = {}
     
-    result = substitute_consts(source_js, params, copy, assets)
+    result, warnings = substitute_consts(source_js, params, copy, assets)
     
     # TARGET_SCORE should be substituted
     assert "1500" in result
     assert "1000" not in result
     
-    # The NONEXISTENT_PARAM should either cause an error or be detectable
-    # Currently it's silently ignored - this is the bug
-    # If Agent 1's fix adds warning/error, this test will verify it
+    # The NONEXISTENT_PARAM must be surfaced as a warning, not silently dropped
+    # (Agent 1 fix: substitute_consts now returns (js, warnings) instead of just js)
+    assert any("NONEXISTENT_PARAM" in w for w in warnings), f"Expected a warning for NONEXISTENT_PARAM, got: {warnings}"
 
 
 # ============================================================================
