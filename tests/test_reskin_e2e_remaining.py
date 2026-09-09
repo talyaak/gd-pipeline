@@ -44,7 +44,10 @@ def run_reskin_test(genre: str, test_name: str):
     copy = brief.get("copy", {})
     assets = {k: brief[k] for k in manifest.get("asset_slots", []) if k in brief}
 
-    reskinned_js = substitute_consts(source_js, params, copy, assets)
+    reskinned_js, warnings = substitute_consts(source_js, params, copy, assets)
+    # Fail if any param failed to match (failed_noop)
+    assert not warnings, f"Substitution failed_noop: {warnings}"
+
     reskinned_js = inject_mraid_gating(reskinned_js)
 
     # Build HTML
