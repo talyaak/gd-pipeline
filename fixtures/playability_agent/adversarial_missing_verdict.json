@@ -1,0 +1,5 @@
+{
+  "type": "result",
+  "result": "This output is missing the playable and reasoning fields entirely - it should fail parsing",
+  "sessionId": "test-session-789"
+}
