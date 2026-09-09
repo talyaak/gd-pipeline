@@ -36,6 +36,20 @@ py -3.12 -m venv .venv
 cp .env.example .env   # fill in ANTHROPIC_API_KEY
 ```
 
+### Optional: Agentic Playability Check (requires `claude` CLI)
+
+The pipeline includes an optional agentic playability check that uses a real headless
+Claude Code agent (`claude -p` + Playwright MCP) to actually play the generated game
+and verify it's genuinely playable. To enable this check:
+
+1. Install the [Claude Code CLI](https://github.com/anthropics/claude-code) — `npm install -g @anthropic-ai/claude-code` or your platform's equivalent
+2. Ensure `claude` is in your PATH
+3. The check runs automatically when all other execution checks pass
+
+If the `claude` CLI is not found, the playability check is **skipped** (not failed) —
+the pipeline continues and reports `skipped` for that stage. This is intentional:
+an unavailable check is distinct from a failed check.
+
 ## Usage
 
 ```
