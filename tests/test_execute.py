@@ -162,3 +162,36 @@ def test_has_vendor_scripts_rejects_two_markers_in_comment():
     </body></html>
     """
     assert _has_vendor_scripts(two_markers_in_comment) is False
+
+
+@pytest.mark.slow
+def test_cta_validation_dead_cta_fails(tmp_path):
+    """Adversarial test: CTA button exists but has no pointerdown handler (dead CTA)."""
+    report = run_execution_report(_read("known_bad_game_cta_dead.html"), tmp_path)
+    assert report.loaded is True
+    assert report.cta_exists is True      # Button exists in scene
+    assert report.cta_clicked is True     # We can force-click it
+    assert report.cta_action_called is False  # But click doesn't call mraid.open/window.open
+    assert any("CTA click did not invoke mraid.open() or window.open()" in e for e in report.console_errors)
+
+
+@pytest.mark.slow
+def test_cta_validation_hidden_cta_passes(tmp_path):
+    """CTA button exists and works when forced visible (legitimate deferred CTA)."""
+    report = run_execution_report(_read("known_bad_game_cta_hidden.html"), tmp_path)
+    assert report.loaded is True
+    assert report.cta_exists is True
+    assert report.cta_clicked is True
+    assert report.cta_action_called is True  # Handler fires when visible
+    assert not any("CTA validation" in e for e in report.console_errors)
+
+
+@pytest.mark.slow
+def test_cta_validation_missing_cta_fails(tmp_path):
+    """Adversarial test: No CTA button at all in the scene."""
+    report = run_execution_report(_read("known_bad_game_cta_missing.html"), tmp_path)
+    assert report.loaded is True
+    assert report.cta_exists is False     # No ctaButton found
+    assert report.cta_clicked is False    # Cannot click what doesn't exist
+    assert report.cta_action_called is False
+    assert any("no valid ctaButton found on active scene" in e for e in report.console_errors)
