@@ -39,22 +39,15 @@ def spec(state: RunState) -> dict:
         else:
             raise ValueError("No JSON found in response")
     except Exception as e:
-        data = {
-            "entities": [
-                {"name": "Player", "properties": ["x", "y", "velocity", "isGrounded", "alive"], "behavior": "Jumps on input, falls due to gravity, dies on collision"},
-                {"name": "Obstacle", "properties": ["x", "y", "width", "height", "type"], "behavior": "Moves left at game speed, removed when off-screen"},
-                {"name": "Orb", "properties": ["x", "y"], "behavior": "Collectible for bonus points"}
-            ],
-            "state_machine": ["Boot", "Preload", "Tutorial", "Play", "GameOver", "Win"],
-            "balance": {"gravity": "1200", "jump_velocity": "-450", "base_speed": "250", "max_speed": "550", "spawn_interval": "2.0"},
-            "example_chunks": [
-                "spawnObstacle(): select random type, create at x=900, add to obstacles array",
-                "updateObstacles(dt): move each left by speed*dt, check collision with player, remove if x < -200"
-            ],
-            "technical_notes": [ "use Phaser 3", "procedural textures only", "Web Audio API for sound", "delta-time variable must be 'dt'" ],
-            "target_session_seconds": 30,
-            "tutorial_duration_seconds": 5,
-            "time_to_first_interaction_target_seconds": 4,
+        # JSON parse failure: return explicit failure, NOT a silent canned fallback
+        return {
+            "spec": {
+                "status": "failed_needs_rework",
+                "attempt": 1,
+                "artifact": None,
+                "review": None,
+                "error": f"[parse_error] Failed to parse LLM response as JSON: {e}",
+            }
         }
 
     # Normalize data to match schema expectations
