@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Adversarial tests for farm_idle harness - tests the _harvestPlot and _sellAtStall methods directly."""
+import sys
 import tempfile
 from pathlib import Path
 
@@ -140,7 +141,7 @@ def test_plot_upgrade_cost_scale_reskin(tmp_path):
     # Use the existing brief which has PLOT_UPGRADE_COST_GROWTH=150
     brief_path = Path(__file__).parent.parent / "briefs" / "farm_idle_brief.json"
     result = subprocess.run([
-        ".venv/bin/python", "-m", "pipeline.reskin",
+        sys.executable, "-m", "pipeline.reskin",
         str(brief_path),
         "--build", "--verify"
     ], capture_output=True, text=True, cwd=Path(__file__).parent.parent)
