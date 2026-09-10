@@ -187,8 +187,7 @@ def main():
     changed_files = read_changed_files()
     selection, chromium_needed = select_tests(changed_files)
     print(selection)
-    # We could also output chromium_needed as an env var or file
-    # For now, just the selection is printed to stdout
+    print("true" if chromium_needed else "false")
     sys.exit(0)
 
 

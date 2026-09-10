@@ -32,50 +32,25 @@ jobs:
           echo "Changed files:"
           echo "${{ steps.changed_files.outputs.changed }}"
 
-      # Select tests to run
+      # Select tests to run and determine if Chromium is needed
       - name: Select tests
         id: select_tests
         run: |
-          SELECTION=$(echo "${{ steps.changed_files.outputs.changed }}" | python scripts/select_tests_for_ci.py)
+          OUTPUT=$(echo "${{ steps.changed_files.outputs.changed }}" | python scripts/select_tests_for_ci.py)
+          SELECTION=$(echo "$OUTPUT" | head -n1)
+          NEEDS_CHROMIUM=$(echo "$OUTPUT" | tail -n1)
           echo "selection<<EOF" >> $GITHUB_OUTPUT
           echo "$SELECTION" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "needs_chromium<<EOF" >> $GITHUB_OUTPUT
+          echo "$NEEDS_CHROMIUM" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Show test selection
         run: |
           echo "Test selection:"
           echo "${{ steps.select_tests.outputs.selection }}"
-
-      # Determine if Chromium install is needed
-      - name: Check if Chromium needed
-        id: chromium_check
-        run: |
-          CHANGED="${{ steps.changed_files.outputs.changed }}"
-          NEEDS_CHROMIUM=false
-          
-          # Check each trigger pattern
-          while IFS= read -r file; do
-            case "$file" in
-              harness/*)
-                NEEDS_CHROMIUM=true
-                ;;
-              pipeline/execute.py)
-                NEEDS_CHROMIUM=true
-                ;;
-              pipeline/reskin.py)
-                NEEDS_CHROMIUM=true
-                ;;
-              pipeline/nodes/validate_execute.py)
-                NEEDS_CHROMIUM=true
-                ;;
-            esac
-          done <<< "$CHANGED"
-          
-          echo "needs_chromium=$NEEDS_CHROMIUM" >> $GITHUB_OUTPUT
-
-      - name: Show Chromium decision
-        run: |
-          echo "Needs Chromium: ${{ steps.chromium_check.outputs.needs_chromium }}"
+          echo "Needs Chromium: ${{ steps.select_tests.outputs.needs_chromium }}"
 
       - uses: actions/setup-python@v5
         with:
@@ -85,7 +60,7 @@ jobs:
 
       # Conditional Chromium install
       - name: Install Chromium (if needed)
-        if: ${{ steps.chromium_check.outputs.needs_chromium == 'true' }}
+        if: ${{ steps.select_tests.outputs.needs_chromium == 'true' }}
         run: playwright install --with-deps chromium
 
       # Run tests

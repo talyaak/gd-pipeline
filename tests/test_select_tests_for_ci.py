@@ -191,6 +191,26 @@ def test_classify_file_helpers():
     assert classify_file("pyproject.toml")[0] == "unmapped"
 
 
+def test_needs_chromium_is_always_true_when_selection_is_all():
+    """Test 10: needs_chromium is True for every file that triggers ALL selection"""
+    # Files that trigger ALL (from existing tests)
+    all_triggering_files = [
+        "pipeline/retry.py",
+        "pipeline/schemas.py",
+        "pyproject.toml",
+        ".github/workflows/ci.yml",
+        "scripts/publish_to_github.sh",
+        "pipeline/nodes/totally_made_up.py",
+        "some/random/path.txt",
+        "config.py",  # mentioned in the bug report
+    ]
+    
+    for filepath in all_triggering_files:
+        selection, chromium_needed = select_tests([filepath])
+        assert selection == "ALL", f"Expected ALL for {filepath}, got {selection}"
+        assert chromium_needed is True, f"Expected needs_chromium=True for {filepath} (selection=ALL), got {chromium_needed}"
+
+
 def test_needs_chromium():
     """Test chromium trigger detection"""
     assert needs_chromium(["harness/idle_clicker.game.js"]) is True
