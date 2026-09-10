@@ -96,5 +96,10 @@ def test_reskin_tower_defense(tmp_path):
     run_reskin_test("tower_defense", "test_tower_defense")
 
 
+@pytest.mark.slow
+def test_reskin_farm_idle(tmp_path):
+    run_reskin_test("farm_idle", "test_farm_idle")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
