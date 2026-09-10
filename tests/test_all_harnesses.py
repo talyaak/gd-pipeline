@@ -18,6 +18,7 @@ def test_harness_execution(tmp_path):
         'stack_tower.html',
         'tower_defense.html',
         'bullet_hell_shmup.html',
+        'farm_idle.html',
     ]
 
     for harness_name in harnesses:
