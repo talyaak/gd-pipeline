@@ -14,6 +14,7 @@ Run with: pytest tests/test_adversarial_gate.py -v
 from pathlib import Path
 from types import SimpleNamespace
 import gzip
+import json
 import pytest
 
 from pipeline.graph import build_graph
@@ -172,8 +173,8 @@ def test_llm_failure_mid_spec_reports_explicit_failure(monkeypatch, tmp_path):
         win_lose_condition="survive 30s",
     )
 
-    monkeypatch.setattr("pipeline.nodes.research.get_review_llm", lambda node: _FakeStructured(research_value))
-    monkeypatch.setattr("pipeline.nodes.design.get_generation_llm", lambda **kw: _FakeStructured(design_value))
+    monkeypatch.setattr("pipeline.nodes.research.get_review_llm", lambda node: SimpleNamespace(invoke=lambda _p: SimpleNamespace(content=json.dumps(research_value.model_dump()))))
+    monkeypatch.setattr("pipeline.nodes.design.get_generation_llm", lambda **kw: SimpleNamespace(invoke=lambda _p: SimpleNamespace(content=json.dumps(design_value.model_dump()))))
 
     # Build graph and invoke
     graph = build_graph(human_review_gdd_enabled=False)
