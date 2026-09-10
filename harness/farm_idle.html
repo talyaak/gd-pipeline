@@ -2191,7 +2191,7 @@ const CROP_SELL_VALUE = 10;
 
 // Upgrade: More Crop Plots (repeatable)
 const PLOT_UPGRADE_BASE_COST = 50;
-const PLOT_UPGRADE_COST_GROWTH = 1.5;
+const PLOT_UPGRADE_COST_GROWTH = 150;  // hundredths: 150 = 1.50x growth
 
 // Upgrade: Faster Movement Boots (fixed chain, 3 tiers)
 const BOOTS_UPGRADE_COST_T1 = 100;
@@ -2455,7 +2455,7 @@ class PlayScene extends Phaser.Scene {
     let canBuy = false;
 
     if (type === 'plot') {
-      cost = Math.ceil(PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH, this.plotUpgradeCount));
+      cost = Math.ceil(PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH / 100, this.plotUpgradeCount));
       canBuy = true;  // uncapped
     } else if (type === 'boots') {
       if (this.bootsTier >= 3) return;  // max tier reached
@@ -2490,7 +2490,7 @@ class PlayScene extends Phaser.Scene {
       this._addNewPlot();
       const row = this.upgradeRows.find(r => r.type === 'plot');
       if (row) {
-        const newCost = Math.ceil(PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH, this.plotUpgradeCount));
+        const newCost = Math.ceil(PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH / 100, this.plotUpgradeCount));
         row.costText.setText('Cost: ' + newCost);
         row.ownedText.setText('Owned: ' + this.plotUpgradeCount);
         this.tweens.add({ targets: row.icon, scale: 1.4, duration: 100, yoyo: true, ease: 'Sine.easeOut' });
@@ -2579,7 +2579,7 @@ class PlayScene extends Phaser.Scene {
   _getCheapestAffordableUpgrade() {
     const upgrades = [];
     // Plot upgrade
-    const plotCost = Math.ceil(PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH, this.plotUpgradeCount));
+    const plotCost = Math.ceil(PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH / 100, this.plotUpgradeCount));
     if (this.coins >= plotCost) upgrades.push({ type: 'plot', cost: plotCost });
     // Boots
     if (this.bootsTier < 3) {
