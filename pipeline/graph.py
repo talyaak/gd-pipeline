@@ -36,12 +36,26 @@ def _after_human_review_gdd(state: RunState) -> str:
     return "spec" if state["design"]["status"] == "passed" else "design"
 
 
+def _after_research(state: RunState) -> str:
+    return "give_up" if state.get("research", {}).get("status") == "failed_needs_rework" else "continue"
+
+
+def _after_design(state: RunState) -> str:
+    return "give_up" if state.get("design", {}).get("status") == "failed_needs_rework" else "continue"
+
+
+def _after_spec(state: RunState) -> str:
+    return "give_up" if state.get("spec", {}).get("status") == "failed_needs_rework" else "continue"
+
+
+def _after_visual_spec(state: RunState) -> str:
+    return "give_up" if state.get("visual_spec", {}).get("status") == "failed_needs_rework" else "continue"
+
+
 def _give_up(state: RunState) -> dict:
-    execution = state["execution"]
-    code = {**state["code"]}
-    if execution["status"] != "passed":
-        code["status"] = "failed_max_attempts"
-    elif code["status"] != "passed":
+    execution = state.get("execution", {})
+    code = {**state.get("code", {})}
+    if execution.get("status") != "passed" or code.get("status") != "passed":
         code["status"] = "failed_max_attempts"
     return {"code": code}
 
@@ -62,17 +76,17 @@ def build_graph(checkpointer=None, human_review_gdd_enabled: bool | None = None)
     graph.add_node("give_up", _give_up)
 
     graph.add_edge(START, "research")
-    graph.add_edge("research", "design")
+    graph.add_conditional_edges("research", _after_research, {"continue": "design", "give_up": "give_up"})
 
     if human_review_gdd_enabled:
         graph.add_node("human_review_gdd", human_review_gdd)
-        graph.add_edge("design", "human_review_gdd")
+        graph.add_conditional_edges("design", _after_design, {"continue": "human_review_gdd", "give_up": "give_up"})
         graph.add_conditional_edges("human_review_gdd", _after_human_review_gdd, {"spec": "spec", "design": "design"})
     else:
-        graph.add_edge("design", "spec")
+        graph.add_conditional_edges("design", _after_design, {"continue": "spec", "give_up": "give_up"})
 
-    graph.add_edge("spec", "visual_spec")
-    graph.add_edge("visual_spec", "codegen")
+    graph.add_conditional_edges("spec", _after_spec, {"continue": "visual_spec", "give_up": "give_up"})
+    graph.add_conditional_edges("visual_spec", _after_visual_spec, {"continue": "codegen", "give_up": "give_up"})
     graph.add_edge("codegen", "validate_execute")
     graph.add_conditional_edges(
         "validate_execute", _after_validate_execute, {"review": "review", "codegen": "codegen", "give_up": "give_up"}
