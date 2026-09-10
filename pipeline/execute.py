@@ -292,9 +292,27 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                         const game = window.__GAME__;
                         if (!game) return { state: 'unknown', reason: 'no game' };
 
-                        // Check for common state properties
+                        // Check for common state properties. Only trust game.state
+                        // when it's one of the values this function itself recognizes
+                        // below (playing/menu/gameover/win) -- an unrecognized value
+                        // (e.g. a terminal 'dead' state some harnesses set) would
+                        // otherwise permanently shadow the scene/score/sessionTime
+                        // fallbacks for the rest of the observation window, even
+                        // though the game was genuinely playing before it ended.
                         if (game.state !== undefined) {
-                            return { state: game.state, reason: 'game.state' };
+                            const gs = String(game.state).toLowerCase();
+                            if (['playing', 'play', 'game', 'level'].includes(gs)) {
+                                return { state: gs, reason: 'game.state' };
+                            }
+                            if (['menu', 'main', 'start'].includes(gs)) {
+                                return { state: 'menu', reason: 'game.state' };
+                            }
+                            if (['gameover', 'game over', 'over'].includes(gs)) {
+                                return { state: 'gameover', reason: 'game.state' };
+                            }
+                            if (['win', 'won', 'victory', 'success'].includes(gs)) {
+                                return { state: 'win', reason: 'game.state' };
+                            }
                         }
 
                         // Check for scene-based states (Phaser)
