@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>farm_idle - Harness</title>
+<title>Farm Idle - Harness</title>
 <style>html,body{margin:0;background:#0a0a18;overflow:hidden;height:100%;width:100%;position:fixed;touch-action:none;}#game-root{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}canvas{display:block;touch-action:none;}</style>
 </head><body>
 <div id="game-root"></div>
@@ -2213,6 +2213,7 @@ const COLORS = [0x8bc34a, 0xffd700, 0xe65100, 0xffb300, 0xff7043, 0x8d6e63];
 
 // Layout constants
 const PLOT_AREA_TOP = 120;
+const PLOTS_PER_ROW = Math.floor((W - PLOT_GAP) / (PLOT_SIZE + PLOT_GAP));
 const STALL_X = 60;
 const STALL_Y = 700;
 const STALL_W = 100;
@@ -2257,11 +2258,9 @@ class PlayScene extends Phaser.Scene {
     this.grassG.fillRect(0, PLOT_AREA_TOP, W, H - PLOT_AREA_TOP);
 
     // Initialize plots
-    const startX = (W - (PLOT_COUNT * PLOT_SIZE + (PLOT_COUNT - 1) * PLOT_GAP)) / 2;
     for (let i = 0; i < PLOT_COUNT; i++) {
-      const x = startX + i * (PLOT_SIZE + PLOT_GAP);
-      const y = PLOT_AREA_TOP + 60;
-      this._createPlot(i, x, y);
+      const pos = this._plotPosition(i);
+      this._createPlot(i, pos.x, pos.y);
     }
 
     // Market stall
@@ -2400,8 +2399,18 @@ class PlayScene extends Phaser.Scene {
       readyAt: this.time.now + CROP_GROW_MS,
       plotSprite: plot,
       cropSprite: crop,
-      harvested: false
+      harvested: false,
+      pulseTween: null
     });
+  }
+
+  _plotPosition(index) {
+    const col = index % PLOTS_PER_ROW;
+    const row = Math.floor(index / PLOTS_PER_ROW);
+    const rowStartX = (W - (PLOTS_PER_ROW * PLOT_SIZE + (PLOTS_PER_ROW - 1) * PLOT_GAP)) / 2;
+    const x = rowStartX + col * (PLOT_SIZE + PLOT_GAP);
+    const y = PLOT_AREA_TOP + 60 + row * (PLOT_SIZE + PLOT_GAP);
+    return { x, y };
   }
 
   _harvestPlot(index) {
@@ -2415,6 +2424,10 @@ class PlayScene extends Phaser.Scene {
     // Harvest!
     plot.harvested = true;
     plot.cropSprite.setVisible(false);
+    if (plot.pulseTween) {
+      plot.pulseTween.stop();
+      plot.pulseTween = null;
+    }
     this.carrying = 'crop';
     this.carryIndicator.setVisible(true);
     this.carryIndicator.x = this.farmer.x;
@@ -2536,10 +2549,8 @@ class PlayScene extends Phaser.Scene {
   }
 
   _addNewPlot() {
-    const lastPlot = this.plots[this.plots.length - 1];
-    const newX = lastPlot.x + PLOT_SIZE + PLOT_GAP;
-    const newY = PLOT_AREA_TOP + 60;
-    this._createPlot(this.plots.length, newX, newY);
+    const pos = this._plotPosition(this.plots.length);
+    this._createPlot(this.plots.length, pos.x, pos.y);
   }
 
   _spawnOrUpgradeHelper() {
@@ -2703,6 +2714,10 @@ class PlayScene extends Phaser.Scene {
         if (plot && !plot.harvested && this.time.now >= plot.readyAt) {
           plot.harvested = true;
           plot.cropSprite.setVisible(false);
+          if (plot.pulseTween) {
+            plot.pulseTween.stop();
+            plot.pulseTween = null;
+          }
           plot.readyAt = this.time.now + CROP_GROW_MS;
           helper.carrying = true;
           helper.state = 'moving_to_stall';
@@ -2796,15 +2811,17 @@ class PlayScene extends Phaser.Scene {
     this.plots.forEach(plot => {
       if (!plot.harvested && this.time.now >= plot.readyAt) {
         plot.cropSprite.setVisible(true);
-        // Gentle pulse
-        this.tweens.add({
-          targets: plot.cropSprite,
-          scale: { from: 1, to: 1.15 },
-          duration: 800,
-          yoyo: true,
-          repeat: -1,
-          ease: 'Sine.easeInOut'
-        });
+        // Gentle pulse - only start once per ready transition
+        if (!plot.pulseTween) {
+          plot.pulseTween = this.tweens.add({
+            targets: plot.cropSprite,
+            scale: { from: 1, to: 1.15 },
+            duration: 800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+          });
+        }
       }
     });
 
