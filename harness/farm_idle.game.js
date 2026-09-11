@@ -42,6 +42,11 @@ const COLORS = [0x8bc34a, 0xffd700, 0xe65100, 0xffb300, 0xff7043, 0x8d6e63];
 // Layout constants
 const PLOT_AREA_TOP = 120;
 const PLOTS_PER_ROW = Math.floor((W - PLOT_GAP) / (PLOT_SIZE + PLOT_GAP));
+const MAX_PLOT_ROWS = 3;
+const MAX_PLOTS = PLOTS_PER_ROW * MAX_PLOT_ROWS; // 18 with current W/PLOT_SIZE/PLOT_GAP
+const PLOT_BUFF_SELL_VALUE_BONUS = 2;   // added to effective sell value per post-cap purchase
+const PLOT_BUFF_GROW_SPEED_MULT = 0.92; // effective grow time multiplied by this, compounding, per post-cap purchase
+const PLOT_BUFF_MIN_GROW_MS = 500;      // floor so regrow time can never degenerate toward zero
 const STALL_X = 60;
 const STALL_Y = 700;
 const STALL_W = 100;
@@ -76,6 +81,9 @@ class PlayScene extends Phaser.Scene {
     this.helperTier = 0; // 0-2
     this.helperTimer = 0;
     this.helpers = [];  // array of { x, y, target, state, sprite, interval, timer }
+    this.sellValueBonus = 0;
+    this.growSpeedMult = 1;
+    this.plotGridCapped = false;
 
     this.cameras.main.setBackgroundColor('#8fbc8f');  // light green farm background
 
@@ -224,7 +232,7 @@ class PlayScene extends Phaser.Scene {
       index,
       x,
       y,
-      readyAt: this.time.now + CROP_GROW_MS,
+      readyAt: this.time.now + CROP_GROW_MS * this.growSpeedMult,
       plotSprite: plot,
       cropSprite: crop,
       harvested: false,
@@ -262,7 +270,7 @@ class PlayScene extends Phaser.Scene {
     this.carryIndicator.y = this.farmer.y - 35;
 
     // Start regrow timer
-    plot.readyAt = this.time.now + CROP_GROW_MS;
+    plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
 
     // Visual feedback
     this.tweens.add({ targets: this.farmer, scale: 1.15, duration: 80, yoyo: true, ease: 'Sine.easeOut' });
@@ -273,7 +281,7 @@ class PlayScene extends Phaser.Scene {
     if (this.state !== STATE.PLAYING) return;
     if (this.carrying !== 'crop') return;
 
-    this.coins += CROP_SELL_VALUE;
+    this.coins += CROP_SELL_VALUE + this.sellValueBonus;
     this.coinsText.setText('Coins: ' + this.coins);
     this.game.registry.set('score', this.coins);
     this.carrying = null;
@@ -328,7 +336,19 @@ class PlayScene extends Phaser.Scene {
 
     if (type === 'plot') {
       this.plotUpgradeCount += 1;
-      this._addNewPlot();
+      if (this.plots.length < MAX_PLOTS) {
+        this._addNewPlot();
+      } else {
+        this.sellValueBonus += PLOT_BUFF_SELL_VALUE_BONUS;
+        const targetGrowMs = CROP_GROW_MS * this.growSpeedMult * PLOT_BUFF_GROW_SPEED_MULT;
+        this.growSpeedMult = Math.max(PLOT_BUFF_MIN_GROW_MS / CROP_GROW_MS, targetGrowMs / CROP_GROW_MS);
+        // Update description once when cap is first reached
+        if (!this.plotGridCapped) {
+          this.plotGridCapped = true;
+          const capRow = this.upgradeRows.find(r => r.type === 'plot');
+          if (capRow) capRow.descText.setText('Faster & Richer Crops');
+        }
+      }
       const row = this.upgradeRows.find(r => r.type === 'plot');
       if (row) {
         const newCost = Math.ceil(PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH / 100, this.plotUpgradeCount));
@@ -546,7 +566,7 @@ class PlayScene extends Phaser.Scene {
             plot.pulseTween.stop();
             plot.pulseTween = null;
           }
-          plot.readyAt = this.time.now + CROP_GROW_MS;
+          plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
           helper.carrying = true;
           helper.state = 'moving_to_stall';
           helper.target = { x: STALL_X + STALL_W / 2, y: STALL_Y + STALL_H / 2 };
@@ -561,7 +581,7 @@ class PlayScene extends Phaser.Scene {
       const dist = Phaser.Math.Distance.Between(helper.x, helper.y, helper.target.x, helper.target.y);
       if (dist < 30) {
         // Sell
-        this.coins += CROP_SELL_VALUE;
+        this.coins += CROP_SELL_VALUE + this.sellValueBonus;
         this.coinsText.setText('Coins: ' + this.coins);
         this.game.registry.set('score', this.coins);
         helper.carrying = false;
@@ -650,6 +670,10 @@ class PlayScene extends Phaser.Scene {
             ease: 'Sine.easeInOut'
           });
         }
+      }
+      // Regrow bug fix: clear stale harvested flag once regrow deadline passes
+      if (plot.harvested && this.time.now >= plot.readyAt) {
+        plot.harvested = false;
       }
     });
 
