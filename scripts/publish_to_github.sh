@@ -15,8 +15,11 @@
 #   - Commit MESSAGES that name-drop those doc files (e.g. "(ROADMAP.md Day
 #     6 prep)") -- these describe the same business logic in a different
 #     place. Stripped via --message-callback.
-#   - The real personal author email -- replaced with a generic noreply
-#     address via --email-callback, since this repo is public.
+#   - Every commit's author/committer name+email -- rewritten to talyaak's
+#     GitHub noreply identity via --name-callback/--email-callback, since
+#     this repo is public and commits should attribute to the human, not
+#     to whatever local identity (personal email, Hermes cron identity,
+#     etc.) actually made the commit.
 #
 # This all happens in a throwaway clone under /tmp -- the real /workspace
 # repo (full history, untouched) is never modified by this script.
@@ -71,9 +74,10 @@ msg = re.sub(r"  +", " ", msg)
 return msg.encode("utf-8")
 ' --force
 
-echo "== rewriting personal author email to a generic one =="
+echo "== rewriting every commit author/committer to talyaak =="
 python3 "$FILTER_REPO" \
-  --email-callback 'return b"talyaak@users.noreply.github.com" if email == b"tal.jacobov@gmail.com" else email' \
+  --name-callback 'return b"talyaak"' \
+  --email-callback 'return b"talyaak@users.noreply.github.com"' \
   --force
 
 echo "== verifying: none of the stripped files/messages/email survive =="
@@ -85,6 +89,12 @@ for f in "${STRIP_FILES[@]}"; do
 done
 if git log --all --format="%ae" | grep -q "tal.jacobov@gmail.com"; then
   echo "BLOCKED: real personal email still present after filtering. Aborting push." >&2
+  exit 1
+fi
+other_identities="$(git log --all --format='%an <%ae>%n%cn <%ce>' | sort -u | grep -v '^talyaak <talyaak@users.noreply.github.com>$' || true)"
+if [ -n "$other_identities" ]; then
+  echo "BLOCKED: found non-talyaak author/committer identities after filtering:" >&2
+  echo "$other_identities" >&2
   exit 1
 fi
 echo "verification passed."
