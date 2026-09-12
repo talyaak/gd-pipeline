@@ -67,7 +67,7 @@
 </header>
 <div id="status">Loading…</div>
 <main id="cards"></main>
-<footer>local review build · served over tunnel</footer>
+<footer>gd-gpt playable review hub · served via GitHub Pages</footer>
 <script>
 const GAMES = [
   { file: 'endless_runner.html', name: 'Neon Dash', tag: 'Endless Runner', desc: 'Dodge, jump, survive an escalating obstacle course.' },
@@ -77,13 +77,15 @@ const GAMES = [
   { file: 'ball_sort.html', name: 'Prism Pour', tag: 'Ball / Water Sort', desc: 'Pour colors together until every tube is sorted.' },
   { file: 'stack_tower.html', name: 'Skybound Stack', tag: 'Stack Tower', desc: 'Time your drops, stack straight, chase a perfect streak.' },
   { file: 'tower_defense.html', name: 'Signal Defense', tag: 'Tower Defense', desc: 'Build turrets, hold the lane, survive 3 waves.' },
+  { file: 'bullet_hell_shmup.html', name: 'Void Barrage', tag: 'Bullet Hell Shmup', desc: 'Dodge escalating bullet patterns, survive the waves.' },
+  { file: 'farm_idle.html', name: 'Harvest Loop', tag: 'Arcade Idle / Farm', desc: 'Harvest, sell, upgrade — grow an idle farm empire.' },
 ];
 
 const main = document.getElementById('cards');
 GAMES.forEach(g => {
   const a = document.createElement('a');
   a.className = 'card';
-  a.href = '/harness/' + g.file + '?t=' + Date.now();
+  a.href = '../harness/' + g.file + '?t=' + Date.now();
   a.innerHTML = `<div class="dot"></div><p class="name">${g.name}</p><p class="desc">${g.desc}</p><span class="tag">${g.tag}</span>`;
   main.appendChild(a);
 });
