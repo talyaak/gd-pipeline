@@ -2,7 +2,9 @@
   "harness": "farm_idle",
   "params": {
     "CTA_ENABLED": { "type": "int", "min": 0, "max": 1, "default": 0 },
-    "MOVE_SPEED": { "type": "int", "min": 50, "max": 300, "default": 150 },
+    "MOVE_SPEED": { "type": "int", "min": 50, "max": 500, "default": 300 },
+    "JOYSTICK_RADIUS": { "type": "int", "min": 50, "max": 200, "default": 80 },
+    "MAGNET_RADIUS": { "type": "int", "min": 30, "max": 200, "default": 60 },
     "PLOT_COUNT": { "type": "int", "min": 3, "max": 10, "default": 5 },
     "CROP_GROW_MS": { "type": "int", "min": 2000, "max": 10000, "default": 4000 },
     "CROP_SELL_VALUE": { "type": "int", "min": 5, "max": 50, "default": 10 },

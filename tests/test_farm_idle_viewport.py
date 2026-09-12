@@ -101,6 +101,16 @@ def _get_element_bounds(page):
                 bounds.carryIndicator = toScreen(cib.x, cib.y, cib.width, cib.height);
             }
 
+            // Joystick (if active)
+            if (scene.joystickBase) {
+                const jb = scene.joystickBase.getBounds();
+                bounds.joystickBase = toScreen(jb.x, jb.y, jb.width, jb.height);
+            }
+            if (scene.joystickThumb) {
+                const jt = scene.joystickThumb.getBounds();
+                bounds.joystickThumb = toScreen(jt.x, jt.y, jt.width, jt.height);
+            }
+
             // Add scale info for debugging
             bounds._scaleInfo = { scaleX, scaleY, canvasRect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height } };
 
@@ -180,20 +190,27 @@ def _check_bounds_in_viewport(bounds, viewport_width, viewport_height, safe_inse
         c = bounds["carryIndicator"]
         check_element("carryIndicator", c["x"], c["y"], c["width"], c["height"])
 
+    # Joystick (if active during test)
+    if "joystickBase" in bounds:
+        j = bounds["joystickBase"]
+        check_element("joystickBase", j["x"], j["y"], j["width"], j["height"])
+    if "joystickThumb" in bounds:
+        j = bounds["joystickThumb"]
+        check_element("joystickThumb", j["x"], j["y"], j["width"], j["height"])
+
     return len(errors) == 0, errors
 
 
-def _test_touch_drag(page, viewport_width, viewport_height):
-    """Test that touch drag moves the farmer correctly.
+def _test_joystick_interaction(page, viewport_width, viewport_height):
+    """Test that the floating joystick appears at touch point and moves farmer.
 
-    Uses mouse-simulated pointer events (not page.touchscreen, which requires
-    has_touch=True on the browser context and isn't needed here -- Phaser's
-    input plugin treats mouse and touch pointers the same way). Farmer
-    position is read in FIT-mode logical (720x1280) coordinates and must be
-    converted to real on-screen pixels via the canvas's actual rendered
-    rect + scale factor before driving Playwright's mouse, the same
-    conversion _get_element_bounds uses for the visibility checks.
+    NEW MODEL: Touch/mouse down ANYWHERE in play area shows joystick at that point,
+    drag steers it, release hides it. This replaces the old "drag the farmer directly" model.
     """
+    # Start the game
+    page.evaluate("() => { window.__GAME__.scene.scenes[0]._begin(); }")
+    page.wait_for_timeout(200)
+
     # Get initial farmer position (logical/game-space) and the canvas's
     # actual on-screen rect + scale factor.
     initial = page.evaluate("""
@@ -215,28 +232,161 @@ def _test_touch_drag(page, viewport_width, viewport_height):
     farmer_screen_x = initial["canvasLeft"] + initial["x"] * initial["scaleX"]
     farmer_screen_y = initial["canvasTop"] + initial["y"] * initial["scaleY"]
 
-    # Target position (move farmer to the right), in screen space
-    target_x = farmer_screen_x + 100
-    target_y = farmer_screen_y
+    # NEW MODEL: Touch/click somewhere OTHER than the farmer to place joystick
+    # Place joystick well to the right of the farmer to prove it's touch-anywhere
+    joystick_screen_x = farmer_screen_x + 150
+    joystick_screen_y = farmer_screen_y + 50
 
-    # Drag via mouse pointer events (Phaser's input plugin handles these
-    # identically to touch pointers for a draggable game object).
-    page.mouse.move(farmer_screen_x, farmer_screen_y)
+    # 1. Mouse down at joystick position - should activate joystick there
+    page.mouse.move(joystick_screen_x, joystick_screen_y)
     page.mouse.down()
-    page.mouse.move(target_x, target_y, steps=5)
-    page.mouse.up()
-    page.wait_for_timeout(200)
+    page.wait_for_timeout(100)
 
-    # Check farmer moved
-    final = page.evaluate("""
+    # Verify joystick appeared at the touch point
+    joystick_check = page.evaluate("""
+        () => {
+            const scene = window.__GAME__.scene.scenes[0];
+            return {
+                joystickActive: scene.joystickActive,
+                joystickCenter: scene.joystickCenter ? { x: scene.joystickCenter.x, y: scene.joystickCenter.y } : null,
+                farmerPos: { x: scene.farmer.x, y: scene.farmer.y }
+            };
+        }
+    """)
+    
+    if not joystick_check["joystickActive"]:
+        return False, "Joystick did not activate on pointerdown"
+    
+    if not joystick_check["joystickCenter"]:
+        return False, "Joystick center not set"
+
+    # Joystick center should be near where we clicked (in logical coords)
+    expected_center_x = (joystick_screen_x - initial["canvasLeft"]) / initial["scaleX"]
+    expected_center_y = (joystick_screen_y - initial["canvasTop"]) / initial["scaleY"]
+    
+    center_x = joystick_check["joystickCenter"]["x"]
+    center_y = joystick_check["joystickCenter"]["y"]
+    
+    if abs(center_x - expected_center_x) > 20 or abs(center_y - expected_center_y) > 20:
+        return False, f"Joystick center ({center_x:.1f}, {center_y:.1f}) not near touch point ({expected_center_x:.1f}, {expected_center_y:.1f})"
+
+    # 2. Drag the pointer up/left from joystick center to steer farmer
+    target_screen_x = joystick_screen_x - 80
+    target_screen_y = joystick_screen_y - 80
+    page.mouse.move(target_screen_x, target_screen_y, steps=5)
+    page.wait_for_timeout(300)
+
+    # Check farmer moved in the direction of the joystick vector
+    mid_check = page.evaluate("""
         () => {
             const scene = window.__GAME__.scene.scenes[0];
             return { x: scene.farmer.x, y: scene.farmer.y };
         }
     """)
 
-    moved = abs(final["x"] - initial["x"]) > 10  # Should have moved significantly
-    return moved, f"Farmer moved from ({initial['x']:.1f}, {initial['y']:.1f}) to ({final['x']:.1f}, {final['y']:.1f})"
+    # 3. Continue dragging to move farmer further
+    page.mouse.move(target_screen_x - 50, target_screen_y - 50, steps=5)
+    page.wait_for_timeout(300)
+
+    # 4. Release - joystick should disappear
+    page.mouse.up()
+    page.wait_for_timeout(100)
+
+    final_check = page.evaluate("""
+        () => {
+            const scene = window.__GAME__.scene.scenes[0];
+            return {
+                joystickActive: scene.joystickActive,
+                farmerPos: { x: scene.farmer.x, y: scene.farmer.y }
+            };
+        }
+    """)
+
+    if final_check["joystickActive"]:
+        return False, "Joystick did not deactivate on pointerup"
+
+    # Check farmer moved significantly from initial position
+    final_farmer = final_check["farmerPos"]
+    dx = final_farmer["x"] - initial["x"]
+    dy = final_farmer["y"] - initial["y"]
+    dist = (dx * dx + dy * dy) ** 0.5
+
+    if dist < 30:  # Should have moved a reasonable distance
+        return False, f"Farmer barely moved: dist={dist:.1f} (from {initial['x']:.1f},{initial['y']:.1f} to {final_farmer['x']:.1f},{final_farmer['y']:.1f})"
+
+    return True, f"Joystick test passed: activated at touch point, farmer moved {dist:.1f}px, joystick hidden on release"
+
+
+def _test_magnet_collection(page, viewport_width, viewport_height):
+    """Test that magnet-radius auto-collection works.
+
+    Forces a crop to be ready and positions farmer within MAGNET_RADIUS without
+    pixel-perfect manual positioning, then verifies it gets collected.
+    """
+    # Start the game
+    page.evaluate("() => { window.__GAME__.scene.scenes[0]._begin(); }")
+    page.wait_for_timeout(200)
+
+    # Force the first plot to be ready immediately and position farmer near it
+    magnet_result = page.evaluate("""
+        () => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const plot = scene.plots[0];
+            
+            // Make plot ready now
+            plot.readyAt = scene.time.now;
+            plot.cropSprite.setVisible(true);
+            plot.harvested = false;
+            
+            // Position farmer within MAGNET_RADIUS of the plot center (but not exactly on it)
+            const plotCenterX = plot.x + 48;  // PLOT_SIZE/2 = 48
+            const plotCenterY = plot.y + 48;
+            const MAGNET_RADIUS = 60;  // From manifest default
+            
+            // Place farmer at radius - 10 (well within magnet range)
+            const angle = 0.5;  // radians
+            scene.farmer.x = plotCenterX + (MAGNET_RADIUS - 10) * Math.cos(angle);
+            scene.farmer.y = plotCenterY + (MAGNET_RADIUS - 10) * Math.sin(angle);
+            scene.carryIndicator.x = scene.farmer.x;
+            scene.carryIndicator.y = scene.farmer.y - 56;
+            
+            return {
+                farmerX: scene.farmer.x,
+                farmerY: scene.farmer.y,
+                plotCenterX: plotCenterX,
+                plotCenterY: plotCenterY,
+                plotReady: plot.readyAt <= scene.time.now,
+                carrying: scene.carrying
+            };
+        }
+    """)
+    
+    if not magnet_result["plotReady"]:
+        return False, "Plot not ready after forcing readyAt"
+
+    # Wait for magnet to trigger harvest (one frame update)
+    page.wait_for_timeout(200)
+
+    # Check if crop was collected
+    collected = page.evaluate("""
+        () => {
+            const scene = window.__GAME__.scene.scenes[0];
+            return {
+                carrying: scene.carrying,
+                plot0Harvested: scene.plots[0].harvested,
+                carryIndicatorVisible: scene.carryIndicator.visible
+            };
+        }
+    """)
+
+    carrying = collected["carrying"]
+    plot0_harvested = collected["plot0Harvested"]
+    carry_visible = collected["carryIndicatorVisible"]
+    
+    if carrying != 'crop' or not plot0_harvested or not carry_visible:
+        return False, "Magnet collection failed: carrying=" + str(carrying) + ", plot0Harvested=" + str(plot0_harvested) + ", carryVisible=" + str(carry_visible)
+
+    return True, "Magnet collection test passed: crop auto-collected at distance 50px from farmer (MAGNET_RADIUS=60)"
 
 
 @pytest.mark.slow
@@ -268,20 +418,22 @@ def test_viewport_elements_visible(viewport_width, viewport_height, viewport_nam
         elif "Galaxy" in viewport_name:
             safe_insets = {"top": 0, "right": 0, "bottom": 24, "left": 0}
 
-        page.evaluate(f"""() => {{
-            const root = document.documentElement;
-            root.style.setProperty('--safe-top', '{safe_insets["top"]}px');
-            root.style.setProperty('--safe-right', '{safe_insets["right"]}px');
-            root.style.setProperty('--safe-bottom', '{safe_insets["bottom"]}px');
-            root.style.setProperty('--safe-left', '{safe_insets["left"]}px');
-            // Update safe insets and trigger layout
-            if (typeof updateSafeInsets === 'function') updateSafeInsets();
-            const scene = window.__GAME__.scene.scenes[0];
-            if (scene._layoutHUD) scene._layoutHUD();
-        }}""")
+        page.evaluate("""
+            () => {
+                const root = document.documentElement;
+                root.style.setProperty('--safe-top', '%dpx');
+                root.style.setProperty('--safe-right', '%dpx');
+                root.style.setProperty('--safe-bottom', '%dpx');
+                root.style.setProperty('--safe-left', '%dpx');
+                // Update safe insets and trigger layout
+                if (typeof updateSafeInsets === 'function') updateSafeInsets();
+                const scene = window.__GAME__.scene.scenes[0];
+                if (scene._layoutHUD) scene._layoutHUD();
+            }
+        """ % (safe_insets["top"], safe_insets["right"], safe_insets["bottom"], safe_insets["left"]))
         page.wait_for_timeout(200)
 
-        # Start the game
+        # Start the game (needed for layout to finalize)
         page.evaluate("() => { window.__GAME__.scene.scenes[0]._begin(); }")
         page.wait_for_timeout(200)
 
@@ -294,17 +446,17 @@ def test_viewport_elements_visible(viewport_width, viewport_height, viewport_nam
         browser.close()
 
         if not all_ok:
-            error_msg = f"Viewport {viewport_name} ({viewport_width}x{viewport_height}) DPR={dpr} FAILED:\\n"
+            error_msg = "Viewport %s (%dx%d) DPR=%d FAILED:\\n" % (viewport_name, viewport_width, viewport_height, dpr)
             for err in errors:
-                error_msg += f"  - {err}\\n"
+                error_msg += "  - %s\\n" % err
             pytest.fail(error_msg)
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize("viewport_width,viewport_height,viewport_name", VIEWPORTS)
 @pytest.mark.parametrize("dpr", DPR_VALUES)
-def test_touch_drag_works(viewport_width, viewport_height, viewport_name, dpr, tmp_path):
-    """Test that touch drag moves the farmer at each viewport/DPR."""
+def test_joystick_interaction_works(viewport_width, viewport_height, viewport_name, dpr, tmp_path):
+    """Test that the floating joystick appears at touch point, steers farmer, and disappears on release."""
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
         page = browser.new_page(
@@ -320,20 +472,88 @@ def test_touch_drag_works(viewport_width, viewport_height, viewport_name, dpr, t
         page.wait_for_function("window.__GAME__ !== undefined", timeout=10000)
         page.wait_for_timeout(500)
 
-        # Start the game
-        page.evaluate("() => { window.__GAME__.scene.scenes[0]._begin(); }")
+        # Inject safe-area CSS
+        safe_insets = {"top": 0, "right": 0, "bottom": 0, "left": 0}
+        if "iPhone" in viewport_name:
+            safe_insets = {"top": 44, "right": 0, "bottom": 34, "left": 0}
+        elif "Galaxy" in viewport_name:
+            safe_insets = {"top": 0, "right": 0, "bottom": 24, "left": 0}
+
+        page.evaluate("""
+            () => {
+                const root = document.documentElement;
+                root.style.setProperty('--safe-top', '%dpx');
+                root.style.setProperty('--safe-right', '%dpx');
+                root.style.setProperty('--safe-bottom', '%dpx');
+                root.style.setProperty('--safe-left', '%dpx');
+                if (typeof updateSafeInsets === 'function') updateSafeInsets();
+                const scene = window.__GAME__.scene.scenes[0];
+                if (scene._layoutHUD) scene._layoutHUD();
+            }
+        """ % (safe_insets["top"], safe_insets["right"], safe_insets["bottom"], safe_insets["left"]))
         page.wait_for_timeout(200)
 
-        moved, msg = _test_touch_drag(page, viewport_width, viewport_height)
+        moved, msg = _test_joystick_interaction(page, viewport_width, viewport_height)
 
         browser.close()
 
         if not moved:
-            pytest.fail(f"Touch drag failed at {viewport_name} ({viewport_width}x{viewport_height}) DPR={dpr}: {msg}")
+            pytest.fail("Joystick interaction failed at %s (%dx%d) DPR=%d: %s" % (viewport_name, viewport_width, viewport_height, dpr, msg))
 
 
 @pytest.mark.slow
-def test_landscape_shows_rotate_overlay(tmp_path):
+@pytest.mark.parametrize("viewport_width,viewport_height,viewport_name", VIEWPORTS)
+@pytest.mark.parametrize("dpr", DPR_VALUES)
+def test_magnet_collection_works(viewport_width, viewport_height, viewport_name, dpr, tmp_path):
+    """Test that magnet-radius auto-collection works (crops within radius fly to farmer)."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": viewport_width, "height": viewport_height},
+            device_scale_factor=dpr
+        )
+
+        html_path = HARNESS_DIR / "farm_idle.html"
+        page.goto(f"file://{html_path.absolute()}")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(2000)
+
+        page.wait_for_function("window.__GAME__ !== undefined", timeout=10000)
+        page.wait_for_timeout(500)
+
+        # Inject safe-area CSS
+        safe_insets = {"top": 0, "right": 0, "bottom": 0, "left": 0}
+        if "iPhone" in viewport_name:
+            safe_insets = {"top": 44, "right": 0, "bottom": 34, "left": 0}
+        elif "Galaxy" in viewport_name:
+            safe_insets = {"top": 0, "right": 0, "bottom": 24, "left": 0}
+
+        page.evaluate("""
+            () => {
+                const root = document.documentElement;
+                root.style.setProperty('--safe-top', '%dpx');
+                root.style.setProperty('--safe-right', '%dpx');
+                root.style.setProperty('--safe-bottom', '%dpx');
+                root.style.setProperty('--safe-left', '%dpx');
+                if (typeof updateSafeInsets === 'function') updateSafeInsets();
+                const scene = window.__GAME__.scene.scenes[0];
+                if (scene._layoutHUD) scene._layoutHUD();
+            }
+        """ % (safe_insets["top"], safe_insets["right"], safe_insets["bottom"], safe_insets["left"]))
+        page.wait_for_timeout(200)
+
+        worked, msg = _test_magnet_collection(page, viewport_width, viewport_height)
+
+        browser.close()
+
+        if not worked:
+            pytest.fail("Magnet collection failed at %s (%dx%d) DPR=%d: %s" % (viewport_name, viewport_width, viewport_height, dpr, msg))
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("viewport_width,viewport_height,viewport_name", VIEWPORTS)
+@pytest.mark.parametrize("dpr", DPR_VALUES)
+def test_landscape_shows_rotate_overlay(viewport_width, viewport_height, viewport_name, dpr, tmp_path):
     """Test that landscape orientation shows rotate overlay and hides game UI."""
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
