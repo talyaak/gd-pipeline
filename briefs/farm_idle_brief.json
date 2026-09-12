@@ -9,7 +9,7 @@
   "logo_asset_path": "",
   "visual_theme": "warm_cute",
   "CTA_ENABLED": 1,
-  "MOVE_SPEED": 150,
+  "MOVE_SPEED": 300,
   "PLOT_COUNT": 5,
   "CROP_GROW_MS": 4000,
   "CROP_SELL_VALUE": 10,
@@ -20,5 +20,7 @@
   "BOOTS_UPGRADE_COST_T3": 500,
   "HELPER_UPGRADE_COST_T1": 200,
   "HELPER_UPGRADE_COST_T2": 500,
+  "JOYSTICK_RADIUS": 120,
+  "MAGNET_RADIUS": 60,
   "COLORS": ["0x8bc34a", "0xffd700", "0xe65100", "0xffb300", "0xff7043", "0x8d6e63"]
 }

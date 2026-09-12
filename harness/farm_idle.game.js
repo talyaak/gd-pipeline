@@ -1,5 +1,5 @@
 // Hand-built farm idle harness. Arcade idle genre (My Perfect Hotel / Pizza Ready family).
-// Theme: farm life. Core loop: drag farmer -> harvest plot -> sell at stall -> buy upgrades.
+// Theme: farm life. Core loop: joystick move farmer -> harvest plot -> sell at stall -> buy upgrades.
 
 const W = 720, H = 1280;  // Portrait design base (1.6x scale from 450x800)
 const SCALE = 1.6;         // 720/450 = 1280/800 = 1.6
@@ -8,8 +8,14 @@ const CTA_LINK = "https://example.com/game";
 const STATE = { START: 'start', PLAYING: 'playing' };
 
 // Farmer
-const MOVE_SPEED = 150;       // logical pixels/sec (unchanged - speed in game coords)
+const MOVE_SPEED = 300;       // logical pixels/sec (was 150, ~2x for brisk feel)
 const FARMER_RADIUS = 32;     // 20 * 1.6
+
+// Joystick (floating, display-on-touch)
+const JOYSTICK_RADIUS = 80;   // visual/logical radius of the joystick base
+
+// Auto-collect magnet
+const MAGNET_RADIUS = 60;     // coins/crops within this radius fly to farmer automatically
 
 // Plots
 const PLOT_COUNT = 5;
@@ -80,11 +86,6 @@ function updateSafeInsets() {
 updateSafeInsets();
 window.addEventListener('resize', () => {
   updateSafeInsets();
-  // Reposition the HUD/panel for the new insets -- updateSafeInsets() alone
-  // only refreshes the safeInsets value, it doesn't move anything on screen.
-  // Phaser's own Scale Manager resize event (this.scale.on('resize', ...))
-  // fires independently of this raw window resize event, so this can't rely
-  // on that path alone re-triggering the layout.
   const scene = window.__GAME__?.scene?.scenes?.[0];
   if (scene && scene._layoutHUD) scene._layoutHUD();
 });
@@ -101,6 +102,11 @@ class PlayScene extends Phaser.Scene {
     this.carrying = null;
     this.farmerTarget = null;
     this.isDragging = false;
+    this.joystickActive = false;
+    this.joystickCenter = null;
+    this.joystickThumb = null;
+    this.joystickBase = null;
+    this.joystickVector = { x: 0, y: 0 };
 
     this.plots = [];
 
@@ -169,7 +175,7 @@ class PlayScene extends Phaser.Scene {
     this.upgradeRows.push(this._buildUpgradeRow('helper', 'Helper', 'Auto-Harvest', HELPER_UPGRADE_COST_T1, 2));
 
     // Start prompt
-    this.startText = this.add.text(W / 2, H / 2, 'DRAG FARMER TO START', {
+    this.startText = this.add.text(W / 2, H / 2, 'DRAG ANYWHERE TO MOVE FARMER', {
       fontFamily: 'monospace', fontSize: '32px', color: '#fff', align: 'center',
       backgroundColor: '#2e7d32', padding: { x: 32, y: 16 }
     }).setOrigin(0.5);
@@ -180,32 +186,34 @@ class PlayScene extends Phaser.Scene {
     const introHint = Juice.TapHint.create(this, this.farmer.x, this.farmer.y, { color: 0xe65100, radius: 64 });
     this.time.delayedCall(2500, () => { introBanner.destroy(); introHint.destroy(); });
 
-    // Input: drag farmer
-    this.farmer.setInteractive({ draggable: true });
-    this.input.setDraggable(this.farmer);
-    this.input.on('dragstart', (pointer, gameObject) => {
-      if (gameObject === this.farmer && !isLandscape) {
-        this.isDragging = true;
-        this.farmerTarget = null;
-        this._begin();
-      }
+    // Input: Floating joystick (touch/click anywhere in play area)
+    // Pointerdown starts the joystick at the pointer position
+    this.input.on('pointerdown', (pointer) => {
+      if (isLandscape) return;
+      this._begin();
+      this._activateJoystick(pointer.x, pointer.y);
     });
-    this.input.on('drag', (pointer, gameObject, dragX, dragY) => {
-      if (gameObject === this.farmer && !isLandscape) {
-        gameObject.x = dragX;
-        gameObject.y = dragY;
-        this.carryIndicator.x = dragX;
-        this.carryIndicator.y = dragY - 56;
-      }
+
+    // Pointermove updates the joystick vector
+    this.input.on('pointermove', (pointer) => {
+      if (!this.joystickActive || isLandscape) return;
+      this._updateJoystick(pointer.x, pointer.y);
     });
-    this.input.on('dragend', (pointer, gameObject) => {
-      if (gameObject === this.farmer) {
-        this.isDragging = false;
+
+    // Pointerup hides the joystick
+    this.input.on('pointerup', () => {
+      if (this.joystickActive) {
+        this._deactivateJoystick();
       }
     });
 
-    // Global pointerdown for START->PLAYING transition
-    this.input.on('pointerdown', () => { if (!isLandscape) this._begin(); });
+    // Also handle pointerout (mouse leaves canvas) - deactivate joystick
+    this.input.on('pointerout', () => {
+      if (this.joystickActive) {
+        this._deactivateJoystick();
+      }
+    });
+
     this.input.keyboard.on('keydown-SPACE', () => { if (!isLandscape) this._begin(); });
 
     // Scale Manager resize handler - re-anchor HUD elements
@@ -223,25 +231,78 @@ class PlayScene extends Phaser.Scene {
     this._layoutHUD();
   }
 
+  _activateJoystick(x, y) {
+    // Clamp joystick center to playable area (above upgrade panel)
+    const maxY = H - UPGRADE_PANEL_H - safeInsets.bottom / (this.scale.displaySize.height / H) - JOYSTICK_RADIUS;
+    const clampedY = Phaser.Math.Clamp(y, JOYSTICK_RADIUS, maxY);
+    const clampedX = Phaser.Math.Clamp(x, JOYSTICK_RADIUS, W - JOYSTICK_RADIUS);
+
+    this.joystickCenter = { x: clampedX, y: clampedY };
+    this.joystickActive = true;
+    this.joystickVector = { x: 0, y: 0 };
+
+    // Create joystick base (visual)
+    this.joystickBase = this.add.circle(clampedX, clampedY, JOYSTICK_RADIUS, 0x4caf50, 0.3);
+    this.joystickBase.setStrokeStyle(3, 0x2e7d32, 0.8);
+
+    // Create joystick thumb (visual)
+    this.joystickThumb = this.add.circle(clampedX, clampedY, JOYSTICK_RADIUS * 0.5, 0x8bc34a, 0.8);
+    this.joystickThumb.setStrokeStyle(2, 0x2e7d32, 1);
+  }
+
+  _updateJoystick(x, y) {
+    if (!this.joystickCenter) return;
+
+    // Calculate vector from center to current pointer position
+    let dx = x - this.joystickCenter.x;
+    let dy = y - this.joystickCenter.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // Clamp input vector magnitude to 1.0 (don't stop at visual edge)
+    if (dist > JOYSTICK_RADIUS) {
+      dx = (dx / dist) * JOYSTICK_RADIUS;
+      dy = (dy / dist) * JOYSTICK_RADIUS;
+    }
+
+    // Normalize to [-1, 1] range for movement
+    this.joystickVector.x = dx / JOYSTICK_RADIUS;
+    this.joystickVector.y = dy / JOYSTICK_RADIUS;
+
+    // Move thumb visually (clamped to visual radius)
+    if (this.joystickThumb) {
+      this.joystickThumb.x = this.joystickCenter.x + dx;
+      this.joystickThumb.y = this.joystickCenter.y + dy;
+    }
+  }
+
+  _deactivateJoystick() {
+    this.joystickActive = false;
+    this.joystickVector = { x: 0, y: 0 };
+    this.joystickCenter = null;
+
+    if (this.joystickBase) {
+      this.joystickBase.destroy();
+      this.joystickBase = null;
+    }
+    if (this.joystickThumb) {
+      this.joystickThumb.destroy();
+      this.joystickThumb = null;
+    }
+  }
+
   _checkOrientation() {
     const wasLandscape = isLandscape;
-    // Gate on touch capability as well as aspect ratio -- a landscape-shaped
-    // desktop browser window (e.g. the generic execution harness's default
-    // test viewport, or a developer's monitor) is not a phone rotated
-    // sideways, and must not be forced into the rotate-overlay lockout.
     const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
       || navigator.maxTouchPoints > 0;
     isLandscape = isTouchDevice && window.matchMedia('(orientation: landscape)').matches;
 
     if (isLandscape && !wasLandscape) {
       this._showRotateOverlay();
-      this.farmer.disableInteractive();
       if (this.upgradePanel) this.upgradePanel.setVisible(false);
     } else if (!isLandscape && wasLandscape) {
       this._hideRotateOverlay();
-      updateSafeInsets(); // Re-read safe insets on orientation change
+      updateSafeInsets();
       this._layoutHUD();
-      this.farmer.setInteractive({ draggable: true });
       if (this.upgradePanel) this.upgradePanel.setVisible(true);
     }
   }
@@ -452,6 +513,8 @@ class PlayScene extends Phaser.Scene {
       plot.pulseTween.stop();
       plot.pulseTween = null;
     }
+    // Schedule next growth cycle so update loop doesn't immediately reset harvested
+    plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
     this.carrying = 'crop';
     this.carryIndicator.setVisible(true);
     this.carryIndicator.x = this.farmer.x;
@@ -558,18 +621,23 @@ class PlayScene extends Phaser.Scene {
       this._updateHelper(helper, dt);
     });
 
-    if (!this.isDragging && this.farmerTarget) {
+    // Joystick-driven movement: farmer moves in joystick direction
+    if (this.joystickActive) {
+      this._moveFarmerByJoystick(dt);
+    }
+    // Auto-assist (when not actively using joystick): walk to nearest ready plot
+    else if (!this.joystickActive && this.farmerTarget) {
       this._moveFarmerTowards(this.farmerTarget.x, this.farmerTarget.y, dt);
       const distToPlot = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, this.farmerTarget.x, this.farmerTarget.y);
-      if (distToPlot < 40) {
+      if (distToPlot < MAGNET_RADIUS) {
         const nearestPlot = this.plots.find(p => !p.harvested && this.time.now >= p.readyAt &&
-          Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, p.x + PLOT_SIZE / 2, p.y + PLOT_SIZE / 2) < 40);
+          Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, p.x + PLOT_SIZE / 2, p.y + PLOT_SIZE / 2) < MAGNET_RADIUS);
         if (nearestPlot) {
           this._harvestPlot(nearestPlot.index);
           this.farmerTarget = null;
         }
       }
-    } else if (!this.isDragging) {
+    } else if (!this.joystickActive) {
       let nearestPlot = null;
       let nearestDist = Infinity;
       this.plots.forEach(plot => {
@@ -585,7 +653,7 @@ class PlayScene extends Phaser.Scene {
         this.farmerTarget = { x: nearestPlot.x + PLOT_SIZE / 2, y: nearestPlot.y + PLOT_SIZE / 2 };
         this._moveFarmerTowards(this.farmerTarget.x, this.farmerTarget.y, dt);
         const distToPlot = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, this.farmerTarget.x, this.farmerTarget.y);
-        if (distToPlot < 40) {
+        if (distToPlot < MAGNET_RADIUS) {
           this._harvestPlot(nearestPlot.index);
           this.farmerTarget = null;
         }
@@ -593,6 +661,79 @@ class PlayScene extends Phaser.Scene {
         this.farmerTarget = null;
       }
     }
+
+    // Magnet: auto-collect crops/coins within MAGNET_RADIUS of farmer
+    this._updateMagnet();
+  }
+
+  _moveFarmerByJoystick(dt) {
+    const currentSpeed = MOVE_SPEED * (this.bootsTier > 0 ? Math.pow(BOOTS_SPEED_MULT, this.bootsTier) : 1);
+    
+    // Apply joystick vector (already normalized to [-1, 1])
+    const moveDist = currentSpeed * (dt / 1000);
+    this.farmer.x += this.joystickVector.x * moveDist;
+    this.farmer.y += this.joystickVector.y * moveDist;
+    
+    // Clamp farmer to playable area (above upgrade panel, within screen bounds)
+    const farmerMinY = PLOT_AREA_TOP + FARMER_RADIUS;
+    const farmerMaxY = H - UPGRADE_PANEL_H - safeInsets.bottom / (this.scale.displaySize.height / H) - FARMER_RADIUS;
+    const farmerMinX = FARMER_RADIUS;
+    const farmerMaxX = W - FARMER_RADIUS;
+    
+    this.farmer.x = Phaser.Math.Clamp(this.farmer.x, farmerMinX, farmerMaxX);
+    this.farmer.y = Phaser.Math.Clamp(this.farmer.y, farmerMinY, farmerMaxY);
+    
+    this.carryIndicator.x = this.farmer.x;
+    this.carryIndicator.y = this.farmer.y - 56;
+  }
+
+  _moveFarmerTowards(targetX, targetY, dt) {
+    const currentSpeed = MOVE_SPEED * (this.bootsTier > 0 ? Math.pow(BOOTS_SPEED_MULT, this.bootsTier) : 1);
+    const dx = targetX - this.farmer.x;
+    const dy = targetY - this.farmer.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 3) {
+      this.farmer.x = targetX;
+      this.farmer.y = targetY;
+      this.carryIndicator.x = this.farmer.x;
+      this.carryIndicator.y = this.farmer.y - 56;
+      return;
+    }
+    const moveDist = currentSpeed * (dt / 1000);
+    this.farmer.x += (dx / dist) * moveDist;
+    this.farmer.y += (dy / dist) * moveDist;
+    this.carryIndicator.x = this.farmer.x;
+    this.carryIndicator.y = this.farmer.y - 56;
+  }
+
+  _updateMagnet() {
+    const fx = this.farmer.x;
+    const fy = this.farmer.y;
+
+    // Check plots: harvest ready crops within MAGNET_RADIUS
+    this.plots.forEach(plot => {
+      if (!plot.harvested && this.time.now >= plot.readyAt) {
+        const cropCenterX = plot.x + PLOT_SIZE / 2;
+        const cropCenterY = plot.y + PLOT_SIZE / 2;
+        const dist = Phaser.Math.Distance.Between(fx, fy, cropCenterX, cropCenterY);
+        if (dist < MAGNET_RADIUS && this.carrying !== 'crop') {
+          this._harvestPlot(plot.index);
+        }
+      }
+    });
+
+    // Check stall: sell carried crop if farmer is within MAGNET_RADIUS of stall
+    if (this.carrying === 'crop') {
+      const stallCenterX = STALL_X + STALL_W / 2;
+      const stallCenterY = STALL_Y + STALL_H / 2;
+      const distToStall = Phaser.Math.Distance.Between(fx, fy, stallCenterX, stallCenterY);
+      if (distToStall < MAGNET_RADIUS) {
+        this._sellAtStall();
+      }
+    }
+
+    // Check upgrade pad: auto-open upgrade panel (could be a future feature)
+    // Not implementing auto-upgrade for now - keeping manual interaction for purchases
   }
 
   _updateHelper(helper, dt) {
@@ -622,7 +763,7 @@ class PlayScene extends Phaser.Scene {
     if (helper.state === 'moving_to_plot') {
       this._moveHelperTowards(helper, helper.target.x, helper.target.y, dt, speed);
       const dist = Phaser.Math.Distance.Between(helper.x, helper.y, helper.target.x, helper.target.y);
-      if (dist < 40) {
+      if (dist < MAGNET_RADIUS) {
         const plot = this.plots[helper.targetPlotIndex];
         if (plot && !plot.harvested && this.time.now >= plot.readyAt) {
           plot.harvested = true;
@@ -644,7 +785,7 @@ class PlayScene extends Phaser.Scene {
     if (helper.state === 'moving_to_stall') {
       this._moveHelperTowards(helper, helper.target.x, helper.target.y, dt, speed);
       const dist = Phaser.Math.Distance.Between(helper.x, helper.y, helper.target.x, helper.target.y);
-      if (dist < 48) {
+      if (dist < MAGNET_RADIUS) {
         this.coins += CROP_SELL_VALUE + this.sellValueBonus;
         this.coinsText.setText('Coins: ' + this.coins);
         this.game.registry.set('score', this.coins);
@@ -674,25 +815,6 @@ class PlayScene extends Phaser.Scene {
     helper.y += (dy / dist) * moveDist;
     helper.sprite.x = helper.x;
     helper.sprite.y = helper.y;
-  }
-
-  _moveFarmerTowards(targetX, targetY, dt) {
-    const currentSpeed = MOVE_SPEED * (this.bootsTier > 0 ? Math.pow(BOOTS_SPEED_MULT, this.bootsTier) : 1);
-    const dx = targetX - this.farmer.x;
-    const dy = targetY - this.farmer.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 3) {
-      this.farmer.x = targetX;
-      this.farmer.y = targetY;
-      this.carryIndicator.x = this.farmer.x;
-      this.carryIndicator.y = this.farmer.y - 56;
-      return;
-    }
-    const moveDist = currentSpeed * (dt / 1000);
-    this.farmer.x += (dx / dist) * moveDist;
-    this.farmer.y += (dy / dist) * moveDist;
-    this.carryIndicator.x = this.farmer.x;
-    this.carryIndicator.y = this.farmer.y - 56;
   }
 
   _createCTAButton() {
@@ -737,14 +859,7 @@ class PlayScene extends Phaser.Scene {
 
     if (this.state !== STATE.PLAYING) return;
 
-    // Check if farmer reached stall to sell
-    if (this.carrying === 'crop') {
-      const distToStall = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, STALL_X + STALL_W / 2, STALL_Y + STALL_H / 2);
-      if (distToStall < 60) {
-        this._sellAtStall();
-      }
-    }
-
+    // Magnet already handles stall selling in _updateAutoAssist
     this._updateAutoAssist(dt);
   }
 }
