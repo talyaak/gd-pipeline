@@ -50,7 +50,7 @@ def _build_farm_idle_html(brief_overrides: dict = None) -> str:
 
     # Build HTML
     import tempfile as tmp
-    out_dir = Path(tmp.mkdtemp()) / "farm_idle_reskinned"
+    out_dir = HARNESS_DIR / "farm_idle_reskinned"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_js_path = out_dir / "farm_idle.game.js"
     out_js_path.write_text(reskinned_js, encoding="utf-8")
