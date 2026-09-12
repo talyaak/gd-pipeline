@@ -49,10 +49,11 @@ def test_plot_row_wrapping_on_canvas():
             return scene.plots.map(p => ({ x: p.x, y: p.y, index: p.index }));
         }""")
         
-        # Constants from the game
-        W = 450
-        PLOT_SIZE = 60
-        STALL_Y = 700
+        # Constants from the game (720x1280 portrait design base, 1.6x scale
+        # from the original 450x800 base)
+        W = 720
+        PLOT_SIZE = 96
+        STALL_Y = 1120
         
         print(f"Total plots after 6 purchases: {len(plots_data)}")
         for p in plots_data:
@@ -287,11 +288,12 @@ def test_plot_grid_caps_and_redirects_to_buffs():
             };
         }""")
 
+        # 720x1280 portrait design base, 1.6x scale from the original 450x800 base
         MAX_PLOTS = 18
-        PLOT_SIZE = 60
-        UPGRADE_PANEL_TOP = 420
-        STALL_Y = 700
-        W = 450
+        PLOT_SIZE = 96
+        UPGRADE_PANEL_TOP = 672
+        STALL_Y = 1120
+        W = 720
 
         assert result['plotCount'] == MAX_PLOTS, (
             f"Expected the grid to cap at {MAX_PLOTS} plots after 20 purchases, got {result['plotCount']}"

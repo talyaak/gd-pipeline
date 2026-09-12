@@ -2,7 +2,7 @@
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Farm Idle - Harness</title>
-<style>html,body{margin:0;background:#0a0a18;overflow:hidden;height:100%;width:100%;position:fixed;touch-action:none;}#game-root{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}canvas{display:block;touch-action:none;}</style>
+<style>:root{--safe-top:env(safe-area-inset-top,0px);--safe-right:env(safe-area-inset-right,0px);--safe-bottom:env(safe-area-inset-bottom,0px);--safe-left:env(safe-area-inset-left,0px);}html,body{margin:0;background:#0a0a18;overflow:hidden;height:100%;width:100%;position:fixed;touch-action:none;}#game-root{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}canvas{display:block;touch-action:none;}</style>
 </head><body>
 <div id="game-root"></div>
 <script>
@@ -2173,25 +2173,26 @@ window.Juice = {
 // Hand-built farm idle harness. Arcade idle genre (My Perfect Hotel / Pizza Ready family).
 // Theme: farm life. Core loop: drag farmer -> harvest plot -> sell at stall -> buy upgrades.
 
-const W = 450, H = 800;
+const W = 720, H = 1280;  // Portrait design base (1.6x scale from 450x800)
+const SCALE = 1.6;         // 720/450 = 1280/800 = 1.6
 const CTA_LINK = "https://example.com/game";
 
-const STATE = { START: 'start', PLAYING: 'playing' };  // ONLY these two
+const STATE = { START: 'start', PLAYING: 'playing' };
 
 // Farmer
-const MOVE_SPEED = 150;
-const FARMER_RADIUS = 20;
+const MOVE_SPEED = 150;       // logical pixels/sec (unchanged - speed in game coords)
+const FARMER_RADIUS = 32;     // 20 * 1.6
 
 // Plots
 const PLOT_COUNT = 5;
-const PLOT_SIZE = 60;
-const PLOT_GAP = 10;
+const PLOT_SIZE = 96;         // 60 * 1.6
+const PLOT_GAP = 16;          // 10 * 1.6
 const CROP_GROW_MS = 4000;
 const CROP_SELL_VALUE = 10;
 
 // Upgrade: More Crop Plots (repeatable)
 const PLOT_UPGRADE_BASE_COST = 50;
-const PLOT_UPGRADE_COST_GROWTH = 150;  // hundredths: 150 = 1.50x growth
+const PLOT_UPGRADE_COST_GROWTH = 150;
 
 // Upgrade: Faster Movement Boots (fixed chain, 3 tiers)
 const BOOTS_UPGRADE_COST_T1 = 100;
@@ -2211,25 +2212,54 @@ const CTA_ENABLED = 0;
 // Colors (substitutable via manifest COLORS param)
 const COLORS = [0x8bc34a, 0xffd700, 0xe65100, 0xffb300, 0xff7043, 0x8d6e63];
 
-// Layout constants
-const PLOT_AREA_TOP = 120;
-const PLOTS_PER_ROW = Math.floor((W - PLOT_GAP) / (PLOT_SIZE + PLOT_GAP));
+// Layout constants (all scaled 1.6x from 450x800 base)
+const PLOT_AREA_TOP = 192;            // 120 * 1.6
+const PLOTS_PER_ROW = Math.floor((W - PLOT_GAP) / (PLOT_SIZE + PLOT_GAP));  // 6
 const MAX_PLOT_ROWS = 3;
-const MAX_PLOTS = PLOTS_PER_ROW * MAX_PLOT_ROWS; // 18 with current W/PLOT_SIZE/PLOT_GAP
-const PLOT_BUFF_SELL_VALUE_BONUS = 2;   // added to effective sell value per post-cap purchase
-const PLOT_BUFF_GROW_SPEED_MULT = 0.92; // effective grow time multiplied by this, compounding, per post-cap purchase
-const PLOT_BUFF_MIN_GROW_MS = 500;      // floor so regrow time can never degenerate toward zero
-const STALL_X = 60;
-const STALL_Y = 700;
-const STALL_W = 100;
-const STALL_H = 70;
-const PAD_X = 390;
-const PAD_Y = 700;
-const PAD_W = 100;
-const PAD_H = 70;
-const COINS_Y = 40;
-const UPGRADE_PANEL_TOP = 420;
-const UPGRADE_PANEL_H = 280;
+const MAX_PLOTS = PLOTS_PER_ROW * MAX_PLOT_ROWS;  // 18
+const PLOT_BUFF_SELL_VALUE_BONUS = 2;
+const PLOT_BUFF_GROW_SPEED_MULT = 0.92;
+const PLOT_BUFF_MIN_GROW_MS = 500;
+const STALL_X = 96;                   // 60 * 1.6
+const STALL_Y = 1120;                 // 700 * 1.6
+const STALL_W = 160;                  // 100 * 1.6
+const STALL_H = 112;                  // 70 * 1.6
+const PAD_X = 464;                    // (W - PAD_W) = 720 - 256 = 464, was 390 = 450 - 60
+const PAD_Y = 1120;                   // 700 * 1.6
+const PAD_W = 256;                    // 160 * 1.6
+const PAD_H = 112;                    // 70 * 1.6
+const COINS_Y = 64;                   // 40 * 1.6
+const UPGRADE_PANEL_TOP = 672;        // 420 * 1.6
+const UPGRADE_PANEL_H = 448;          // 280 * 1.6
+
+// Safe-area insets (CSS pixels, updated on resize)
+let safeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+let isLandscape = false;
+let rotateOverlay = null;
+
+// Read safe-area insets from CSS custom properties
+function updateSafeInsets() {
+  const style = getComputedStyle(document.documentElement);
+  safeInsets = {
+    top: parseInt(style.getPropertyValue('--safe-top') || '0', 10),
+    right: parseInt(style.getPropertyValue('--safe-right') || '0', 10),
+    bottom: parseInt(style.getPropertyValue('--safe-bottom') || '0', 10),
+    left: parseInt(style.getPropertyValue('--safe-left') || '0', 10)
+  };
+}
+
+// Initial read
+updateSafeInsets();
+window.addEventListener('resize', () => {
+  updateSafeInsets();
+  // Reposition the HUD/panel for the new insets -- updateSafeInsets() alone
+  // only refreshes the safeInsets value, it doesn't move anything on screen.
+  // Phaser's own Scale Manager resize event (this.scale.on('resize', ...))
+  // fires independently of this raw window resize event, so this can't rely
+  // on that path alone re-triggering the layout.
+  const scene = window.__GAME__?.scene?.scenes?.[0];
+  if (scene && scene._layoutHUD) scene._layoutHUD();
+});
 
 class PlayScene extends Phaser.Scene {
   constructor() {
@@ -2240,32 +2270,28 @@ class PlayScene extends Phaser.Scene {
     this.state = STATE.START;
     this.game.state = STATE.START;
     this.coins = 0;
-    this.carrying = null;  // null | 'crop'
-    this.farmerTarget = null;  // { x, y } for auto-walk
+    this.carrying = null;
+    this.farmerTarget = null;
     this.isDragging = false;
 
-    // Plots: array of { x, y, readyAt, sprite, cropSprite }
     this.plots = [];
 
-    // Upgrade state
     this.plotUpgradeCount = 0;
-    this.bootsTier = 0;  // 0-3
-    this.helperTier = 0; // 0-2
+    this.bootsTier = 0;
+    this.helperTier = 0;
     this.helperTimer = 0;
-    this.helpers = [];  // array of { x, y, target, state, sprite, interval, timer }
+    this.helpers = [];
     this.sellValueBonus = 0;
     this.growSpeedMult = 1;
     this.plotGridCapped = false;
 
-    this.cameras.main.setBackgroundColor('#8fbc8f');  // light green farm background
+    this.cameras.main.setBackgroundColor('#8fbc8f');
 
     // --- Build static world ---
-    // Grass background
     this.grassG = this.add.graphics();
     this.grassG.fillStyle(0x7cb342, 1);
     this.grassG.fillRect(0, PLOT_AREA_TOP, W, H - PLOT_AREA_TOP);
 
-    // Initialize plots
     for (let i = 0; i < PLOT_COUNT; i++) {
       const pos = this._plotPosition(i);
       this._createPlot(i, pos.x, pos.y);
@@ -2276,9 +2302,9 @@ class PlayScene extends Phaser.Scene {
     this.stallG.fillStyle(0x8d6e63, 1);
     this.stallG.fillRoundedRect(STALL_X, STALL_Y, STALL_W, STALL_H, 8);
     this.stallG.fillStyle(0x5d4037, 1);
-    this.stallG.fillRect(STALL_X + 10, STALL_Y - 20, STALL_W - 20, 20);
+    this.stallG.fillRect(STALL_X + 16, STALL_Y - 32, STALL_W - 32, 32);
     this.stallText = this.add.text(STALL_X + STALL_W / 2, STALL_Y + STALL_H / 2, 'MARKET', {
-      fontFamily: 'monospace', fontSize: '14px', color: '#fff'
+      fontFamily: 'monospace', fontSize: '22px', color: '#fff'
     }).setOrigin(0.5);
 
     // Upgrade pad
@@ -2286,27 +2312,27 @@ class PlayScene extends Phaser.Scene {
     this.padG.fillStyle(0xffb300, 1);
     this.padG.fillRoundedRect(PAD_X, PAD_Y, PAD_W, PAD_H, 8);
     this.padText = this.add.text(PAD_X + PAD_W / 2, PAD_Y + PAD_H / 2, 'UPGRADES', {
-      fontFamily: 'monospace', fontSize: '14px', color: '#000'
+      fontFamily: 'monospace', fontSize: '22px', color: '#000'
     }).setOrigin(0.5);
 
     // Farmer
-    this.farmer = this.add.circle(W / 2, PLOT_AREA_TOP + 200, FARMER_RADIUS, 0xe65100);
-    this.farmer.setStrokeStyle(3, 0xbf360c, 1);
+    this.farmer = this.add.circle(W / 2, PLOT_AREA_TOP + 320, FARMER_RADIUS, 0xe65100);
+    this.farmer.setStrokeStyle(5, 0xbf360c, 1);
 
-    // Carried crop indicator (above farmer)
-    this.carryIndicator = this.add.circle(W / 2, PLOT_AREA_TOP + 200 - 35, 12, 0x8bc34a, 0);
-    this.carryIndicator.setStrokeStyle(3, 0x8bc34a, 1);
+    // Carried crop indicator
+    this.carryIndicator = this.add.circle(W / 2, PLOT_AREA_TOP + 320 - 56, 19, 0x8bc34a, 0);
+    this.carryIndicator.setStrokeStyle(5, 0x8bc34a, 1);
     this.carryIndicator.setVisible(false);
 
-    // Coins display
+    // Coins display (HUD - will be repositioned on resize)
     this.coinsText = this.add.text(W / 2, COINS_Y, 'Coins: 0', {
-      fontFamily: 'monospace', fontSize: '24px', color: '#000'
+      fontFamily: 'monospace', fontSize: '38px', color: '#000'
     }).setOrigin(0.5);
 
-    // Upgrade panel (shop)
-    this.upgradePanel = this.add.container(0, 0);
-    this.upgradeBg = this.add.rectangle(W / 2, UPGRADE_PANEL_TOP + UPGRADE_PANEL_H / 2, W - 40, UPGRADE_PANEL_H, 0x4caf50, 0.9);
-    this.upgradeBg.setStrokeStyle(2, 0x2e7d32, 1);
+    // Upgrade panel (shop) - anchored at bottom
+    this.upgradePanel = this.add.container(0, H - UPGRADE_PANEL_H);
+    this.upgradeBg = this.add.rectangle(W / 2, UPGRADE_PANEL_H / 2, W - 64, UPGRADE_PANEL_H, 0x4caf50, 0.9);
+    this.upgradeBg.setStrokeStyle(3, 0x2e7d32, 1);
     this.upgradePanel.add(this.upgradeBg);
 
     this.upgradeRows = [];
@@ -2316,33 +2342,32 @@ class PlayScene extends Phaser.Scene {
 
     // Start prompt
     this.startText = this.add.text(W / 2, H / 2, 'DRAG FARMER TO START', {
-      fontFamily: 'monospace', fontSize: '20px', color: '#fff', align: 'center',
-      backgroundColor: '#2e7d32', padding: { x: 20, y: 10 }
+      fontFamily: 'monospace', fontSize: '32px', color: '#fff', align: 'center',
+      backgroundColor: '#2e7d32', padding: { x: 32, y: 16 }
     }).setOrigin(0.5);
     this.tweens.add({ targets: this.startText, alpha: 0.4, duration: 800, yoyo: true, repeat: -1 });
 
     // Intro banner + tap hint (using Juice)
-    const introBanner = Juice.IntroBanner.create(this, { label: 'HARVEST • SELL • UPGRADE', y: 60 });
-    const introHint = Juice.TapHint.create(this, this.farmer.x, this.farmer.y, { color: 0xe65100, radius: 40 });
+    const introBanner = Juice.IntroBanner.create(this, { label: 'HARVEST \u2022 SELL \u2022 UPGRADE', y: 96 });
+    const introHint = Juice.TapHint.create(this, this.farmer.x, this.farmer.y, { color: 0xe65100, radius: 64 });
     this.time.delayedCall(2500, () => { introBanner.destroy(); introHint.destroy(); });
 
     // Input: drag farmer
     this.farmer.setInteractive({ draggable: true });
     this.input.setDraggable(this.farmer);
     this.input.on('dragstart', (pointer, gameObject) => {
-      if (gameObject === this.farmer) {
+      if (gameObject === this.farmer && !isLandscape) {
         this.isDragging = true;
-        this.farmerTarget = null;  // cancel auto-walk
+        this.farmerTarget = null;
         this._begin();
       }
     });
     this.input.on('drag', (pointer, gameObject, dragX, dragY) => {
-      if (gameObject === this.farmer) {
+      if (gameObject === this.farmer && !isLandscape) {
         gameObject.x = dragX;
         gameObject.y = dragY;
-        // Update carry indicator position
         this.carryIndicator.x = dragX;
-        this.carryIndicator.y = dragY - 35;
+        this.carryIndicator.y = dragY - 56;
       }
     });
     this.input.on('dragend', (pointer, gameObject) => {
@@ -2351,29 +2376,188 @@ class PlayScene extends Phaser.Scene {
       }
     });
 
-    // Global pointerdown for START->PLAYING transition (matches idle_clicker pattern)
-    this.input.on('pointerdown', () => this._begin());
-    this.input.keyboard.on('keydown-SPACE', () => this._begin());
+    // Global pointerdown for START->PLAYING transition
+    this.input.on('pointerdown', () => { if (!isLandscape) this._begin(); });
+    this.input.keyboard.on('keydown-SPACE', () => { if (!isLandscape) this._begin(); });
+
+    // Scale Manager resize handler - re-anchor HUD elements
+    this.scale.on('resize', this._onResize, this);
+
+    // Orientation detection
+    this._checkOrientation();
+    window.addEventListener('orientationchange', () => this._checkOrientation());
+    window.matchMedia('(orientation: landscape)').addEventListener('change', (e) => this._checkOrientation());
 
     window.__GAME__ = this.game;
     this.game.registry.set('score', 0);
+
+    // Initial HUD layout
+    this._layoutHUD();
+  }
+
+  _checkOrientation() {
+    const wasLandscape = isLandscape;
+    // Gate on touch capability as well as aspect ratio -- a landscape-shaped
+    // desktop browser window (e.g. the generic execution harness's default
+    // test viewport, or a developer's monitor) is not a phone rotated
+    // sideways, and must not be forced into the rotate-overlay lockout.
+    const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
+      || navigator.maxTouchPoints > 0;
+    isLandscape = isTouchDevice && window.matchMedia('(orientation: landscape)').matches;
+
+    if (isLandscape && !wasLandscape) {
+      this._showRotateOverlay();
+      this.farmer.disableInteractive();
+      if (this.upgradePanel) this.upgradePanel.setVisible(false);
+    } else if (!isLandscape && wasLandscape) {
+      this._hideRotateOverlay();
+      updateSafeInsets(); // Re-read safe insets on orientation change
+      this._layoutHUD();
+      this.farmer.setInteractive({ draggable: true });
+      if (this.upgradePanel) this.upgradePanel.setVisible(true);
+    }
+  }
+
+  _onResize(gameSize, baseSize, displaySize, resolution) {
+    updateSafeInsets();
+    this._layoutHUD();
+  }
+
+  _layoutHUD() {
+    // Anchor HUD elements to screen edges with safe-area insets
+    // Convert CSS safe insets to logical game coordinates
+    const displayWidth = this.scale.displaySize.width;
+    const displayHeight = this.scale.displaySize.height;
+    const scaleX = displayWidth / W;
+    const scaleY = displayHeight / H;
+
+    const safeTopLogical = safeInsets.top / scaleY;
+    const safeRightLogical = safeInsets.right / scaleX;
+    const safeBottomLogical = safeInsets.bottom / scaleY;
+    const safeLeftLogical = safeInsets.left / scaleX;
+
+    // Coin counter: top center, below safe-area top
+    if (this.coinsText) {
+      this.coinsText.setPosition(W / 2, Math.max(COINS_Y, safeTopLogical + 32));
+    }
+
+    // Upgrade panel: bottom, above safe-area bottom
+    let panelTop = H - UPGRADE_PANEL_H; // default full-size position
+    if (this.upgradePanel) {
+      const panelBottom = H - safeBottomLogical;
+      
+      // Compute available height for panel (from minPanelTop to panelBottom)
+      // Min panel top: leave room for plot area (up to row 3) + farmer + gap
+      const minPanelTop = 600; // logical coords: below plot area (max ~528) + comfortable gap
+      const availablePanelHeight = panelBottom - minPanelTop;
+      
+      // Use full panel height if it fits, otherwise compress
+      const panelHeight = Math.min(UPGRADE_PANEL_H, Math.max(availablePanelHeight, 320)); // min 320 logical
+      const compressionFactor = panelHeight / UPGRADE_PANEL_H; // 1.0 = full size, <1 = compressed
+      
+      panelTop = panelBottom - panelHeight;
+      this.upgradePanel.setPosition(0, panelTop);
+      // Update upgradeBg width to fill width minus safe insets
+      this.upgradeBg.setPosition(W / 2, panelHeight / 2);
+      this.upgradeBg.height = panelHeight;
+      this.upgradeBg.width = W - safeLeftLogical - safeRightLogical;
+    }
+
+    // Reposition upgrade rows within panel (with compression)
+    if (this.upgradeRows) {
+      const panelBottom = H - safeBottomLogical;
+      const minPanelTop = 600;
+      const availablePanelHeight = panelBottom - minPanelTop;
+      const panelHeight = Math.min(UPGRADE_PANEL_H, Math.max(availablePanelHeight, 320));
+      const compressionFactor = panelHeight / UPGRADE_PANEL_H;
+      
+      // Base row spacing (85 * 1.6 = 136), compressed
+      const baseRowSpacing = 136;
+      const rowSpacing = baseRowSpacing * compressionFactor;
+      // Base row start Y (40), compressed
+      const rowStartY = 40 * compressionFactor;
+      
+      this.upgradeRows.forEach((row, i) => {
+        const y = rowStartY + i * rowSpacing;
+        row.icon.setPosition(96, y);
+        row.nameText.setPosition(144, y - 29 * compressionFactor);
+        row.descText.setPosition(144, y + 6 * compressionFactor);
+        row.costText.setPosition(W - 96 - safeRightLogical, y - 29 * compressionFactor);
+        row.ownedText.setPosition(W - 96 - safeRightLogical, y + 6 * compressionFactor);
+        row.btn.setPosition(W / 2, y + 48 * compressionFactor);
+        row.btnText.setPosition(W / 2, y + 48 * compressionFactor);
+      });
+    }
+
+    // Stall: position above upgrade panel (with safe-area bottom buffer)
+    if (this.stallG && this.stallText) {
+      // Stall should be above the panel with a small gap
+      const stallGap = 24;
+      const stallY = Math.min(STALL_Y, panelTop - STALL_H - stallGap);
+      this.stallG.setPosition(STALL_X, stallY);
+      // Clear and redraw stall at new position
+      this.stallG.clear();
+      this.stallG.fillRoundedRect(0, 0, STALL_W, STALL_H, 8);
+      this.stallG.fillRect(16, -32, STALL_W - 32, 32);
+      // stallText is a top-level scene object, not a child of stallG, so it
+      // needs absolute scene coordinates -- not coordinates relative to
+      // stallG's own local origin (which is what STALL_W/2, STALL_H/2 would
+      // be interpreted as, detaching the label from the stall visually).
+      this.stallText.setPosition(STALL_X + STALL_W / 2, stallY + STALL_H / 2);
+    }
+
+    // Upgrade pad: same safe-area-bottom treatment as the stall above --
+    // previously never repositioned at all, so it stayed at its original Y
+    // and could overlap the safe area on short screens with a bottom inset.
+    if (this.padG && this.padText) {
+      const padGap = 24;
+      const padY = Math.min(PAD_Y, panelTop - PAD_H - padGap);
+      this.padG.setPosition(PAD_X, padY);
+      this.padG.clear();
+      this.padG.fillStyle(0xffb300, 1);
+      this.padG.fillRoundedRect(0, 0, PAD_W, PAD_H, 8);
+      this.padText.setPosition(PAD_X + PAD_W / 2, padY + PAD_H / 2);
+    }
+  }
+
+  _showRotateOverlay() {
+    if (rotateOverlay) return;
+    // Create DOM overlay (simpler than Phaser text for full-screen)
+    rotateOverlay = document.createElement('div');
+    rotateOverlay.id = 'rotate-overlay';
+    rotateOverlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: #1a1a2e; color: #fff; z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+      font-family: monospace; font-size: 24px; text-align: center;
+      padding: 20px; box-sizing: border-box;
+    `;
+    rotateOverlay.innerHTML = 'ROTATE TO PORTRAIT';
+    document.body.appendChild(rotateOverlay);
+  }
+
+  _hideRotateOverlay() {
+    if (rotateOverlay) {
+      rotateOverlay.remove();
+      rotateOverlay = null;
+    }
   }
 
   _buildUpgradeRow(type, name, desc, baseCost, rowIndex) {
-    const y = UPGRADE_PANEL_TOP + 40 + rowIndex * 85;
+    const y = 40 + rowIndex * 136;  // 85 * 1.6
     const row = this.add.container(0, 0);
 
-    const icon = this.add.circle(60, y, 20, type === 'plot' ? 0x8bc34a : type === 'boots' ? 0xffb300 : 0xff7043);
-    icon.setStrokeStyle(2, 0x000, 0.5);
+    const icon = this.add.circle(96, y, 32, type === 'plot' ? 0x8bc34a : type === 'boots' ? 0xffb300 : 0xff7043);
+    icon.setStrokeStyle(3, 0x000, 0.5);
 
-    const nameText = this.add.text(90, y - 18, name, { fontFamily: 'monospace', fontSize: '14px', color: '#fff' });
-    const descText = this.add.text(90, y + 4, desc, { fontFamily: 'monospace', fontSize: '11px', color: '#c8e6c9' });
+    const nameText = this.add.text(144, y - 29, name, { fontFamily: 'monospace', fontSize: '22px', color: '#fff' });
+    const descText = this.add.text(144, y + 6, desc, { fontFamily: 'monospace', fontSize: '18px', color: '#c8e6c9' });
 
-    const costText = this.add.text(W - 60, y - 18, 'Cost: ' + baseCost, { fontFamily: 'monospace', fontSize: '13px', color: '#fff' }).setOrigin(1, 0);
-    const ownedText = this.add.text(W - 60, y + 4, 'Owned: 0', { fontFamily: 'monospace', fontSize: '11px', color: '#c8e6c9' }).setOrigin(1, 0);
+    const costText = this.add.text(W - 96, y - 29, 'Cost: ' + baseCost, { fontFamily: 'monospace', fontSize: '21px', color: '#fff' }).setOrigin(1, 0);
+    const ownedText = this.add.text(W - 96, y + 6, 'Owned: 0', { fontFamily: 'monospace', fontSize: '18px', color: '#c8e6c9' }).setOrigin(1, 0);
 
-    const btn = this.add.rectangle(W / 2, y + 30, 180, 30, 0xffb300, 1).setStrokeStyle(2, 0xf57f17, 1);
-    const btnText = this.add.text(W / 2, y + 30, 'BUY', { fontFamily: 'monospace', fontSize: '14px', color: '#000' }).setOrigin(0.5);
+    const btn = this.add.rectangle(W / 2, y + 48, 288, 48, 0xffb300, 1).setStrokeStyle(3, 0xf57f17, 1);
+    const btnText = this.add.text(W / 2, y + 48, 'BUY', { fontFamily: 'monospace', fontSize: '22px', color: '#000' }).setOrigin(0.5);
     btn.setInteractive({ useHandCursor: true });
     btn.on('pointerdown', () => this._buyUpgrade(type));
 
@@ -2384,6 +2568,12 @@ class PlayScene extends Phaser.Scene {
   }
 
   _begin() {
+    // Landscape lockout is enforced at the interaction layer (pointerdown/
+    // keydown listeners are gated on !isLandscape, and the full-screen
+    // rotate overlay blocks clicks getting through anyway) -- not here, so
+    // that a direct/programmatic call to _begin() (tests, the generic
+    // execution harness) isn't silently a no-op just because the current
+    // viewport's aspect ratio happens to read as landscape.
     if (this.state === STATE.START) {
       this.state = STATE.PLAYING;
       this.game.state = STATE.PLAYING;
@@ -2394,10 +2584,9 @@ class PlayScene extends Phaser.Scene {
   _createPlot(index, x, y) {
     const plot = this.add.graphics();
     plot.fillStyle(0x5d4037, 1);
-    plot.fillRoundedRect(x, y, PLOT_SIZE, PLOT_SIZE, 8);
+    plot.fillRoundedRect(x, y, PLOT_SIZE, PLOT_SIZE, 13);
 
-    // Crop sprite (initially invisible)
-    const crop = this.add.circle(x + PLOT_SIZE / 2, y + PLOT_SIZE / 2, 18, 0x8bc34a);
+    const crop = this.add.circle(x + PLOT_SIZE / 2, y + PLOT_SIZE / 2, 29, 0x8bc34a);
     crop.setVisible(false);
 
     this.plots.push({
@@ -2417,19 +2606,18 @@ class PlayScene extends Phaser.Scene {
     const row = Math.floor(index / PLOTS_PER_ROW);
     const rowStartX = (W - (PLOTS_PER_ROW * PLOT_SIZE + (PLOTS_PER_ROW - 1) * PLOT_GAP)) / 2;
     const x = rowStartX + col * (PLOT_SIZE + PLOT_GAP);
-    const y = PLOT_AREA_TOP + 60 + row * (PLOT_SIZE + PLOT_GAP);
+    const y = PLOT_AREA_TOP + 96 + row * (PLOT_SIZE + PLOT_GAP);  // 60 * 1.6 = 96
     return { x, y };
   }
 
   _harvestPlot(index) {
     if (this.state !== STATE.PLAYING) return;
-    if (this.carrying === 'crop') return;  // already carrying
+    if (this.carrying === 'crop') return;
     const plot = this.plots[index];
     if (!plot) return;
     if (plot.harvested) return;
-    if (this.time.now < plot.readyAt) return;  // not ready yet
+    if (this.time.now < plot.readyAt) return;
 
-    // Harvest!
     plot.harvested = true;
     plot.cropSprite.setVisible(false);
     if (plot.pulseTween) {
@@ -2439,32 +2627,19 @@ class PlayScene extends Phaser.Scene {
     this.carrying = 'crop';
     this.carryIndicator.setVisible(true);
     this.carryIndicator.x = this.farmer.x;
-    this.carryIndicator.y = this.farmer.y - 35;
-
-    // Start regrow timer
-    plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
-
-    // Visual feedback
-    this.tweens.add({ targets: this.farmer, scale: 1.15, duration: 80, yoyo: true, ease: 'Sine.easeOut' });
-    this.cameras.main.flash(50, 140, 195, 120, false);
+    this.carryIndicator.y = this.farmer.y - 56;
   }
 
   _sellAtStall() {
-    if (this.state !== STATE.PLAYING) return;
     if (this.carrying !== 'crop') return;
-
     this.coins += CROP_SELL_VALUE + this.sellValueBonus;
     this.coinsText.setText('Coins: ' + this.coins);
     this.game.registry.set('score', this.coins);
     this.carrying = null;
     this.carryIndicator.setVisible(false);
-
-    // Juice burst at stall
     Juice.ParticleBurst.create(this, STALL_X + STALL_W / 2, STALL_Y, {
-      color: 0xffd700, count: 12, speed: 120, size: 6
+      color: 0xffd700, count: 12, speed: 128, size: 8
     });
-
-    // CTA button appears on first sale if enabled
     if (CTA_ENABLED && !this.ctaButton) {
       this._createCTAButton();
     }
@@ -2472,230 +2647,123 @@ class PlayScene extends Phaser.Scene {
 
   _buyUpgrade(type) {
     if (this.state !== STATE.PLAYING) return;
-    let cost = 0;
-    let canBuy = false;
-
+    let cost, maxTier;
     if (type === 'plot') {
-      cost = Math.ceil(PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH / 100, this.plotUpgradeCount));
-      canBuy = true;  // uncapped
-    } else if (type === 'boots') {
-      if (this.bootsTier >= 3) return;  // max tier reached
-      cost = this.bootsTier === 0 ? BOOTS_UPGRADE_COST_T1 :
-             this.bootsTier === 1 ? BOOTS_UPGRADE_COST_T2 :
-             BOOTS_UPGRADE_COST_T3;
-      canBuy = true;
-    } else if (type === 'helper') {
-      if (this.helperTier >= 2) return;  // max tier reached
-      cost = this.helperTier === 0 ? HELPER_UPGRADE_COST_T1 : HELPER_UPGRADE_COST_T2;
-      canBuy = true;
-    } else {
-      return;
-    }
-
-    if (!canBuy || this.coins < cost) {
-      // Shake feedback
-      const row = this.upgradeRows.find(r => r.type === type);
-      if (row) {
-        this.cameras.main.shake(80, 0.003);
-        this.tweens.add({ targets: row.btn, x: row.btn.x - 4, duration: 40, yoyo: true, repeat: 2 });
+      cost = PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH / 100, this.plotUpgradeCount);
+      cost = Math.floor(cost);
+      if (this.coins < cost) return;
+      this.coins -= cost;
+      this.plotUpgradeCount++;
+      if (this.plots.length < MAX_PLOTS) {
+        const pos = this._plotPosition(this.plots.length);
+        this._createPlot(this.plots.length, pos.x, pos.y);
+      } else {
+        this.plotGridCapped = true;
+        this.sellValueBonus += PLOT_BUFF_SELL_VALUE_BONUS;
+        this.growSpeedMult *= PLOT_BUFF_GROW_SPEED_MULT;
+        if (this.growSpeedMult * CROP_GROW_MS < PLOT_BUFF_MIN_GROW_MS) {
+          this.growSpeedMult = PLOT_BUFF_MIN_GROW_MS / CROP_GROW_MS;
+        }
       }
-      return;
+    } else if (type === 'boots') {
+      if (this.bootsTier >= 3) return;
+      cost = [BOOTS_UPGRADE_COST_T1, BOOTS_UPGRADE_COST_T2, BOOTS_UPGRADE_COST_T3][this.bootsTier];
+      if (this.coins < cost) return;
+      this.coins -= cost;
+      this.bootsTier++;
+    } else if (type === 'helper') {
+      if (this.helperTier >= 2) return;
+      cost = [HELPER_UPGRADE_COST_T1, HELPER_UPGRADE_COST_T2][this.helperTier];
+      if (this.coins < cost) return;
+      this.coins -= cost;
+      this.helperTier++;
+      const interval = [HELPER_INTERVAL_T1, HELPER_INTERVAL_T2][this.helperTier - 1];
+      this._spawnHelper(interval);
     }
-
-    this.coins -= cost;
     this.coinsText.setText('Coins: ' + this.coins);
     this.game.registry.set('score', this.coins);
+    this._refreshUpgradeUI();
+  }
 
-    if (type === 'plot') {
-      this.plotUpgradeCount += 1;
-      if (this.plots.length < MAX_PLOTS) {
-        this._addNewPlot();
-      } else {
-        this.sellValueBonus += PLOT_BUFF_SELL_VALUE_BONUS;
-        const targetGrowMs = CROP_GROW_MS * this.growSpeedMult * PLOT_BUFF_GROW_SPEED_MULT;
-        this.growSpeedMult = Math.max(PLOT_BUFF_MIN_GROW_MS / CROP_GROW_MS, targetGrowMs / CROP_GROW_MS);
-        // Update description once when cap is first reached
-        if (!this.plotGridCapped) {
-          this.plotGridCapped = true;
-          const capRow = this.upgradeRows.find(r => r.type === 'plot');
-          if (capRow) capRow.descText.setText('Faster & Richer Crops');
-        }
+  _refreshUpgradeUI() {
+    this.upgradeRows.forEach(row => {
+      let cost, owned;
+      if (row.type === 'plot') {
+        cost = PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH / 100, this.plotUpgradeCount);
+        cost = Math.floor(cost);
+        owned = this.plotUpgradeCount;
+      } else if (row.type === 'boots') {
+        if (this.bootsTier >= 3) { cost = 'MAX'; owned = 3; }
+        else { cost = [BOOTS_UPGRADE_COST_T1, BOOTS_UPGRADE_COST_T2, BOOTS_UPGRADE_COST_T3][this.bootsTier]; owned = this.bootsTier; }
+      } else if (row.type === 'helper') {
+        if (this.helperTier >= 2) { cost = 'MAX'; owned = 2; }
+        else { cost = [HELPER_UPGRADE_COST_T1, HELPER_UPGRADE_COST_T2][this.helperTier]; owned = this.helperTier; }
       }
-      const row = this.upgradeRows.find(r => r.type === 'plot');
-      if (row) {
-        const newCost = Math.ceil(PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH / 100, this.plotUpgradeCount));
-        row.costText.setText('Cost: ' + newCost);
-        row.ownedText.setText('Owned: ' + this.plotUpgradeCount);
-        this.tweens.add({ targets: row.icon, scale: 1.4, duration: 100, yoyo: true, ease: 'Sine.easeOut' });
-      }
-    } else if (type === 'boots') {
-      this.bootsTier += 1;
-      const row = this.upgradeRows.find(r => r.type === 'boots');
-      if (row) {
-        row.ownedText.setText('Tier: ' + this.bootsTier + '/3');
-        if (this.bootsTier === 3) {
-          row.btn.setFillStyle(0x757575, 1);
-          row.btnText.setText('MAX');
-          row.btnText.setColor('#9e9e9e');
-          row.btn.disableInteractive();
-        } else {
-          const nextCost = this.bootsTier === 1 ? BOOTS_UPGRADE_COST_T2 : BOOTS_UPGRADE_COST_T3;
-          row.costText.setText('Cost: ' + nextCost);
-        }
-        this.tweens.add({ targets: row.icon, scale: 1.4, duration: 100, yoyo: true, ease: 'Sine.easeOut' });
-      }
-    } else if (type === 'helper') {
-      this.helperTier += 1;
-      this._spawnOrUpgradeHelper();
-      const row = this.upgradeRows.find(r => r.type === 'helper');
-      if (row) {
-        row.ownedText.setText('Tier: ' + this.helperTier + '/2');
-        if (this.helperTier === 2) {
-          row.btn.setFillStyle(0x757575, 1);
-          row.btnText.setText('MAX');
-          row.btnText.setColor('#9e9e9e');
-          row.btn.disableInteractive();
-        } else {
-          row.costText.setText('Cost: ' + HELPER_UPGRADE_COST_T2);
-        }
-        this.tweens.add({ targets: row.icon, scale: 1.4, duration: 100, yoyo: true, ease: 'Sine.easeOut' });
-      }
-    }
-
-    Juice.ParticleBurst.create(this, this.farmer.x, this.farmer.y, {
-      color: type === 'plot' ? 0x8bc34a : type === 'boots' ? 0xffb300 : 0xff7043,
-      count: 10, speed: 100, size: 5
+      row.costText.setText('Cost: ' + cost);
+      row.ownedText.setText('Owned: ' + owned);
     });
   }
 
-  _addNewPlot() {
-    const pos = this._plotPosition(this.plots.length);
-    this._createPlot(this.plots.length, pos.x, pos.y);
-  }
-
-  _spawnOrUpgradeHelper() {
-    if (this.helperTier === 1) {
-      // Spawn first helper (chicken)
-      const helper = this.add.circle(this.farmer.x, this.farmer.y, 14, 0xffcc80);
-      helper.setStrokeStyle(2, 0xff8f00, 1);
-      this.helpers.push({
-        x: this.farmer.x,
-        y: this.farmer.y,
-        target: null,
-        state: 'idle',  // idle, moving, harvesting, selling
-        sprite: helper,
-        interval: HELPER_INTERVAL_T1,
-        timer: 0,
-        carrying: false
-      });
-    } else if (this.helperTier === 2) {
-      // Spawn second helper (dog) - different color, faster
-      const helper = this.add.circle(this.farmer.x + 30, this.farmer.y, 14, 0x8d6e63);
-      helper.setStrokeStyle(2, 0x4e342e, 1);
-      this.helpers.push({
-        x: this.farmer.x + 30,
-        y: this.farmer.y,
-        target: null,
-        state: 'idle',
-        sprite: helper,
-        interval: HELPER_INTERVAL_T2,
-        timer: 0,
-        carrying: false
-      });
-      // Also speed up existing helper
-      this.helpers.forEach(h => { h.interval = HELPER_INTERVAL_T2; });
-    }
-  }
-
-  _getCheapestAffordableUpgrade() {
-    const upgrades = [];
-    // Plot upgrade
-    const plotCost = Math.ceil(PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH / 100, this.plotUpgradeCount));
-    if (this.coins >= plotCost) upgrades.push({ type: 'plot', cost: plotCost });
-    // Boots
-    if (this.bootsTier < 3) {
-      const bootsCost = this.bootsTier === 0 ? BOOTS_UPGRADE_COST_T1 :
-                        this.bootsTier === 1 ? BOOTS_UPGRADE_COST_T2 :
-                        BOOTS_UPGRADE_COST_T3;
-      if (this.coins >= bootsCost) upgrades.push({ type: 'boots', cost: bootsCost });
-    }
-    // Helper
-    if (this.helperTier < 2) {
-      const helperCost = this.helperTier === 0 ? HELPER_UPGRADE_COST_T1 : HELPER_UPGRADE_COST_T2;
-      if (this.coins >= helperCost) upgrades.push({ type: 'helper', cost: helperCost });
-    }
-    if (upgrades.length === 0) return null;
-    upgrades.sort((a, b) => a.cost - b.cost);
-    return upgrades[0].type;
+  _spawnHelper(interval) {
+    const helper = this.add.circle(W / 2, PLOT_AREA_TOP + 320, 24, 0xff7043);
+    helper.setStrokeStyle(3, 0xc62828, 1);
+    this.helpers.push({
+      sprite: helper,
+      x: W / 2,
+      y: PLOT_AREA_TOP + 320,
+      target: null,
+      state: 'idle',
+      interval,
+      timer: 0,
+      carrying: false,
+      targetPlotIndex: -1
+    });
   }
 
   _updateAutoAssist(dt) {
-    if (this.state !== STATE.PLAYING) return;
-    if (this.isDragging) return;  // player has control
-
-    // Update helpers
     this.helpers.forEach(helper => {
       helper.timer += dt;
-      if (helper.timer >= helper.interval) {
+      if (helper.timer >= helper.interval && helper.state === 'idle') {
         helper.timer = 0;
         helper.state = 'seeking_plot';
       }
-
-      if (helper.state !== 'idle') {
-        this._updateHelper(helper, dt);
-      }
+      this._updateHelper(helper, dt);
     });
 
-    // Farmer auto-assist priority:
-    // 1. If carrying crop -> walk to stall
-    if (this.carrying === 'crop') {
-      this.farmerTarget = { x: STALL_X + STALL_W / 2, y: STALL_Y + STALL_H / 2 };
-      this._moveFarmerTowards(this.farmerTarget.x, this.farmerTarget.y, dt);
-      // Check arrival at stall
-      const distToStall = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, this.farmerTarget.x, this.farmerTarget.y);
-      if (distToStall < 30) {
-        this._sellAtStall();
-        this.farmerTarget = null;
-      }
-      return;
-    }
-
-    // 2. If can afford upgrade and not at pad -> walk to pad
-    const cheapestUpgrade = this._getCheapestAffordableUpgrade();
-    if (cheapestUpgrade) {
-      this.farmerTarget = { x: PAD_X + PAD_W / 2, y: PAD_Y + PAD_H / 2 };
-      this._moveFarmerTowards(this.farmerTarget.x, this.farmerTarget.y, dt);
-      const distToPad = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, this.farmerTarget.x, this.farmerTarget.y);
-      if (distToPad < 30) {
-        this._buyUpgrade(cheapestUpgrade);
-        this.farmerTarget = null;
-      }
-      return;
-    }
-
-    // 3. Walk to nearest ready plot
-    let nearestPlot = null;
-    let nearestDist = Infinity;
-    this.plots.forEach(plot => {
-      if (!plot.harvested && this.time.now >= plot.readyAt) {
-        const dist = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, plot.x + PLOT_SIZE / 2, plot.y + PLOT_SIZE / 2);
-        if (dist < nearestDist) {
-          nearestDist = dist;
-          nearestPlot = plot;
-        }
-      }
-    });
-
-    if (nearestPlot) {
-      this.farmerTarget = { x: nearestPlot.x + PLOT_SIZE / 2, y: nearestPlot.y + PLOT_SIZE / 2 };
+    if (!this.isDragging && this.farmerTarget) {
       this._moveFarmerTowards(this.farmerTarget.x, this.farmerTarget.y, dt);
       const distToPlot = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, this.farmerTarget.x, this.farmerTarget.y);
-      if (distToPlot < 25) {
-        this._harvestPlot(nearestPlot.index);
+      if (distToPlot < 40) {
+        const nearestPlot = this.plots.find(p => !p.harvested && this.time.now >= p.readyAt &&
+          Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, p.x + PLOT_SIZE / 2, p.y + PLOT_SIZE / 2) < 40);
+        if (nearestPlot) {
+          this._harvestPlot(nearestPlot.index);
+          this.farmerTarget = null;
+        }
+      }
+    } else if (!this.isDragging) {
+      let nearestPlot = null;
+      let nearestDist = Infinity;
+      this.plots.forEach(plot => {
+        if (!plot.harvested && this.time.now >= plot.readyAt) {
+          const dist = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, plot.x + PLOT_SIZE / 2, plot.y + PLOT_SIZE / 2);
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearestPlot = plot;
+          }
+        }
+      });
+      if (nearestPlot) {
+        this.farmerTarget = { x: nearestPlot.x + PLOT_SIZE / 2, y: nearestPlot.y + PLOT_SIZE / 2 };
+        this._moveFarmerTowards(this.farmerTarget.x, this.farmerTarget.y, dt);
+        const distToPlot = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, this.farmerTarget.x, this.farmerTarget.y);
+        if (distToPlot < 40) {
+          this._harvestPlot(nearestPlot.index);
+          this.farmerTarget = null;
+        }
+      } else {
         this.farmerTarget = null;
       }
-    } else {
-      this.farmerTarget = null;
     }
   }
 
@@ -2703,7 +2771,6 @@ class PlayScene extends Phaser.Scene {
     const speed = MOVE_SPEED * (this.bootsTier > 0 ? Math.pow(BOOTS_SPEED_MULT, this.bootsTier) : 1);
 
     if (helper.state === 'seeking_plot') {
-      // Find nearest ready plot
       let targetPlot = null;
       let minDist = Infinity;
       this.plots.forEach(plot => {
@@ -2715,7 +2782,6 @@ class PlayScene extends Phaser.Scene {
           }
         }
       });
-
       if (targetPlot) {
         helper.target = { x: targetPlot.x + PLOT_SIZE / 2, y: targetPlot.y + PLOT_SIZE / 2 };
         helper.targetPlotIndex = targetPlot.index;
@@ -2728,8 +2794,7 @@ class PlayScene extends Phaser.Scene {
     if (helper.state === 'moving_to_plot') {
       this._moveHelperTowards(helper, helper.target.x, helper.target.y, dt, speed);
       const dist = Phaser.Math.Distance.Between(helper.x, helper.y, helper.target.x, helper.target.y);
-      if (dist < 25) {
-        // Harvest
+      if (dist < 40) {
         const plot = this.plots[helper.targetPlotIndex];
         if (plot && !plot.harvested && this.time.now >= plot.readyAt) {
           plot.harvested = true;
@@ -2751,8 +2816,7 @@ class PlayScene extends Phaser.Scene {
     if (helper.state === 'moving_to_stall') {
       this._moveHelperTowards(helper, helper.target.x, helper.target.y, dt, speed);
       const dist = Phaser.Math.Distance.Between(helper.x, helper.y, helper.target.x, helper.target.y);
-      if (dist < 30) {
-        // Sell
+      if (dist < 48) {
         this.coins += CROP_SELL_VALUE + this.sellValueBonus;
         this.coinsText.setText('Coins: ' + this.coins);
         this.game.registry.set('score', this.coins);
@@ -2760,7 +2824,6 @@ class PlayScene extends Phaser.Scene {
         Juice.ParticleBurst.create(this, STALL_X + STALL_W / 2, STALL_Y, {
           color: 0xffd700, count: 8, speed: 80, size: 5
         });
-        // CTA on first sale
         if (CTA_ENABLED && !this.ctaButton) {
           this._createCTAButton();
         }
@@ -2773,7 +2836,7 @@ class PlayScene extends Phaser.Scene {
     const dx = targetX - helper.x;
     const dy = targetY - helper.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 2) {
+    if (dist < 3) {
       helper.x = targetX;
       helper.y = targetY;
       return;
@@ -2790,24 +2853,24 @@ class PlayScene extends Phaser.Scene {
     const dx = targetX - this.farmer.x;
     const dy = targetY - this.farmer.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 2) {
+    if (dist < 3) {
       this.farmer.x = targetX;
       this.farmer.y = targetY;
       this.carryIndicator.x = this.farmer.x;
-      this.carryIndicator.y = this.farmer.y - 35;
+      this.carryIndicator.y = this.farmer.y - 56;
       return;
     }
     const moveDist = currentSpeed * (dt / 1000);
     this.farmer.x += (dx / dist) * moveDist;
     this.farmer.y += (dy / dist) * moveDist;
     this.carryIndicator.x = this.farmer.x;
-    this.carryIndicator.y = this.farmer.y - 35;
+    this.carryIndicator.y = this.farmer.y - 56;
   }
 
   _createCTAButton() {
-    this.ctaButton = this.add.text(W / 2, H / 2 + 100, 'PLAY FULL VERSION', {
-      fontFamily: 'monospace', fontSize: '18px', color: '#fff',
-      backgroundColor: '#e65100', padding: { x: 20, y: 10 }
+    this.ctaButton = this.add.text(W / 2, H / 2 + 160, 'PLAY FULL VERSION', {
+      fontFamily: 'monospace', fontSize: '29px', color: '#fff',
+      backgroundColor: '#e65100', padding: { x: 32, y: 16 }
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     this.ctaButton.on('pointerdown', () => {
       if (typeof mraid !== 'undefined' && mraid.open) { mraid.open(CTA_LINK); }
@@ -2816,7 +2879,6 @@ class PlayScene extends Phaser.Scene {
     this.tweens.add({ targets: this.ctaButton, alpha: { from: 0, to: 1 }, duration: 300 });
   }
 
-  // For CTA validation in execute.py - forces CTA to appear on "end" (but farm_idle has no end)
   _end(won) {
     if (CTA_ENABLED && !this.ctaButton) {
       this._createCTAButton();
@@ -2824,14 +2886,11 @@ class PlayScene extends Phaser.Scene {
   }
 
   update(time, dt) {
-    // Track session time on Game instance for validation
     this.game.sessionTime = (this.game.sessionTime || 0) + dt;
 
-    // Update plot crop visibility (growing animation)
     this.plots.forEach(plot => {
       if (!plot.harvested && this.time.now >= plot.readyAt) {
         plot.cropSprite.setVisible(true);
-        // Gentle pulse - only start once per ready transition
         if (!plot.pulseTween) {
           plot.pulseTween = this.tweens.add({
             targets: plot.cropSprite,
@@ -2843,7 +2902,6 @@ class PlayScene extends Phaser.Scene {
           });
         }
       }
-      // Regrow bug fix: clear stale harvested flag once regrow deadline passes
       if (plot.harvested && this.time.now >= plot.readyAt) {
         plot.harvested = false;
       }
@@ -2851,7 +2909,14 @@ class PlayScene extends Phaser.Scene {
 
     if (this.state !== STATE.PLAYING) return;
 
-    // Auto-assist logic
+    // Check if farmer reached stall to sell
+    if (this.carrying === 'crop') {
+      const distToStall = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, STALL_X + STALL_W / 2, STALL_Y + STALL_H / 2);
+      if (distToStall < 60) {
+        this._sellAtStall();
+      }
+    }
+
     this._updateAutoAssist(dt);
   }
 }
@@ -2859,10 +2924,16 @@ class PlayScene extends Phaser.Scene {
 const config = {
   type: Phaser.AUTO,
   parent: 'game-root',
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: W, height: H },
+  scale: { 
+    mode: Phaser.Scale.FIT, 
+    autoCenter: Phaser.Scale.CENTER_BOTH, 
+    width: W, 
+    height: H 
+  },
   backgroundColor: '#8fbc8f',
   scene: [PlayScene],
   audio: { noAudio: true },
+  resolution: 2,  // Cap effective DPR at 2x for performance
 };
 
 window.addEventListener('load', () => { new Phaser.Game(config); });</script>
