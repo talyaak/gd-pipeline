@@ -80,6 +80,34 @@ python3 "$FILTER_REPO" \
   --email-callback 'return b"talyaak@users.noreply.github.com"' \
   --force
 
+echo "== adding Hermes co-author trailer (default: yes, except commits proven Claude-direct) =="
+# Almost all of this repo's history is Hermes's own output -- either the
+# autonomous cron running for weeks before any of this was reviewed
+# interactively, or work dispatched to a Hermes worktree and merged in. Only a
+# short, explicit list of commits below are provably Claude-direct with zero
+# Hermes involvement (verified against this session's own record of who wrote
+# what); everything else defaults to crediting Hermes as co-author. Merge
+# commits are skipped -- they're authored by whoever ran the merge, not a
+# stand-in for the branch's own contributors.
+python3 "$FILTER_REPO" --commit-callback '
+trailer = b"Co-Authored-By: Hermes <hermes-agent@users.noreply.github.com>"
+claude_direct_substrings = [
+    b"fix(execute): don'"'"'t let an unrecognized game.state shadow engagement fallbacks",
+    b"fix(harness): add missing spawn/wave consts to bullet_hell_shmup manifest",
+    b"fix(tests): fix LLM mock convention in test_llm_failure_mid_spec_reports_explicit_failure",
+    b"Add scripts/publish_to_github.sh: the only sanctioned way to push publicly",
+    b"chore(publish): attribute every pushed commit to talyaak, not personal email or cron identity",
+    b"docs: HANDOVER.md session log",
+    b"docs(hub): add farm_idle + bullet_hell_shmup, fix path for GitHub Pages",
+]
+is_merge = len(commit.parents) > 1
+already_tagged = trailer in commit.message
+is_claude_direct = any(s in commit.message for s in claude_direct_substrings)
+if not is_merge and not already_tagged and not is_claude_direct:
+    msg = commit.message.rstrip(b"\n")
+    commit.message = msg + b"\n\n" + trailer + b"\n"
+' --force
+
 echo "== verifying: none of the stripped files/messages/email survive =="
 for f in "${STRIP_FILES[@]}"; do
   if [ "$(git log --all --oneline -- "$f" | wc -l)" -ne 0 ]; then
