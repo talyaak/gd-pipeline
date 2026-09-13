@@ -22,5 +22,6 @@
   "HELPER_UPGRADE_COST_T2": 500,
   "JOYSTICK_RADIUS": 120,
   "MAGNET_RADIUS": 60,
+  "HAPTICS_ENABLED": 1,
   "COLORS": ["0x8bc34a", "0xffd700", "0xe65100", "0xffb300", "0xff7043", "0x8d6e63"]
 }

@@ -2211,9 +2211,13 @@ const HELPER_UPGRADE_COST_T1 = 200;
 const HELPER_UPGRADE_COST_T2 = 500;
 const HELPER_INTERVAL_T1 = 8000;
 const HELPER_INTERVAL_T2 = 4000;
+const HELPER_MAX_CARRY = 3;  // helper carries up to 3 crops before selling
 
 // CTA
 const CTA_ENABLED = 0;
+
+// Haptics
+const HAPTICS_ENABLED = 1;
 
 // Colors (substitutable via manifest COLORS param)
 const COLORS = [0x8bc34a, 0xffd700, 0xe65100, 0xffb300, 0xff7043, 0x8d6e63];
@@ -2242,6 +2246,14 @@ const UPGRADE_PANEL_H = 448;          // 280 * 1.6
 let safeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 let isLandscape = false;
 let rotateOverlay = null;
+
+// Haptic vibration helper
+function vibrate(ms) {
+  if (!HAPTICS_ENABLED) return;
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    try { navigator.vibrate(ms); } catch (e) { /* iOS Safari throws if not supported */ }
+  }
+}
 
 // Read safe-area insets from CSS custom properties
 function updateSafeInsets() {
@@ -2325,14 +2337,33 @@ class PlayScene extends Phaser.Scene {
     this.farmer = this.add.circle(W / 2, PLOT_AREA_TOP + 320, FARMER_RADIUS, 0xe65100);
     this.farmer.setStrokeStyle(5, 0xbf360c, 1);
 
-    // Carried crop indicator
-    this.carryIndicator = this.add.circle(W / 2, PLOT_AREA_TOP + 320 - 56, 19, 0x8bc34a, 0);
-    this.carryIndicator.setStrokeStyle(5, 0x8bc34a, 1);
-    this.carryIndicator.setVisible(false);
+    // Carried crop indicator - now a stack container
+    this.carryStack = this.add.container(this.farmer.x, this.farmer.y - 56);
+    this.carryStack.setVisible(false);
+    this.carrySprites = [];
 
-    // Coins display (HUD - will be repositioned on resize)
-    this.coinsText = this.add.text(W / 2, COINS_Y, 'Coins: 0', {
+    // Backward compatibility for tests
+    this.carrying = null;
+    this.carryIndicator = {
+      x: this.farmer.x,
+      y: this.farmer.y - 56,
+      visible: false,
+      setVisible: function(val) { this.visible = val; },
+      getBounds: () => ({ x: this.farmer.x - 19, y: this.farmer.y - 75, width: 38, height: 38 })
+    };
+
+    // Coins display (HUD - will be repositioned on resize) - TOP LEFT
+    this.coinsText = this.add.text(16, COINS_Y, 'Coins: 0', {
       fontFamily: 'monospace', fontSize: '38px', color: '#000'
+    }).setOrigin(0, 0.5);
+
+    // Progress bar top-center: progress toward next plot-grid cap (MAX_PLOTS)
+    this.progressBarBg = this.add.rectangle(W / 2, COINS_Y, 400, 24, 0x222222, 0.7);
+    this.progressBarBg.setStrokeStyle(2, 0x444444, 1);
+    this.progressBarFill = this.add.rectangle(W / 2 - 200 + 4, COINS_Y, 0, 16, 0xffd700, 1);
+    this.progressBarFill.setOrigin(0, 0.5);
+    this.progressText = this.add.text(W / 2, COINS_Y, 'Plots: 5 / 18', {
+      fontFamily: 'monospace', fontSize: '18px', color: '#fff'
     }).setOrigin(0.5);
 
     // Upgrade panel (shop) - anchored at bottom
@@ -2497,9 +2528,17 @@ class PlayScene extends Phaser.Scene {
     const safeBottomLogical = safeInsets.bottom / scaleY;
     const safeLeftLogical = safeInsets.left / scaleX;
 
-    // Coin counter: top center, below safe-area top
+    // Coin counter: top-left, below safe-area top, with 16pt margin from left edge
     if (this.coinsText) {
-      this.coinsText.setPosition(W / 2, Math.max(COINS_Y, safeTopLogical + 32));
+      this.coinsText.setPosition(Math.max(16 + safeLeftLogical, 16), Math.max(COINS_Y, safeTopLogical + 32));
+    }
+
+    // Progress bar: top-center, below safe-area top
+    if (this.progressBarBg && this.progressBarFill && this.progressText) {
+      const y = Math.max(COINS_Y, safeTopLogical + 32);
+      this.progressBarBg.setPosition(W / 2, y);
+      this.progressBarFill.setPosition(W / 2 - 200 + 4, y);
+      this.progressText.setPosition(W / 2, y);
     }
 
     // Upgrade panel: bottom, above safe-area bottom
@@ -2650,6 +2689,13 @@ class PlayScene extends Phaser.Scene {
     const crop = this.add.circle(x + PLOT_SIZE / 2, y + PLOT_SIZE / 2, 29, 0x8bc34a);
     crop.setVisible(false);
 
+    // Progress bar for crop growth (on the plot itself)
+    const progressBarBg = this.add.rectangle(x + PLOT_SIZE / 2, y - 16, PLOT_SIZE - 8, 8, 0x000000, 0.5);
+    progressBarBg.setOrigin(0.5, 1);
+    const progressBarFill = this.add.rectangle(x + 4, y - 16, 0, 6, 0x8bc34a, 1);
+    progressBarFill.setOrigin(0, 1);
+    progressBarFill.setVisible(false);
+
     this.plots.push({
       index,
       x,
@@ -2657,6 +2703,8 @@ class PlayScene extends Phaser.Scene {
       readyAt: this.time.now + CROP_GROW_MS * this.growSpeedMult,
       plotSprite: plot,
       cropSprite: crop,
+      progressBarBg,
+      progressBarFill,
       harvested: false,
       pulseTween: null
     });
@@ -2673,7 +2721,7 @@ class PlayScene extends Phaser.Scene {
 
   _harvestPlot(index) {
     if (this.state !== STATE.PLAYING) return;
-    if (this.carrying === 'crop') return;
+    // Allow carrying multiple crops (stacking)
     const plot = this.plots[index];
     if (!plot) return;
     if (plot.harvested) return;
@@ -2685,24 +2733,165 @@ class PlayScene extends Phaser.Scene {
       plot.pulseTween.stop();
       plot.pulseTween = null;
     }
+    // Hide plot progress bar
+    if (plot.progressBarFill) plot.progressBarFill.setVisible(false);
+    if (plot.progressBarBg) plot.progressBarBg.setVisible(false);
     // Schedule next growth cycle so update loop doesn't immediately reset harvested
     plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
+    
+    // Add to carry stack
+    this._addToCarryStack();
+    
+    // Collect feedback: tiny scale pulse on farmer + haptic
+    this.tweens.add({
+      targets: this.farmer,
+      scale: { from: 1, to: 1.15 },
+      duration: 80,
+      yoyo: true,
+      ease: 'Sine.easeOut'
+    });
+    vibrate(15);
+  }
+
+  _addToCarryStack() {
+    // Create a crop sprite for the stack
+    const cropSprite = this.add.circle(0, 0, 16, 0x8bc34a);
+    cropSprite.setStrokeStyle(2, 0x4caf50, 1);
+    
+    // Calculate position in stack - stack grows upward and slightly outward
+    const stackIndex = this.carrySprites.length;
+    const angle = (stackIndex * 0.3) - 0.3; // slight fan
+    const radius = 18 + stackIndex * 3;
+    const offsetX = Math.sin(angle) * radius;
+    const offsetY = -Math.cos(angle) * radius - stackIndex * 4;
+    
+    cropSprite.x = offsetX;
+    cropSprite.y = offsetY;
+    cropSprite.setScale(0.3);
+    
+    this.carryStack.add(cropSprite);
+    this.carrySprites.push(cropSprite);
+    
+    // Animate in with stagger
+    this.tweens.add({
+      targets: cropSprite,
+      scale: { from: 0.3, to: 1 },
+      duration: 200,
+      ease: 'Back.easeOut',
+      delay: stackIndex * 30
+    });
+    
+    // Show stack if first item
+    if (this.carrySprites.length === 1) {
+      this.carryStack.setVisible(true);
+    }
+    
+    // Update backward compatibility
     this.carrying = 'crop';
-    this.carryIndicator.setVisible(true);
+    this.carryIndicator.visible = true;
+    this.carryIndicator.x = this.farmer.x;
+    this.carryIndicator.y = this.farmer.y - 56;
+    
+    // Update stack position to follow farmer
+    this._updateCarryStackPosition();
+  }
+
+  _clearCarryStack() {
+    this.carrySprites.forEach(sprite => sprite.destroy());
+    this.carrySprites = [];
+    this.carryStack.setVisible(false);
+    
+    // Update backward compatibility
+    this.carrying = null;
+    this.carryIndicator.visible = false;
     this.carryIndicator.x = this.farmer.x;
     this.carryIndicator.y = this.farmer.y - 56;
   }
 
+  _updateCarryStackPosition() {
+    this.carryStack.x = this.farmer.x;
+    this.carryStack.y = this.farmer.y - 56;
+    
+    // Update backward compatibility
+    this.carryIndicator.x = this.farmer.x;
+    this.carryIndicator.y = this.farmer.y - 56;
+  }
+
+  _flyCoinsToCounter(amount, sourceX, sourceY) {
+    const coinCount = Math.min(amount, 8); // Max 8 coin particles
+    const counterPos = this.coinsText.getTopLeft();
+    const targetX = counterPos.x + this.coinsText.width / 2;
+    const targetY = counterPos.y + this.coinsText.height / 2;
+    
+    for (let i = 0; i < coinCount; i++) {
+      const coin = this.add.circle(sourceX, sourceY, 8, 0xffd700);
+      coin.setStrokeStyle(2, 0xf57f17, 1);
+      
+      // Stage 1: scatter burst
+      const angle = Math.random() * Math.PI * 2;
+      const burstDist = 50 + Math.random() * 50;
+      const burstX = sourceX + Math.cos(angle) * burstDist;
+      const burstY = sourceY + Math.sin(angle) * burstDist;
+      
+      // Stage 2: ease-in to counter
+      this.tweens.add({
+        targets: coin,
+        x: burstX,
+        y: burstY,
+        scale: { from: 0.5, to: 1.2 },
+        duration: 150,
+        ease: 'Cubic.easeOut',
+        onComplete: () => {
+          // Staggered arrival
+          const delay = i * 40 + Math.random() * 40;
+          this.time.delayedCall(delay, () => {
+            this.tweens.add({
+              targets: coin,
+              x: targetX,
+              y: targetY,
+              scale: { from: 1.2, to: 0 },
+              alpha: { from: 1, to: 0 },
+              duration: 400,
+              ease: 'Cubic.easeIn',
+              onComplete: () => {
+                coin.destroy();
+                // Punch-scale the counter on first coin arrival
+                if (i === 0) {
+                  this.tweens.add({
+                    targets: this.coinsText,
+                    scale: { from: 1, to: 1.3 },
+                    duration: 100,
+                    yoyo: true,
+                    ease: 'Sine.easeOut'
+                  });
+                }
+              }
+            });
+          });
+        }
+      });
+    }
+  }
+
   _sellAtStall() {
-    if (this.carrying !== 'crop') return;
-    this.coins += CROP_SELL_VALUE + this.sellValueBonus;
+    if (this.carrySprites.length === 0) return;
+    const sellAmount = this.carrySprites.length * (CROP_SELL_VALUE + this.sellValueBonus);
+    this.coins += sellAmount;
     this.coinsText.setText('Coins: ' + this.coins);
     this.game.registry.set('score', this.coins);
-    this.carrying = null;
-    this.carryIndicator.setVisible(false);
+    
+    // Fly coins from farmer to counter
+    this._flyCoinsToCounter(this.carrySprites.length, this.farmer.x, this.farmer.y - 56);
+    
+    // Sell feedback: particle burst + haptic
     Juice.ParticleBurst.create(this, STALL_X + STALL_W / 2, STALL_Y, {
       color: 0xffd700, count: 12, speed: 128, size: 8
     });
+    vibrate(20);
+    
+    // Clear carry stack
+    this._clearCarryStack();
+    
     if (CTA_ENABLED && !this.ctaButton) {
       this._createCTAButton();
     }
@@ -2746,6 +2935,13 @@ class PlayScene extends Phaser.Scene {
     this.coinsText.setText('Coins: ' + this.coins);
     this.game.registry.set('score', this.coins);
     this._refreshUpgradeUI();
+    
+    // Upgrade feedback: camera shake + celebration burst + haptic
+    this.cameras.main.shake(200, 0.015);
+    Juice.ParticleBurst.create(this, W / 2, H - UPGRADE_PANEL_H / 2, {
+      color: 0xffd700, count: 24, speed: 160, size: 10, spread: Math.PI * 1.5
+    });
+    vibrate(30);
   }
 
   _refreshUpgradeUI() {
@@ -2855,8 +3051,7 @@ class PlayScene extends Phaser.Scene {
     this.farmer.x = Phaser.Math.Clamp(this.farmer.x, farmerMinX, farmerMaxX);
     this.farmer.y = Phaser.Math.Clamp(this.farmer.y, farmerMinY, farmerMaxY);
     
-    this.carryIndicator.x = this.farmer.x;
-    this.carryIndicator.y = this.farmer.y - 56;
+    this._updateCarryStackPosition();
   }
 
   _moveFarmerTowards(targetX, targetY, dt) {
@@ -2867,15 +3062,13 @@ class PlayScene extends Phaser.Scene {
     if (dist < 3) {
       this.farmer.x = targetX;
       this.farmer.y = targetY;
-      this.carryIndicator.x = this.farmer.x;
-      this.carryIndicator.y = this.farmer.y - 56;
+      this._updateCarryStackPosition();
       return;
     }
     const moveDist = currentSpeed * (dt / 1000);
     this.farmer.x += (dx / dist) * moveDist;
     this.farmer.y += (dy / dist) * moveDist;
-    this.carryIndicator.x = this.farmer.x;
-    this.carryIndicator.y = this.farmer.y - 56;
+    this._updateCarryStackPosition();
   }
 
   _updateMagnet() {
@@ -2888,14 +3081,14 @@ class PlayScene extends Phaser.Scene {
         const cropCenterX = plot.x + PLOT_SIZE / 2;
         const cropCenterY = plot.y + PLOT_SIZE / 2;
         const dist = Phaser.Math.Distance.Between(fx, fy, cropCenterX, cropCenterY);
-        if (dist < MAGNET_RADIUS && this.carrying !== 'crop') {
+        if (dist < MAGNET_RADIUS) {
           this._harvestPlot(plot.index);
         }
       }
     });
 
-    // Check stall: sell carried crop if farmer is within MAGNET_RADIUS of stall
-    if (this.carrying === 'crop') {
+    // Check stall: sell carried crops if farmer is within MAGNET_RADIUS of stall
+    if (this.carrySprites.length > 0) {
       const stallCenterX = STALL_X + STALL_W / 2;
       const stallCenterY = STALL_Y + STALL_H / 2;
       const distToStall = Phaser.Math.Distance.Between(fx, fy, stallCenterX, stallCenterY);
@@ -2944,10 +3137,20 @@ class PlayScene extends Phaser.Scene {
             plot.pulseTween.stop();
             plot.pulseTween = null;
           }
+          // Hide plot progress bar
+          if (plot.progressBarFill) plot.progressBarFill.setVisible(false);
+          if (plot.progressBarBg) plot.progressBarBg.setVisible(false);
           plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
-          helper.carrying = true;
-          helper.state = 'moving_to_stall';
-          helper.target = { x: STALL_X + STALL_W / 2, y: STALL_Y + STALL_H / 2 };
+          // Add to player's carry stack (not helper's own carrying)
+          this._addToCarryStack();
+          // Helper can carry multiple crops before selling
+          helper.carryCount = (helper.carryCount || 0) + 1;
+          if (helper.carryCount >= HELPER_MAX_CARRY) {
+            helper.state = 'moving_to_stall';
+            helper.target = { x: STALL_X + STALL_W / 2, y: STALL_Y + STALL_H / 2 };
+          } else {
+            helper.state = 'seeking_plot';
+          }
         } else {
           helper.state = 'idle';
         }
@@ -2958,17 +3161,14 @@ class PlayScene extends Phaser.Scene {
       this._moveHelperTowards(helper, helper.target.x, helper.target.y, dt, speed);
       const dist = Phaser.Math.Distance.Between(helper.x, helper.y, helper.target.x, helper.target.y);
       if (dist < MAGNET_RADIUS) {
-        this.coins += CROP_SELL_VALUE + this.sellValueBonus;
-        this.coinsText.setText('Coins: ' + this.coins);
-        this.game.registry.set('score', this.coins);
-        helper.carrying = false;
-        Juice.ParticleBurst.create(this, STALL_X + STALL_W / 2, STALL_Y, {
-          color: 0xffd700, count: 8, speed: 80, size: 5
-        });
-        if (CTA_ENABLED && !this.ctaButton) {
-          this._createCTAButton();
+        // Sell from player's carry stack
+        if (this.carrySprites.length > 0) {
+          this._sellAtStall();
         }
+        helper.carryCount = 0;
         helper.state = 'idle';
+      } else {
+        console.log(`Helper moving to stall: dist=${dist.toFixed(1)}, target=(${helper.target.x}, ${helper.target.y}), pos=(${helper.x.toFixed(1)}, ${helper.y.toFixed(1)})`);
       }
     }
   }
@@ -3023,11 +3223,34 @@ class PlayScene extends Phaser.Scene {
             ease: 'Sine.easeInOut'
           });
         }
+        // Show progress bar at full when ready
+        if (plot.progressBarFill) {
+          plot.progressBarFill.setVisible(true);
+          plot.progressBarFill.width = plot.progressBarBg.width - 8;
+          plot.progressBarBg.setVisible(true);
+        }
+      } else if (!plot.harvested) {
+        // Update progress bar based on growth progress
+        const progress = (this.time.now - (plot.readyAt - CROP_GROW_MS * this.growSpeedMult)) / (CROP_GROW_MS * this.growSpeedMult);
+        const clampedProgress = Phaser.Math.Clamp(progress, 0, 1);
+        if (plot.progressBarFill && plot.progressBarBg) {
+          plot.progressBarFill.setVisible(true);
+          plot.progressBarFill.width = (plot.progressBarBg.width - 8) * clampedProgress;
+          plot.progressBarBg.setVisible(true);
+        }
       }
       if (plot.harvested && this.time.now >= plot.readyAt) {
         plot.harvested = false;
+        // Progress bar will be reset on next growth cycle in the above else-if
       }
     });
+
+    // Update top-center progress bar: plots owned / MAX_PLOTS
+    if (this.progressBarFill && this.progressBarBg && this.progressText) {
+      const progress = Math.min(this.plots.length / MAX_PLOTS, 1);
+      this.progressBarFill.width = 392 * progress;
+      this.progressText.setText('Plots: ' + this.plots.length + ' / ' + MAX_PLOTS);
+    }
 
     if (this.state !== STATE.PLAYING) return;
 
