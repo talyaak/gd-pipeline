@@ -820,5 +820,187 @@ def test_screen_utilization(viewport_width, viewport_height, viewport_name, dpr,
                        f"viewport={viewport_width}x{viewport_height})")
 
 
+@pytest.mark.slow
+@pytest.mark.parametrize("viewport_width,viewport_height,viewport_name", VIEWPORTS)
+@pytest.mark.parametrize("dpr", DPR_VALUES)
+def test_magnet_radius_manifest_substitution(viewport_width, viewport_height, viewport_name, dpr, tmp_path):
+    """Test that MAGNET_RADIUS from manifest substitution actually changes runtime behavior.
+
+    This test builds two harness variants with different MAGNET_RADIUS values (30 and 100)
+    using the reskin pipeline's manifest substitution, places a crop at a fixed distance
+    (65px) between the two radii, and asserts it's auto-collected in the 100-radius
+    variant but NOT in the 30-radius variant within the same time window.
+
+    This proves manifest substitution reaches runtime behavior, not just that a hardcoded
+    60 works.
+    """
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    # We'll test at one representative viewport (iPhone_12) to keep runtime reasonable
+    if viewport_name != "iPhone_12" or dpr != 2:
+        pytest.skip("Run manifest substitution test only at iPhone_12 DPR=2 for speed")
+
+    # Build two reskinned harnesses with different MAGNET_RADIUS values
+    brief_base = {
+        "genre": "farm_idle",
+        "palette": ["0x8bc34a", "0xffd700", "0xe65100", "0xffb300", "0xff7043", "0x8d6e63"],
+        "copy": {
+            "title": "Test Farm",
+            "cta_text": "PLAY FULL VERSION",
+            "cta_link": "https://example.com"
+        },
+        "logo_asset_path": "",
+        "visual_theme": "warm_cute",
+        "CTA_ENABLED": 0,
+        "MOVE_SPEED": 300,
+        "PLOT_COUNT": 5,
+        "CROP_GROW_MS": 4000,
+        "CROP_SELL_VALUE": 10,
+        "PLOT_UPGRADE_BASE_COST": 50,
+        "PLOT_UPGRADE_COST_GROWTH": 150,
+        "BOOTS_UPGRADE_COST_T1": 100,
+        "BOOTS_UPGRADE_COST_T2": 250,
+        "BOOTS_UPGRADE_COST_T3": 500,
+        "HELPER_UPGRADE_COST_T1": 200,
+        "HELPER_UPGRADE_COST_T2": 500,
+        "JOYSTICK_RADIUS": 80,
+        "HAPTICS_ENABLED": 1,
+        "COLORS": ["0x8bc34a", "0xffd700", "0xe65100", "0xffb300", "0xff7043", "0x8d6e63"]
+    }
+
+    test_results = {}
+    for radius in [30, 100]:
+        brief = brief_base.copy()
+        brief["MAGNET_RADIUS"] = radius
+
+        # Write brief to temp file
+        brief_path = tmp_path / f"brief_magnet_{radius}.json"
+        brief_path.write_text(json.dumps(brief))
+
+        # Run reskin pipeline
+        reskin_dir = Path(__file__).parent.parent / "harness" / f"farm_idle_reskinned"
+        reskin_dir.mkdir(parents=True, exist_ok=True)
+
+        cmd = [
+            sys.executable, "-m", "pipeline.reskin",
+            str(brief_path),
+            "-o", str(reskin_dir),
+            "--build",
+            "--title", f"Test Farm Magnet {radius}"
+        ]
+        result = subprocess.run(cmd, cwd=Path(__file__).parent.parent, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            pytest.fail(f"Reskin build failed for MAGNET_RADIUS={radius}: {result.stdout} {result.stderr}")
+
+        # Run Playwright test on the built HTML
+        html_path = Path(__file__).parent.parent / "harness" / f"farm_idle_reskinned" / f"brief_magnet_{radius}.html"
+        assert html_path.exists(), f"HTML not found: {html_path}"
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch(args=["--no-sandbox"])
+            page = browser.new_page(
+                viewport={"width": viewport_width, "height": viewport_height},
+                device_scale_factor=dpr,
+                has_touch=True,
+                is_mobile=True
+            )
+
+            page.goto(f"file://{html_path.absolute()}")
+            page.wait_for_load_state("networkidle")
+            page.wait_for_timeout(2000)
+            page.wait_for_function("window.__GAME__ !== undefined", timeout=10000)
+            page.wait_for_timeout(500)
+
+            # Start the game
+            page.evaluate("() => { window.__GAME__.scene.scenes[0]._begin(); }")
+            page.wait_for_timeout(200)
+
+            # Force the first plot to be ready and position farmer at fixed distance 65px
+            # This is BETWEEN the two radii: 30 < 65 < 100
+            # So radius=100 should collect, radius=30 should NOT
+            test_distance = 65
+            result = page.evaluate(f"""
+                () => {{
+                    const scene = window.__GAME__.scene.scenes[0];
+                    const plot = scene.plots[0];
+
+                    // Make plot ready now
+                    plot.readyAt = scene.time.now;
+                    plot.cropSprite.setVisible(true);
+                    plot.harvested = false;
+
+                    // Position farmer at fixed test_distance from plot center
+                    const plotCenterX = plot.x + 48;  // PLOT_SIZE/2 = 48
+                    const plotCenterY = plot.y + 48;
+                    const angle = 0.5;  // radians
+                    scene.farmer.x = plotCenterX + {test_distance} * Math.cos(angle);
+                    scene.farmer.y = plotCenterY + {test_distance} * Math.sin(angle);
+                    scene.carryIndicator.x = scene.farmer.x;
+                    scene.carryIndicator.y = scene.farmer.y - 56;
+
+                    return {{
+                        farmerX: scene.farmer.x,
+                        farmerY: scene.farmer.y,
+                        plotCenterX: plotCenterX,
+                        plotCenterY: plotCenterY,
+                        plotReady: plot.readyAt <= scene.time.now,
+                        carrying: scene.carrying,
+                        testDistance: {test_distance}
+                    }};
+                }}
+            """)
+
+            if not result["plotReady"]:
+                pytest.fail(f"MAGNET_RADIUS={radius}: Plot not ready after forcing readyAt")
+
+            # Wait for magnet to trigger harvest (several frame updates)
+            page.wait_for_timeout(500)
+
+            # Check if crop was collected
+            collected = page.evaluate("""
+                () => {
+                    const scene = window.__GAME__.scene.scenes[0];
+                    return {
+                        carrying: scene.carrying,
+                        plot0Harvested: scene.plots[0].harvested,
+                        carryIndicatorVisible: scene.carryIndicator.visible
+                    };
+                }
+            """)
+
+            carrying = collected["carrying"]
+            plot0_harvested = collected["plot0Harvested"]
+            carry_visible = collected["carryIndicatorVisible"]
+            collected_flag = (carrying == 'crop' and plot0_harvested and carry_visible)
+
+            test_results[radius] = {
+                "collected": collected_flag,
+                "carrying": carrying,
+                "plot0Harvested": plot0_harvested,
+                "carryIndicatorVisible": carry_visible
+            }
+
+            browser.close()
+
+    # Assertions: radius=100 should collect, radius=30 should NOT
+    radius_30 = test_results[30]
+    radius_100 = test_results[100]
+
+    if not radius_100["collected"]:
+        pytest.fail(f"MAGNET_RADIUS=100: Expected crop to be collected at distance 65px (within 100), "
+                    f"but got carrying={radius_100['carrying']}, plot0Harvested={radius_100['plot0Harvested']}, "
+                    f"carryVisible={radius_100['carryIndicatorVisible']}")
+
+    if radius_30["collected"]:
+        pytest.fail(f"MAGNET_RADIUS=30: Expected crop NOT to be collected at distance 65px (outside 30), "
+                    f"but got carrying={radius_30['carrying']}, plot0Harvested={radius_30['plot0Harvested']}, "
+                    f"carryVisible={radius_30['carryIndicatorVisible']}")
+
+    # Success: manifest substitution works and changes behavior
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
