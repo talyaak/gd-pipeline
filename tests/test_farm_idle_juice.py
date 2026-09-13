@@ -62,7 +62,7 @@ def test_stacking_visual_reflects_carried_count():
 
             // After 3 harvests, carryCount should have hit HELPER_MAX_CARRY
             // and helper.state should already be 'moving_to_stall'.
-            helper.x = 150; helper.y = 1150;  // near the stall
+            helper.x = 176; helper.y = 1308;  // STALL_X + STALL_W/2, STALL_Y + STALL_H/2
             helper.sprite.x = helper.x; helper.sprite.y = helper.y;
             scene.update(scene.time.now, 16);
             console.log(`After sell attempt: carrySprites=${scene.carrySprites.length}, helper.state=${helper.state}`);
@@ -137,7 +137,7 @@ def test_coin_fly_to_counter_completes_and_updates():
             console.log(`After harvest: carrySprites=${scene.carrySprites.length}, helper.carryCount=${helper.carryCount}, helper.state=${helper.state}`);
 
             // Teleport helper near stall and tick again to sell.
-            helper.x = 150; helper.y = 1150;
+            helper.x = 176; helper.y = 1308;  // STALL_X + STALL_W/2, STALL_Y + STALL_H/2
             helper.sprite.x = helper.x; helper.sprite.y = helper.y;
             scene.update(scene.time.now, 16);
 

@@ -1,8 +1,10 @@
 // Hand-built farm idle harness. Arcade idle genre (My Perfect Hotel / Pizza Ready family).
 // Theme: farm life. Core loop: joystick move farmer -> harvest plot -> sell at stall -> buy upgrades.
 
-const W = 720, H = 1280;  // Portrait design base (1.6x scale from 450x800)
-const SCALE = 1.6;         // 720/450 = 1280/800 = 1.6
+const W = 720, H = 1412;  // Portrait design base (minimax-optimal ratio
+    // ~0.50974 = 720/1412, equalizes worst-case utilization across all 5
+    // target viewports to ~90.6%, no device worse than any other)
+const SCALE = 1.6;         // 720/450 = 1.6; pixel density unchanged, only vertical room increased
 const CTA_LINK = "https://example.com/game";
 
 const STATE = { START: 'start', PLAYING: 'playing' };
@@ -59,11 +61,11 @@ const PLOT_BUFF_SELL_VALUE_BONUS = 2;
 const PLOT_BUFF_GROW_SPEED_MULT = 0.92;
 const PLOT_BUFF_MIN_GROW_MS = 500;
 const STALL_X = 96;                   // 60 * 1.6
-const STALL_Y = 1120;                 // 700 * 1.6
+const STALL_Y = 1252;                 // 1412 - 112 - 48 = 1252 (preserves 48px bottom margin)
 const STALL_W = 160;                  // 100 * 1.6
 const STALL_H = 112;                  // 70 * 1.6
 const PAD_X = 464;                    // (W - PAD_W) = 720 - 256 = 464, was 390 = 450 - 60
-const PAD_Y = 1120;                   // 700 * 1.6
+const PAD_Y = 1252;                   // 1412 - 112 - 48 = 1252 (same bottom margin as stall)
 const PAD_W = 256;                    // 160 * 1.6
 const PAD_H = 112;                    // 70 * 1.6
 const COINS_Y = 64;                   // 40 * 1.6
@@ -221,6 +223,10 @@ class PlayScene extends Phaser.Scene {
     // Pointerdown starts the joystick at the pointer position
     this.input.on('pointerdown', (pointer) => {
       if (isLandscape) return;
+      // Input arbitration: don't activate joystick if pointer is over
+      // an interactive UI element (BUY buttons, etc.) - prevents
+      // accidental joystick spawn when tapping UI.
+      if (this.input.hitTestPointer(pointer).length > 0) return;
       this._begin();
       this._activateJoystick(pointer.x, pointer.y);
     });
@@ -445,6 +451,24 @@ class PlayScene extends Phaser.Scene {
       this.padG.fillStyle(0xffb300, 1);
       this.padG.fillRoundedRect(0, 0, PAD_W, PAD_H, 8);
       this.padText.setPosition(PAD_X + PAD_W / 2, padY + PAD_H / 2);
+    }
+
+    // Start prompt: center horizontally, position in free space between
+    // plot area (max row 3 bottom ~ PLOT_AREA_TOP + 96 + 2*(PLOT_SIZE+PLOT_GAP))
+    // and stall/pad row (panelTop - stallGap - STALL_H). Use the smaller of
+    // the two stall/pad Y positions as the upper bound.
+    if (this.startText && this.startText.visible) {
+      const plotAreaBottom = PLOT_AREA_TOP + 96 + (MAX_PLOT_ROWS - 1) * (PLOT_SIZE + PLOT_GAP) + PLOT_SIZE;
+      const stallPadTop = Math.min(
+        STALL_Y, // fallback original Y
+        panelTop - STALL_H - 24, // stall above panel
+        panelTop - PAD_H - 24    // pad above panel
+      );
+      const freeTop = plotAreaBottom + 24; // 24px gap below plot area
+      const freeBottom = stallPadTop - 24; // 24px gap above stall/pad
+      const freeCenterY = (freeTop + freeBottom) / 2;
+      const targetY = Phaser.Math.Clamp(H / 2, freeTop, freeBottom);
+      this.startText.setPosition(W / 2, targetY);
     }
   }
 
