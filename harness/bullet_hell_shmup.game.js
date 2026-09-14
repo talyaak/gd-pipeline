@@ -112,6 +112,7 @@ class PlayScene extends Phaser.Scene {
     this.input.on('pointerdown', (p) => {
       this._touchStartTime = this.time.now;
       this._touchStartPos = { x: p.x, y: p.y };
+      this._advanceState();
     });
     this.input.on('pointermove', (p) => {
       if (!p.isDown) return;
@@ -126,8 +127,31 @@ class PlayScene extends Phaser.Scene {
       if (heldMs > 400 && moved < 30) this._useBomb(); // long press = bomb
     });
 
+    // STATE.START -> PLAYING and DEAD/WIN -> restart used to be gated on
+    // Phaser.Input.Keyboard.JustDown()/pointer.justDown polled inside
+    // update(). That flag is only true for the single game step immediately
+    // following the down-transition; if that step's update() is delayed or
+    // coalesced (headless Chromium's rAF loop is not reliably advanced by
+    // real-time waits under CI load), the edge is lost forever and the scene
+    // is stranded in STATE.START. Every other harness in this repo (see e.g.
+    // endless_runner.game.js's _onAction, match_3.game.js's _onPointerDown)
+    // avoids this by binding real Phaser input EVENTS instead of polling a
+    // per-frame flag -- events are queued and guaranteed to fire exactly
+    // once per native browser event regardless of frame timing. Match that
+    // convention here.
+    this.input.keyboard.on('keydown-SPACE', () => this._advanceState());
+    this.input.keyboard.on('keydown-Z', () => this._advanceState());
+
     window.__GAME__ = this.game;
     this.game.registry.set('score', 0);
+  }
+
+  _advanceState() {
+    if (this.state === STATE.START) {
+      this._startGame();
+    } else if (this.state === STATE.DEAD || this.state === STATE.WIN) {
+      this.scene.restart();
+    }
   }
 
   _startGame() {
@@ -422,18 +446,11 @@ class PlayScene extends Phaser.Scene {
   }
 
   update(time, dt) {
-    if (this.state === STATE.START) {
-      if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.zKey) ||
-          this.input.activePointer.justDown) {
-        this._startGame();
-      }
-      return;
-    }
-
-    if (this.state === STATE.DEAD || this.state === STATE.WIN) {
-      if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || this.input.activePointer.justDown) {
-        this.scene.restart();
-      }
+    // State transitions out of START/DEAD/WIN are handled by _advanceState(),
+    // bound to real input events (keydown-SPACE/Z, pointerdown) in create().
+    // See the comment there for why: this used to poll JustDown()/justDown
+    // here, which raced under CI load.
+    if (this.state === STATE.START || this.state === STATE.DEAD || this.state === STATE.WIN) {
       return;
     }
 
