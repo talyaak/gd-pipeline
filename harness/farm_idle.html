@@ -2286,11 +2286,9 @@ window.addEventListener('resize', () => {
 class PlayScene extends Phaser.Scene {
   constructor() {
     super('PlayScene');
-    console.log('[DEBUG] Scene.constructor called');
   }
 
   create() {
-    console.log('[DEBUG] Scene.create called');
     this.state = STATE.START;
     this.game.state = STATE.START;
     this.coins = 0;
@@ -2404,33 +2402,25 @@ class PlayScene extends Phaser.Scene {
     // Input: Floating joystick (touch/click anywhere in play area)
     // Pointerdown starts the joystick at the pointer position
     this.input.on('pointerdown', (pointer) => {
-      console.log('[DEBUG] pointerdown event', { x: pointer.x, y: pointer.y, eventType: pointer.event?.type, isLandscape });
       if (isLandscape) {
-        console.log('[DEBUG] isLandscape is true, returning early');
         return;
       }
       // Input arbitration: don't activate joystick if pointer is over
       // an interactive UI element (BUY buttons, etc.) - prevents
       // accidental joystick spawn when tapping UI.
       const hits = this.input.hitTestPointer(pointer);
-      console.log('[DEBUG] hitTestPointer result:', hits.length, hits.map(h => h.type));
       if (hits.length > 0) {
-        console.log('[DEBUG] hitTestPointer found interactive elements, returning early');
         return;
       }
-      console.log('[DEBUG] Calling _begin and _activateJoystick');
       this._begin();
       this._activateJoystick(pointer.x, pointer.y);
     });
 
     // Pointermove updates the joystick vector
     this.input.on('pointermove', (pointer) => {
-      console.log('[DEBUG] pointermove event', { x: pointer.x, y: pointer.y, joystickActive: this.joystickActive, isLandscape });
       if (!this.joystickActive || isLandscape) {
-        console.log('[DEBUG] pointermove returning early because !joystickActive or isLandscape');
         return;
       }
-      console.log('[DEBUG] Calling _updateJoystick');
       this._updateJoystick(pointer.x, pointer.y);
     });
 
@@ -2466,7 +2456,6 @@ class PlayScene extends Phaser.Scene {
   }
 
   _activateJoystick(x, y) {
-    console.log('[DEBUG] _activateJoystick called with', {x, y});
     // Clamp joystick center to playable area (above upgrade sheet, in logical coords)
     const layout = this.computeLayout();
     const maxY = layout.visibleWorldHeight - JOYSTICK_RADIUS;
@@ -2476,17 +2465,14 @@ class PlayScene extends Phaser.Scene {
     this.joystickCenter = { x: clampedX, y: clampedY };
     this.joystickActive = true;
     this.joystickVector = { x: 0, y: 0 };
-    console.log('[DEBUG] joystickActive set to true, center at', this.joystickCenter);
 
     // Create joystick base (visual)
     this.joystickBase = this.add.circle(clampedX, clampedY, JOYSTICK_RADIUS, 0x4caf50, 0.3);
     this.joystickBase.setStrokeStyle(3, 0x2e7d32, 0.8);
-    console.log('[DEBUG] joystickBase created:', this.joystickBase);
 
     // Create joystick thumb (visual)
     this.joystickThumb = this.add.circle(clampedX, clampedY, JOYSTICK_RADIUS * 0.5, 0x8bc34a, 0.8);
     this.joystickThumb.setStrokeStyle(2, 0x2e7d32, 1);
-    console.log('[DEBUG] joystickThumb created:', this.joystickThumb);
   }
 
   _updateJoystick(x, y) {
@@ -2658,32 +2644,7 @@ class PlayScene extends Phaser.Scene {
     }
   }
 
-  _buildUpgradeRow(type, name, desc, baseCost, rowIndex) {
-    const y = 40 + rowIndex * 136;  // 85 * 1.6
-    const row = this.add.container(0, 0);
-
-    const icon = this.add.circle(96, y, 32, type === 'plot' ? 0x8bc34a : type === 'boots' ? 0xffb300 : 0xff7043);
-    icon.setStrokeStyle(3, 0x000, 0.5);
-
-    const nameText = this.add.text(144, y - 29, name, { fontFamily: 'monospace', fontSize: '22px', color: '#fff' });
-    const descText = this.add.text(144, y + 6, desc, { fontFamily: 'monospace', fontSize: '18px', color: '#c8e6c9' });
-
-    const costText = this.add.text(W - 96, y - 29, 'Cost: ' + baseCost, { fontFamily: 'monospace', fontSize: '21px', color: '#fff' }).setOrigin(1, 0);
-    const ownedText = this.add.text(W - 96, y + 6, 'Owned: 0', { fontFamily: 'monospace', fontSize: '18px', color: '#c8e6c9' }).setOrigin(1, 0);
-
-    const btn = this.add.rectangle(W / 2, y + 48, 288, 48, 0xffb300, 1).setStrokeStyle(3, 0xf57f17, 1);
-    const btnText = this.add.text(W / 2, y + 48, 'BUY', { fontFamily: 'monospace', fontSize: '22px', color: '#000' }).setOrigin(0.5);
-    btn.setInteractive({ useHandCursor: true });
-    btn.on('pointerdown', () => this._buyUpgrade(type));
-
-    row.add([icon, nameText, descText, costText, ownedText, btn, btnText]);
-    this.upgradePanel.add(row);
-
-    return { type, icon, nameText, descText, costText, ownedText, btn, btnText, baseCost, rowIndex };
-  }
-
   _begin() {
-    console.log('[DEBUG] _begin called, state before:', this.state);
     // Landscape lockout is enforced at the interaction layer (pointerdown/
     // keydown listeners are gated on !isLandscape, and the full-screen
     // rotate overlay blocks clicks getting through anyway) -- not here, so
@@ -2693,12 +2654,10 @@ class PlayScene extends Phaser.Scene {
     if (this.state === STATE.START) {
       this.state = STATE.PLAYING;
       this.game.state = STATE.PLAYING;
-      console.log('[DEBUG] _begin set state to PLAYING');
       this.startHint.setVisible(true);
       this.startHintText.setVisible(true);
       this._showStartHint();
     } else {
-      console.log('[DEBUG] _begin not changing state because state is:', this.state);
     }
   }
 
@@ -2797,7 +2756,7 @@ class PlayScene extends Phaser.Scene {
       { type: 'helper', name: 'Helper', desc: 'Auto-Harvest', cost: HELPER_UPGRADE_COST_T1 }
     ];
     
-    const rowHeight = 120;
+    const rowHeight = 140;
     const startY = 80;
     
     rowTypes.forEach((rowData, i) => {
@@ -2832,10 +2791,10 @@ class PlayScene extends Phaser.Scene {
       }).setOrigin(1, 0);
       row.add(ownedText);
 
-      const btn = this.add.rectangle(0, 50, 280, 56, 0xffb300, 1).setStrokeStyle(3, 0xf57f17, 1);
+      const btn = this.add.rectangle(0, 68, 280, 56, 0xffb300, 1).setStrokeStyle(3, 0xf57f17, 1);
       btn.setInteractive({ useHandCursor: true });
       btn.on('pointerdown', () => this._buyUpgrade(rowData.type));
-      const btnText = this.add.text(0, 50, 'BUY', {
+      const btnText = this.add.text(0, 68, 'BUY', {
         fontFamily: 'monospace', fontSize: '24px', color: '#000'
       }).setOrigin(0.5);
       row.add([btn, btnText]);

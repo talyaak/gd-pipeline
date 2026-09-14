@@ -190,18 +190,6 @@ def _get_element_bounds(page):
 
 
 
-            // Upgrade panel background
-
-            if (scene.upgradeBg) {
-
-                const ub = scene.upgradeBg.getBounds();
-
-                bounds.upgradePanel = toScreen(ub.x, ub.y, ub.width, ub.height);
-
-            }
-
-
-
             // Carry indicator
 
             if (scene.carryIndicator) {
@@ -234,14 +222,16 @@ def _get_element_bounds(page):
 
 
 
-            // Start text (for collision testing)
-
-            if (scene.startText && scene.startText.visible) {
-
-                const stb = scene.startText.getBounds();
-
+            // Start prompt (for collision testing) -- check both the old
+            // permanent-banner name (startText, pre-RESIZE builds) and the
+            // current dismiss-on-first-move hint (startHintText), so the same
+            // test correctly finds the real prompt object on either.
+            const startPrompt = (scene.startHintText && scene.startHintText.visible)
+                ? scene.startHintText
+                : (scene.startText && scene.startText.visible ? scene.startText : null);
+            if (startPrompt) {
+                const stb = startPrompt.getBounds();
                 bounds.startText = toScreen(stb.x, stb.y, stb.width, stb.height);
-
             }
 
 
@@ -396,16 +386,6 @@ def _check_bounds_in_viewport(bounds, viewport_width, viewport_height, safe_inse
 
 
 
-    # Upgrade panel
-
-    if "upgradePanel" in bounds:
-
-        u = bounds["upgradePanel"]
-
-        check_element("upgradePanel", u["x"], u["y"], u["width"], u["height"])
-
-
-
     # Carry indicator
 
     if "carryIndicator" in bounds:
@@ -475,18 +455,6 @@ def _check_no_overlaps(bounds):
     # startText vs upgradePad
 
     check_pair("startText", bounds.get("startText"), "upgradePad", bounds.get("upgradePad"))
-
-    # startText vs upgradePanel
-
-    check_pair("startText", bounds.get("startText"), "upgradePanel", bounds.get("upgradePanel"))
-
-    # stall vs upgradePanel
-
-    check_pair("stall", bounds.get("stall"), "upgradePanel", bounds.get("upgradePanel"))
-
-    # pad vs upgradePanel
-
-    check_pair("upgradePad", bounds.get("upgradePad"), "upgradePanel", bounds.get("upgradePanel"))
 
     # stall vs pad
 
@@ -940,6 +908,33 @@ def test_viewport_elements_visible(viewport_width, viewport_height, viewport_nam
 
 
 
+        # Capture the start prompt's bounds BEFORE _begin() runs -- _begin()
+        # hides the prompt (setVisible(false)) as part of dismissing it, and
+        # checking its position AFTER that point is meaningless: the actual
+        # collision risk is in the START state, before the player has moved,
+        # which is exactly when this prompt is visible on screen. Checking it
+        # is unaffected by whether the object is named startText (pre-RESIZE)
+        # or startHintText (current).
+        start_prompt_bounds = page.evaluate("""
+            () => {
+                const scene = window.__GAME__.scene.scenes[0];
+                const canvas = scene.game.canvas;
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = rect.width / 720;
+                const prompt = (scene.startHintText && scene.startHintText.visible)
+                    ? scene.startHintText
+                    : (scene.startText && scene.startText.visible ? scene.startText : null);
+                if (!prompt) return null;
+                const b = prompt.getBounds();
+                return {
+                    x: rect.left + b.x * scaleX,
+                    y: rect.top + b.y * scaleX,
+                    width: b.width * scaleX,
+                    height: b.height * scaleX
+                };
+            }
+        """)
+
         # Start the game (needed for layout to finalize)
 
         page.evaluate("() => { window.__GAME__.scene.scenes[0]._begin(); }")
@@ -951,6 +946,9 @@ def test_viewport_elements_visible(viewport_width, viewport_height, viewport_nam
         # Get element bounds
 
         bounds = _get_element_bounds(page)
+
+        if start_prompt_bounds:
+            bounds["startText"] = start_prompt_bounds
 
 
 
@@ -1434,7 +1432,44 @@ def test_buy_button_does_not_trigger_joystick(viewport_width, viewport_height, v
 
 
 
-        # Get BUY button screen position
+        # The BUY buttons live inside the modal upgrade sheet, which only
+        # populates scene.upgradeRows once opened -- open it first with a
+        # real touch on the in-world pad (this itself must not spawn a
+        # joystick either, since the pad is also behind the same
+        # hitTestPointer input-arbitration check).
+        pad_info = page.evaluate("""
+            () => {
+                const scene = window.__GAME__.scene.scenes[0];
+                if (!scene.padG) return null;
+                const canvas = scene.game.canvas;
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = rect.width / 720;
+                return {
+                    x: rect.left + (scene.padG.x + 128) * scaleX,
+                    y: rect.top + (scene.padG.y + 56) * scaleX
+                };
+            }
+        """)
+        if not pad_info:
+            pytest.skip("Upgrade pad not available")
+
+        client = page.context.new_cdp_session(page)
+        client.send('Input.dispatchTouchEvent', {
+            'type': 'touchStart',
+            'touchPoints': [{'x': pad_info["x"], 'y': pad_info["y"], 'id': 1}]
+        })
+        page.wait_for_timeout(50)
+        client.send('Input.dispatchTouchEvent', {
+            'type': 'touchEnd',
+            'touchPoints': [{'x': pad_info["x"], 'y': pad_info["y"], 'id': 1}]
+        })
+        page.wait_for_timeout(300)
+
+        joystick_after_pad = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
+        if joystick_after_pad:
+            pytest.fail(f"Tapping the upgrade pad incorrectly activated the joystick at {viewport_name} ({viewport_width}x{viewport_height}) DPR={dpr}")
+
+        # Get BUY button screen position now that the sheet is open
 
         btn_info = page.evaluate("""
 
@@ -1452,13 +1487,15 @@ def test_buy_button_does_not_trigger_joystick(viewport_width, viewport_height, v
 
                 const rect = canvas.getBoundingClientRect();
 
+                const scaleX = rect.width / 720;
+
                 const b = btn.getBounds();
 
                 return {
 
-                    x: rect.left + b.x + b.width / 2,
+                    x: rect.left + (b.x + b.width / 2) * scaleX,
 
-                    y: rect.top + b.y + b.height / 2
+                    y: rect.top + (b.y + b.height / 2) * scaleX
 
                 };
 
@@ -1474,16 +1511,17 @@ def test_buy_button_does_not_trigger_joystick(viewport_width, viewport_height, v
 
 
 
-        # Tap the BUY button
+        # Tap the BUY button with a real touch, not page.mouse
 
-        page.mouse.move(btn_info["x"], btn_info["y"])
-
-        page.mouse.down()
-
+        client.send('Input.dispatchTouchEvent', {
+            'type': 'touchStart',
+            'touchPoints': [{'x': btn_info["x"], 'y': btn_info["y"], 'id': 2}]
+        })
         page.wait_for_timeout(100)
-
-        page.mouse.up()
-
+        client.send('Input.dispatchTouchEvent', {
+            'type': 'touchEnd',
+            'touchPoints': [{'x': btn_info["x"], 'y': btn_info["y"], 'id': 2}]
+        })
         page.wait_for_timeout(100)
 
 

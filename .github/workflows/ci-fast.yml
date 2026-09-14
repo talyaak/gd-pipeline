@@ -22,7 +22,24 @@ jobs:
       - name: Compute changed files
         id: changed_files
         run: |
-          CHANGED=$(git diff --name-only origin/main...HEAD)
+          # Branches published via a separate sanitized-history push (see
+          # scripts/publish_to_github.sh and its branch-scoped variant) can
+          # end up with no common ancestor with origin/main at all, even
+          # though they're conceptually descended from it -- each
+          # git-filter-repo run produces new commit objects, so two
+          # independently-sanitized histories don't actually share any
+          # commits. The triple-dot diff needs a real merge-base and fails
+          # with a fatal git error (exit 128) when there isn't one. Fall back
+          # to treating everything as changed (the same safe default used
+          # when the merge-base exists but the diff can't otherwise be
+          # narrowed) rather than letting the whole job die on a workflow
+          # infrastructure issue that says nothing about the actual code.
+          if git merge-base origin/main HEAD >/dev/null 2>&1; then
+            CHANGED=$(git diff --name-only origin/main...HEAD)
+          else
+            echo "No common ancestor with origin/main (independently sanitized history) -- treating all files as changed."
+            CHANGED=$(git ls-files)
+          fi
           echo "changed<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGED" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
