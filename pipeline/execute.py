@@ -315,12 +315,17 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                             }
                         }
 
-                        // Check for scene-based states (Phaser)
+                        // Check for scene-based states (Phaser). A Scene instance does NOT
+                        // expose .visible/.active directly -- those live under
+                        // scene.sys.settings.{visible,active} (same for .key, under
+                        // scene.sys.settings.key, not scene.settings.key). The direct-property
+                        // form used here previously was always undefined, so this whole
+                        // fallback silently never matched anything, for any harness.
                         if (game.scene && game.scene.scenes) {
-                            const activeScenes = game.scene.scenes.filter(s => s.visible && s.active);
+                            const activeScenes = game.scene.scenes.filter(s => s.sys?.settings?.visible === true && s.sys?.settings?.active === true);
                             if (activeScenes.length > 0) {
                                 // Map common scene names to states (substring match for flexibility)
-                                const sceneNames = activeScenes.map(s => s.settings.key.toLowerCase());
+                                const sceneNames = activeScenes.map(s => String(s.sys.settings.key).toLowerCase());
                                 if (sceneNames.some(name => name.includes('play') || name.includes('game') || name.includes('level'))) {
                                     return { state: 'playing', reason: 'phaser scene' };
                                 }
@@ -333,7 +338,7 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                                 if (sceneNames.some(name => name.includes('win') || name.includes('won') || name.includes('victory') || name.includes('success'))) {
                                     return { state: 'win', reason: 'phaser scene' };
                                 }
-                                return { state: activeScenes[0].settings.key.toLowerCase(), reason: 'phaser scene' };
+                                return { state: sceneNames[0], reason: 'phaser scene' };
                             }
                         }
 
@@ -438,11 +443,15 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                             return true;
                         }
 
-                        // Check for scene-based states as fallback (even if game.state exists but isn't 'playing')
+                        // Check for scene-based states as fallback (even if game.state exists but isn't 'playing').
+                        // Scene.visible/.active are not real properties on a Phaser 3 Scene --
+                        // the source of truth is scene.sys.settings.{visible,active} (same for
+                        // .key). The direct-property form used here previously was always
+                        // undefined, silently disabling this fallback for every harness.
                         if (game.scene && game.scene.scenes) {
-                            const activeScenes = game.scene.scenes.filter(s => s.visible && s.active);
+                            const activeScenes = game.scene.scenes.filter(s => s.sys?.settings?.visible === true && s.sys?.settings?.active === true);
                             if (activeScenes.length > 0) {
-                                const sceneName = activeScenes[0].settings.key.toLowerCase();
+                                const sceneName = String(activeScenes[0].sys.settings.key).toLowerCase();
                                 if (sceneName.includes('game') || sceneName.includes('play')) {
                                     return true;
                                 }
@@ -467,7 +476,15 @@ def run_execution_report(html: str, out_dir: Path) -> ExecutionReport:
                         // Default to false if we can't determine
                         return false;
                     }""")
-                    if not scene_active_and_gameplay:
+                    # A single end-of-test snapshot can catch the harness in a terminal
+                    # (dead/won) state even though it legitimately reached and stayed in
+                    # real gameplay for most of the observation window -- the snapshot
+                    # can't distinguish "never actually started" from "played, then
+                    # correctly ended" on its own. The observation loop above already
+                    # made that distinction in real time (engagement_start_time is only
+                    # set once genuine 'playing' state was observed), so trust it here
+                    # too, same reasoning as the "game over immediately" check below.
+                    if not scene_active_and_gameplay and engagement_start_time is None:
                         console_errors.append("Semantic validation: no active gameplay scene")
                         semantic_ok = False
                     else:
