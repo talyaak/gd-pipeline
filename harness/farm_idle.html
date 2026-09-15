@@ -2170,6 +2170,260 @@ window.Juice = {
   window.VisualAssetEngine = VisualAssetEngine;
 
 })();
+// Local MRAID 3.0 simulator — used only when no host-provided `mraid` exists yet.
+//
+// In a real ad network placement (Google Ads, Unity Ads, AppLovin, ironSource,
+// Vungle, Mintegral, ...), the network's own WebView SDK injects its own real
+// `window.mraid` implementation before this creative's scripts run — that real
+// bridge is what actually talks to the native host. This file must never
+// overwrite that; it only fills in `window.mraid` when nothing has claimed
+// it yet (e.g. previewing the creative directly, or under this pipeline's own
+// browser-execution validation harness), so the creative's `mraid.*` calls have
+// something to run against instead of throwing on an undefined `mraid`.
+(function() {
+  'use strict';
+
+  // A real host bridge has already claimed window.mraid — never clobber it.
+  if (typeof window.mraid !== 'undefined') {
+    return;
+  }
+
+  // MRAID State
+  const MRAID_VERSION = '3.0';
+  let state = 'loading';
+  let viewable = false;
+  let listeners = {};
+  let expandProperties = {
+    width: 0,
+    height: 0,
+    useCustomClose: false,
+    isModal: true
+  };
+  let resizeProperties = {
+    width: 0,
+    height: 0,
+    offsetX: 0,
+    offsetY: 0,
+    customClosePosition: 'top-right',
+    allowOffscreen: true
+  };
+  let orientationProperties = {
+    allowOrientationChange: true,
+    forceOrientation: 'none'
+  };
+  let currentPosition = { x: 0, y: 0, width: 0, height: 0 };
+  let defaultPosition = { x: 0, y: 0, width: 0, height: 0 };
+  let screenSize = { width: 0, height: 0 };
+  let maxSize = { width: 0, height: 0 };
+  let supports = ['sms', 'tel', 'calendar', 'storePicture', 'inlineVideo', 'audioVideo', 'location', 'accelerometer', 'gyroscope', 'compass', 'orientation', 'proximity', 'screenOrientation'];
+
+  // No real native host to talk to here (see file header) — these calls are
+  // deliberately no-ops in the common case. The window.webkit/android checks
+  // below are a best-effort hook for local WebView test harnesses that expose
+  // a bridge under one of these names; they are NOT how any real ad network's
+  // SDK exposes its bridge, so this function has no effect inside a real
+  // placement (where window.mraid is the host's own object and this file's
+  // guard above means this code never runs at all).
+  function bridge(method, args) {
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mraid) {
+      window.webkit.messageHandlers.mraid.postMessage({ method, args });
+    } else if (window.mraidBridge && window.mraidBridge[method]) {
+      window.mraidBridge[method].apply(null, args);
+    } else if (window.android && window.android.mraid) {
+      window.android.mraid[method].apply(null, args);
+    }
+  }
+
+  // Event system
+  function fireEvent(event, ...args) {
+    if (listeners[event]) {
+      listeners[event].forEach(cb => {
+        try { cb.apply(null, args); } catch (e) { console.error('MRAID listener error:', e); }
+      });
+    }
+  }
+
+  function addEventListener(event, listener) {
+    if (!listeners[event]) listeners[event] = [];
+    if (typeof listener === 'function' && !listeners[event].includes(listener)) {
+      listeners[event].push(listener);
+    }
+  }
+
+  function removeEventListener(event, listener) {
+    if (listeners[event] && typeof listener === 'function') {
+      const idx = listeners[event].indexOf(listener);
+      if (idx > -1) listeners[event].splice(idx, 1);
+    }
+  }
+
+  // Core API
+  const mraid = {
+    // Version & Capabilities
+    getVersion: () => {
+      // Check for URL parameter override first
+      const params = new URLSearchParams(window.location.search);
+      return params.get('mraidVersion') || MRAID_VERSION;
+    },
+    getPlacementType: () => {
+      // Check for URL parameter override first
+      const params = new URLSearchParams(window.location.search);
+      return params.get('placement') || 'interstitial';
+    },
+    getState: () => state,
+    isViewable: () => viewable,
+
+    // Event Handling
+    addEventListener,
+    removeEventListener,
+
+    // Lifecycle - NO ready() method. Per MRAID spec, ready is fired BY the bridge.
+    // Creative code MUST NOT call mraid.ready(). It should listen:
+    // mraid.addEventListener('ready', cb) or check mraid.getState() !== 'loading'
+    
+    // Viewability
+    _setViewable: (v) => {
+      const wasViewable = viewable;
+      viewable = v;
+      if (v !== wasViewable) {
+        fireEvent('viewableChange', v);
+      }
+    },
+
+    // Expand/Close
+    expand: (url) => {
+      if (state === 'expanded') return;
+      if (url) {
+        // Open URL in browser
+        mraid.open(url);
+        return;
+      }
+      state = 'expanded';
+      fireEvent('stateChange', state);
+      bridge('expand', [expandProperties]);
+    },
+
+    close: () => {
+      if (state === 'default' || state === 'resized') {
+        bridge('close', []);
+      } else if (state === 'expanded') {
+        state = 'default';
+        fireEvent('stateChange', state);
+        bridge('close', []);
+      }
+    },
+
+    // Resize
+    resize: () => {
+      if (state === 'expanded') return;
+      state = 'resized';
+      fireEvent('stateChange', state);
+      fireEvent('resize');
+      bridge('resize', [resizeProperties]);
+    },
+
+    setResizeProperties: (props) => {
+      resizeProperties = { ...resizeProperties, ...props };
+      bridge('setResizeProperties', [resizeProperties]);
+    },
+
+    getResizeProperties: () => ({ ...resizeProperties }),
+
+    // Orientation
+    setOrientationProperties: (props) => {
+      orientationProperties = { ...orientationProperties, ...props };
+      bridge('setOrientationProperties', [orientationProperties]);
+    },
+
+    getOrientationProperties: () => ({ ...orientationProperties }),
+
+    // Position & Size
+    getCurrentPosition: () => ({ ...currentPosition }),
+    getDefaultPosition: () => ({ ...defaultPosition }),
+    getScreenSize: () => ({ ...screenSize }),
+    getMaxSize: () => ({ ...maxSize }),
+
+    // Open URL
+    open: (url) => {
+      if (!url || typeof url !== 'string') return;
+      // Validate URL scheme
+      const validSchemes = ['http:', 'https:', 'tel:', 'sms:', 'mailto:', 'market:', 'itms-apps:'];
+      const isValid = validSchemes.some(s => url.startsWith(s));
+      if (!isValid) {
+        console.warn('MRAID: Invalid URL scheme', url);
+        return;
+      }
+      bridge('open', [url]);
+    },
+
+    // Supports
+    supports: (feature) => supports.includes(feature),
+
+    // Audio/Video (MRAID 3.0)
+    createCalendarEvent: (params) => bridge('createCalendarEvent', [params]),
+    playVideo: (url) => bridge('playVideo', [url]),
+    storePicture: (url) => bridge('storePicture', [url]),
+
+    // Internal: called by native bridge
+    _setState: (newState) => {
+      const oldState = state;
+      state = newState;
+      if (oldState !== newState) {
+        fireEvent('stateChange', state);
+      }
+    },
+
+    _setPosition: (pos) => {
+      currentPosition = { ...pos };
+      fireEvent('sizeChange', currentPosition.width, currentPosition.height);
+    },
+
+    _setScreenSize: (size) => {
+      screenSize = { ...size };
+    },
+
+    _setMaxSize: (size) => {
+      maxSize = { ...size };
+    },
+
+    _setDefaultPosition: (pos) => {
+      defaultPosition = { ...pos };
+      currentPosition = { ...pos };
+    },
+
+    _setExpandProperties: (props) => {
+      expandProperties = { ...props };
+    },
+
+    // For debugging
+    _getListeners: () => listeners,
+    _getState: () => state,
+  };
+
+  // Expose globally
+  window.mraid = mraid;
+
+  // Auto-initialize when DOM is ready - fire ready event automatically
+  // This simulates the host bridge firing ready after it initializes
+  function autoInit() {
+    if (state === 'loading') {
+      state = 'default';
+      fireEvent('ready');
+      // Simulate viewable for local testing
+      mraid._setViewable(true);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', autoInit);
+  } else {
+    autoInit();
+  }
+
+  // Notify native that JS is loaded
+  bridge('mraidLoaded', []);
+
+})();
 // Hand-built farm idle harness. Arcade idle genre (My Perfect Hotel / Pizza Ready family).
 // Theme: farm life. Core loop: joystick move farmer -> harvest plot -> sell at stall -> buy upgrades.
 
@@ -2197,6 +2451,20 @@ const JOYSTICK_RADIUS = 80;   // visual/logical radius of the joystick base
 
 // Auto-collect magnet
 const MAGNET_RADIUS = 60;     // coins/crops within this radius fly to farmer automatically
+
+// Carry stack (real-device defect #1 fix): the carried-crop stack has an
+// explicit, enforced upper bound. Without this, _addToCarryStack() grew the
+// stack (and its per-item radius/Y offset) forever whenever crops were
+// harvested faster than they could be sold -- a real-device screenshot
+// showed dozens of stacked sprites spiraling outward. Harvesting is blocked
+// once the stack is full (see _harvestPlot / _updateHelper) rather than
+// silently dropping the crop, so nothing is lost -- the plot just stays
+// ready until the player (or helper) sells and frees capacity.
+const CARRY_STACK_MAX = 8;
+// Goods added to the carry stack per single harvest (defect #5: a harvest
+// must visibly burst multiple goods, not add exactly one), bounded by
+// CARRY_STACK_MAX -- see _addHarvestBurst().
+const HARVEST_BURST_SIZE = 3;
 
 // Plots
 const PLOT_COUNT = 5;
@@ -2240,6 +2508,17 @@ const PLOT_BUFF_SELL_VALUE_BONUS = 2;
 const PLOT_BUFF_GROW_SPEED_MULT = 0.92;
 const PLOT_BUFF_MIN_GROW_MS = 500;
 const STALL_X = 96;                   // 60 * 1.6
+// STALL_Y is ONLY a pre-first-layout placeholder for the initial
+// this.add.text() call in create() (before _layoutHUD() has run once).
+// Real-device defect #3: this constant used to also be read directly by
+// _updateMagnet()/_sellAtStall()/helper-targeting as if it were the stall's
+// actual rendered Y -- but _layoutHUD() computes the REAL stall Y
+// dynamically per-viewport (H - totalHeight + stallGap) and never wrote it
+// back here, so the two drifted apart on short viewports (the visible
+// market ended up nowhere near where selling was actually detected). The
+// single source of truth for the stall's live position is now
+// PlayScene._computeStallLayout() -- every runtime consumer must call that,
+// not this constant.
 const STALL_Y = 1252;                 // 1412 - 112 - 48 = 1252 (preserves 48px bottom margin)
 const STALL_W = 160;                  // 100 * 1.6
 const STALL_H = 112;                  // 70 * 1.6
@@ -2333,6 +2612,14 @@ class PlayScene extends Phaser.Scene {
     this.carryStack.setVisible(false);
     this.carrySprites = [];
 
+    // Explicit visible capacity readout for the carry stack (defect #5 /
+    // ties directly into the defect #1 cap fix): shows current/max so the
+    // bound is legible to the player, not just enforced silently.
+    this.carryCountText = this.add.text(0, -70, '', {
+      fontFamily: 'monospace', fontSize: '16px', color: '#fff'
+    }).setOrigin(0.5);
+    this.carryStack.add(this.carryCountText);
+
     // Backward compatibility for tests
     this.carrying = null;
     this.carryIndicator = {
@@ -2348,12 +2635,13 @@ class PlayScene extends Phaser.Scene {
       fontFamily: 'monospace', fontSize: '38px', color: '#000'
     }).setOrigin(0, 0.5);
 
-    // Progress bar top-center: progress toward next plot-grid cap (MAX_PLOTS)
+    // Progress bar top-center: coins toward the next affordable upgrade
+    // (real-device defect #4 -- see _cheapestUpgradeCost())
     this.progressBarBg = this.add.rectangle(W / 2, COINS_Y, 400, 24, 0x222222, 0.7);
     this.progressBarBg.setStrokeStyle(2, 0x444444, 1);
     this.progressBarFill = this.add.rectangle(W / 2 - 200 + 4, COINS_Y, 0, 16, 0xffd700, 1);
     this.progressBarFill.setOrigin(0, 0.5);
-    this.progressText = this.add.text(W / 2, COINS_Y, 'Plots: 5 / 18', {
+    this.progressText = this.add.text(W / 2, COINS_Y, 'Next upgrade: 0 / ' + PLOT_UPGRADE_BASE_COST, {
       fontFamily: 'monospace', fontSize: '18px', color: '#fff'
     }).setOrigin(0.5);
 
@@ -2394,10 +2682,27 @@ class PlayScene extends Phaser.Scene {
     this.upgradeSheet = null;
     this.sheetVisible = false;
 
-    // Intro banner + tap hint (using Juice)
-    const introBanner = Juice.IntroBanner.create(this, { label: 'HARVEST \u2022 SELL \u2022 UPGRADE', y: 96 });
+    // Intro banner + tap hint (using Juice). y comes from the same shared
+    // top-HUD layout as coinsText/progressBar (_computeTopHudLayout()), but
+    // that alone is NOT sufficient: real safe-area insets are often not
+    // known yet at this point in create() (they arrive later via a CSS/
+    // MRAID update), so a Y computed once HERE can go stale the moment
+    // _layoutHUD() next runs with the real values -- coinsText/progressBar
+    // get repositioned then, the banner did not, and the two drifted apart
+    // again exactly like the first fix's bug. Fixed properly this time:
+    // find the banner's actual text object (IntroBanner.create() only
+    // returns a destroy() closure, not the object) and keep a reference so
+    // _layoutHUD() can reposition it on every real layout pass, the same
+    // as every other top-HUD element, for as long as it's still alive.
+    const { bannerY } = this._computeTopHudLayout();
+    const introBanner = Juice.IntroBanner.create(this, { label: 'HARVEST \u2022 SELL \u2022 UPGRADE', y: bannerY });
+    this._introBannerText = this.children.list[this.children.list.length - 1];
     const introHint = Juice.TapHint.create(this, this.farmer.x, this.farmer.y, { color: 0xe65100, radius: 64 });
-    this.time.delayedCall(2500, () => { introBanner.destroy(); introHint.destroy(); });
+    this.time.delayedCall(2500, () => {
+      introBanner.destroy();
+      introHint.destroy();
+      this._introBannerText = null;
+    });
 
     // Input: Floating joystick (touch/click anywhere in play area)
     // Pointerdown starts the joystick at the pointer position
@@ -2564,6 +2869,60 @@ class PlayScene extends Phaser.Scene {
     return { worldZoom, visibleWorldHeight };
   }
 
+  _safeBottomLogical() {
+    const displayHeight = this.scale.displaySize.height;
+    const scaleY = displayHeight / H;
+    return safeInsets.bottom / scaleY;
+  }
+
+  // Single source of truth for EVERY top-HUD element's Y position (coins
+  // counter, next-upgrade progress row, and the temporary intro slogan
+  // banner). Instinct's 2nd-round review on this branch: moving only the
+  // progress row in the first fix "shifted the collision, it did not
+  // remove it" -- the intro banner (a separate, temporary element created
+  // once in create() with its own hardcoded y, never touched by the first
+  // fix) still collided with the coins label at 390x650. Computing all
+  // three Ys here, stacked with guaranteed gaps derived from each
+  // element's own known height, makes their bounds structurally unable to
+  // intersect at any viewport -- not just the ones tested. coinsY/progressY
+  // are unchanged from the first fix (already verified correct across the
+  // full viewport suite); only the banner is newly computed, positioned
+  // below the persistent 2-row HUD block instead of a magic-number y that
+  // predated the progress row's existence.
+  _computeTopHudLayout() {
+    const displayHeight = this.scale.displaySize.height;
+    const scaleY = displayHeight / H;
+    const safeTopLogical = safeInsets.top / scaleY;
+
+    const coinsY = Math.max(COINS_Y, safeTopLogical + 32);
+    const progressY = coinsY + 36; // clears coinsText's 38px font height
+    // Banner sits below the progress row with enough gap to clear the
+    // progress bar's own height (24px) and its own font height (13px).
+    const bannerY = progressY + 12 + 8 + 10;
+
+    return { coinsY, progressY, bannerY };
+  }
+
+  // Single source of truth for the stall/market's live position (real-device
+  // defect #3 root-cause fix). _layoutHUD() uses this to place the visible
+  // stall graphics/text; _updateMagnet() (sell detection), _sellAtStall()
+  // (particle effect), and helper auto-sell targeting all read the SAME
+  // computed value instead of the separate STALL_Y constant, so they can
+  // never drift apart from what the player actually sees on screen.
+  _computeStallLayout() {
+    const stallGap = 24;
+    const padHeight = PAD_H;
+    const stallHeight = STALL_H;
+    const totalHeight = padHeight + stallHeight + stallGap * 2 + this._safeBottomLogical();
+    const stallY = H - totalHeight + stallGap;
+    return {
+      x: STALL_X,
+      y: stallY,
+      centerX: STALL_X + STALL_W / 2,
+      centerY: stallY + STALL_H / 2
+    };
+  }
+
   _layoutHUD() {
       // Anchor HUD elements to screen edges with safe-area insets
       // Convert CSS safe insets to logical game coordinates
@@ -2577,33 +2936,51 @@ class PlayScene extends Phaser.Scene {
       const safeBottomLogical = safeInsets.bottom / scaleY;
       const safeLeftLogical = safeInsets.left / scaleX;
 
-      // Coin counter: top-left, below safe-area top, with 16pt margin from left edge
+      // Coin counter, progress row, and (if still alive) the intro banner
+      // all come from the SAME shared layout computation -- see
+      // _computeTopHudLayout() -- so their bounds cannot intersect.
+      const { coinsY, progressY, bannerY } = this._computeTopHudLayout();
       if (this.coinsText) {
-        this.coinsText.setPosition(Math.max(16 + safeLeftLogical, 16), Math.max(COINS_Y, safeTopLogical + 32));
+        this.coinsText.setPosition(Math.max(16 + safeLeftLogical, 16), coinsY);
       }
 
-      // Progress bar: top-center, below safe-area top
+      // Intro banner (temporary, ~2.5s): repositioned here on every real
+      // layout pass, not just once at creation time -- real safe-area
+      // insets are often not known yet when the banner is first created in
+      // create(), so a Y computed only once there goes stale the instant
+      // _layoutHUD() next runs with the real values (this was the actual
+      // root cause of Instinct's 2nd-round HUD-collision finding).
+      if (this._introBannerText) {
+        this._introBannerText.setPosition(W / 2, bannerY);
+      }
+
+      // Progress bar: top-center, on its OWN row below the coin counter.
+      // Real-device defect (HUD collision at 390x650): this used to share
+      // the same Y as coinsText, both horizontally spanning the full HUD
+      // width (coinsText left-aligned, progress bar centered) -- on a real
+      // narrow-viewport render the two collided. Stacking them on separate
+      // rows removes the horizontal-collision risk entirely, regardless of
+      // exact viewport width or text content length, rather than trying to
+      // dodge it with per-viewport pixel thresholds.
       if (this.progressBarBg && this.progressBarFill && this.progressText) {
-        const y = Math.max(COINS_Y, safeTopLogical + 32);
+        const y = progressY;
         this.progressBarBg.setPosition(W / 2, y);
         this.progressBarFill.setPosition(W / 2 - 200 + 4, y);
         this.progressText.setPosition(W / 2, y);
       }
 
-      // Stall: position with safe-area bottom buffer (fixed Y, above pad)
+      // Stall: position with safe-area bottom buffer (dynamic Y, above pad).
+      // Uses _computeStallLayout() -- the single source of truth also read
+      // by _updateMagnet()/_sellAtStall()/helper targeting -- so the
+      // rendered position can never drift from the sell-detection target.
       if (this.stallG && this.stallText) {
-        const stallGap = 24;
-        // Place stall above the pad with gap, ensuring both clear safe-bottom
-        const padHeight = PAD_H;
-        const stallHeight = STALL_H;
-        const totalHeight = padHeight + stallHeight + stallGap * 2 + safeBottomLogical;
-        const stallY = H - totalHeight + stallGap;
-        this.stallG.setPosition(STALL_X, stallY);
+        const stall = this._computeStallLayout();
+        this.stallG.setPosition(stall.x, stall.y);
         this.stallG.clear();
         this.stallG.fillStyle(0x8b4513, 1);
         this.stallG.fillRoundedRect(0, 0, STALL_W, STALL_H, 8);
         this.stallG.fillRect(16, -32, STALL_W - 32, 32);
-        this.stallText.setPosition(STALL_X + STALL_W / 2, stallY + STALL_H / 2);
+        this.stallText.setPosition(stall.centerX, stall.y + STALL_H / 2);
       }
 
       // Upgrade pad: position with safe-area bottom buffer (at bottom, above safe area)
@@ -2835,6 +3212,28 @@ class PlayScene extends Phaser.Scene {
     return 0;
   }
 
+  // Cheapest cost among any upgrade the player hasn't maxed out yet. Real-
+  // device defect #4 fix: the top HUD progress bar used to show
+  // plots.length / MAX_PLOTS in the same gold coin-colored styling sitting
+  // directly beside the "Coins: N" counter, reading as coin/sale progress
+  // when it was actually an unrelated plot-count ratio. It's repurposed
+  // here to show real coins-toward-next-upgrade progress instead. The plot
+  // upgrade cost grows but never truly maxes out (buffs kick in past the
+  // grid cap), so this only returns null once boots AND helper are also
+  // both fully tiered.
+  _cheapestUpgradeCost() {
+    const costs = [
+      Math.floor(PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH / 100, this.plotUpgradeCount))
+    ];
+    if (this.bootsTier < 3) {
+      costs.push([BOOTS_UPGRADE_COST_T1, BOOTS_UPGRADE_COST_T2, BOOTS_UPGRADE_COST_T3][this.bootsTier]);
+    }
+    if (this.helperTier < 2) {
+      costs.push([HELPER_UPGRADE_COST_T1, HELPER_UPGRADE_COST_T2][this.helperTier]);
+    }
+    return costs.length ? Math.min(...costs) : null;
+  }
+
   _createPlot(index, x, y) {
     const plot = this.add.graphics();
     plot.fillStyle(0x5d4037, 1);
@@ -2880,6 +3279,10 @@ class PlayScene extends Phaser.Scene {
     if (!plot) return;
     if (plot.harvested) return;
     if (this.time.now < plot.readyAt) return;
+    // Carry-stack cap (defect #1): block the harvest entirely rather than
+    // consuming the plot and dropping the crop -- the plot just stays ready
+    // until the player sells and frees capacity.
+    if (this.carrySprites.length >= CARRY_STACK_MAX) return;
 
     plot.harvested = true;
     plot.cropSprite.setVisible(false);
@@ -2892,10 +3295,11 @@ class PlayScene extends Phaser.Scene {
     if (plot.progressBarBg) plot.progressBarBg.setVisible(false);
     // Schedule next growth cycle so update loop doesn't immediately reset harvested
     plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
-    
-    // Add to carry stack
-    this._addToCarryStack();
-    
+
+    // Add a burst of goods to the carry stack (defect #5): a single harvest
+    // must visibly add multiple items, not one, bounded by CARRY_STACK_MAX.
+    this._addHarvestBurst();
+
     // Collect feedback: tiny scale pulse on farmer + haptic
     this.tweens.add({
       targets: this.farmer,
@@ -2905,6 +3309,19 @@ class PlayScene extends Phaser.Scene {
       ease: 'Sine.easeOut'
     });
     vibrate(15);
+  }
+
+  // Real-device defect #5 fix: a single harvest must visibly burst multiple
+  // goods into the carry stack (genre expectation), not add exactly one
+  // sprite. Bounded by the existing CARRY_STACK_MAX cap -- shared by both
+  // the player's own harvest (_harvestPlot) and the helper's harvest path,
+  // since both add to the same shared player carry stack via
+  // _addToCarryStack().
+  _addHarvestBurst() {
+    const goodsToAdd = Math.min(HARVEST_BURST_SIZE, CARRY_STACK_MAX - this.carrySprites.length);
+    for (let i = 0; i < goodsToAdd; i++) {
+      this._addToCarryStack();
+    }
   }
 
   _addToCarryStack() {
@@ -2939,7 +3356,12 @@ class PlayScene extends Phaser.Scene {
     if (this.carrySprites.length === 1) {
       this.carryStack.setVisible(true);
     }
-    
+
+    // Explicit visible capacity readout (defect #1 / #5)
+    if (this.carryCountText) {
+      this.carryCountText.setText(this.carrySprites.length + '/' + CARRY_STACK_MAX);
+    }
+
     // Update backward compatibility
     this.carrying = 'crop';
     this.carryIndicator.visible = true;
@@ -2954,7 +3376,8 @@ class PlayScene extends Phaser.Scene {
     this.carrySprites.forEach(sprite => sprite.destroy());
     this.carrySprites = [];
     this.carryStack.setVisible(false);
-    
+    if (this.carryCountText) this.carryCountText.setText('');
+
     // Update backward compatibility
     this.carrying = null;
     this.carryIndicator.visible = false;
@@ -3037,15 +3460,22 @@ class PlayScene extends Phaser.Scene {
     // Fly coins from farmer to counter
     this._flyCoinsToCounter(this.carrySprites.length, this.farmer.x, this.farmer.y - 56);
     
-    // Sell feedback: particle burst + haptic
-    Juice.ParticleBurst.create(this, STALL_X + STALL_W / 2, STALL_Y, {
+    // Sell feedback: particle burst + haptic (same computed stall position
+    // as everything else -- see _computeStallLayout())
+    const stall = this._computeStallLayout();
+    Juice.ParticleBurst.create(this, stall.centerX, stall.y, {
       color: 0xffd700, count: 12, speed: 128, size: 8
     });
     vibrate(20);
-    
+
     // Clear carry stack
     this._clearCarryStack();
-    
+
+    // Coins just changed -- keep the upgrade sheet's BUY buttons (cost /
+    // affordable-vs-not state) live if it's currently open, instead of only
+    // refreshing on the next purchase.
+    if (this.sheetVisible) this._refreshUpgradeUI();
+
     if (CTA_ENABLED && !this.ctaButton) {
       this._createCTAButton();
     }
@@ -3116,7 +3546,32 @@ class PlayScene extends Phaser.Scene {
         }
         if (row.costText) row.costText.setText('Cost: ' + cost);
         if (row.ownedText) row.ownedText.setText('Owned: ' + owned);
+
+        // BUY button affordable/disabled visual state: previously the BUY
+        // button always looked identical regardless of whether the player
+        // could afford it, so tapping it while too poor looked dead /
+        // unresponsive (flagged alongside the 5 real-device defects).
+        const maxed = cost === 'MAX';
+        const affordable = !maxed && this.coins >= cost;
+        this._setBuyButtonState(row, affordable, maxed);
       });
+    }
+  }
+
+  _setBuyButtonState(row, affordable, maxed) {
+    if (!row.btn) return;
+    if (maxed) {
+      row.btn.setFillStyle(0x757575, 0.6);
+      row.btn.setStrokeStyle(3, 0x424242, 1);
+      if (row.btnText) row.btnText.setColor('#bbbbbb');
+    } else if (affordable) {
+      row.btn.setFillStyle(0xffb300, 1);
+      row.btn.setStrokeStyle(3, 0xf57f17, 1);
+      if (row.btnText) row.btnText.setColor('#000000');
+    } else {
+      row.btn.setFillStyle(0x8d8d8d, 0.45);
+      row.btn.setStrokeStyle(3, 0x5c5c5c, 1);
+      if (row.btnText) row.btnText.setColor('#4a4a4a');
     }
   }
 
@@ -3146,48 +3601,22 @@ class PlayScene extends Phaser.Scene {
       this._updateHelper(helper, dt);
     });
 
-    // Joystick-driven movement: farmer moves in joystick direction
+    // Joystick-driven movement: farmer moves in joystick direction. This is
+    // the ONLY thing that moves the farmer directly (real-device defect #2
+    // fix). A prior "auto-assist" branch used to walk the farmer toward the
+    // nearest ready plot even with the joystick idle/untouched -- verified
+    // on a real device moving 148-183px over 1.8s with zero input. Movement
+    // automation is the separately-purchased Helper entity (_updateHelper /
+    // _spawnHelper above), not something the base farmer does by default.
     if (this.joystickActive) {
       this._moveFarmerByJoystick(dt);
     }
-    // Auto-assist (when not actively using joystick): walk to nearest ready plot
-    else if (!this.joystickActive && this.farmerTarget) {
-      this._moveFarmerTowards(this.farmerTarget.x, this.farmerTarget.y, dt);
-      const distToPlot = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, this.farmerTarget.x, this.farmerTarget.y);
-      if (distToPlot < MAGNET_RADIUS) {
-        const nearestPlot = this.plots.find(p => !p.harvested && this.time.now >= p.readyAt &&
-          Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, p.x + PLOT_SIZE / 2, p.y + PLOT_SIZE / 2) < MAGNET_RADIUS);
-        if (nearestPlot) {
-          this._harvestPlot(nearestPlot.index);
-          this.farmerTarget = null;
-        }
-      }
-    } else if (!this.joystickActive) {
-      let nearestPlot = null;
-      let nearestDist = Infinity;
-      this.plots.forEach(plot => {
-        if (!plot.harvested && this.time.now >= plot.readyAt) {
-          const dist = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, plot.x + PLOT_SIZE / 2, plot.y + PLOT_SIZE / 2);
-          if (dist < nearestDist) {
-            nearestDist = dist;
-            nearestPlot = plot;
-          }
-        }
-      });
-      if (nearestPlot) {
-        this.farmerTarget = { x: nearestPlot.x + PLOT_SIZE / 2, y: nearestPlot.y + PLOT_SIZE / 2 };
-        this._moveFarmerTowards(this.farmerTarget.x, this.farmerTarget.y, dt);
-        const distToPlot = Phaser.Math.Distance.Between(this.farmer.x, this.farmer.y, this.farmerTarget.x, this.farmerTarget.y);
-        if (distToPlot < MAGNET_RADIUS) {
-          this._harvestPlot(nearestPlot.index);
-          this.farmerTarget = null;
-        }
-      } else {
-        this.farmerTarget = null;
-      }
-    }
 
-    // Magnet: auto-collect crops/coins within MAGNET_RADIUS of farmer
+    // Magnet: auto-collect crops/coins within MAGNET_RADIUS of farmer. This
+    // is the deliberate Part 2a auto-collect feature (crops/coins the
+    // farmer is already standing next to fly to them) and is intentionally
+    // left untouched -- it does not move the farmer, it only acts on things
+    // already within reach.
     this._updateMagnet();
   }
 
@@ -3246,11 +3675,13 @@ class PlayScene extends Phaser.Scene {
       }
     });
 
-    // Check stall: sell carried crops if farmer is within MAGNET_RADIUS of stall
+    // Check stall: sell carried crops if farmer is within MAGNET_RADIUS of
+    // the stall's REAL rendered position (single source of truth --
+    // _computeStallLayout() -- not the separate STALL_Y constant that used
+    // to drift from what _layoutHUD() actually drew, real-device defect #3).
     if (this.carrySprites.length > 0) {
-      const stallCenterX = STALL_X + STALL_W / 2;
-      const stallCenterY = STALL_Y + STALL_H / 2;
-      const distToStall = Phaser.Math.Distance.Between(fx, fy, stallCenterX, stallCenterY);
+      const stall = this._computeStallLayout();
+      const distToStall = Phaser.Math.Distance.Between(fx, fy, stall.centerX, stall.centerY);
       if (distToStall < MAGNET_RADIUS) {
         this._sellAtStall();
       }
@@ -3289,7 +3720,11 @@ class PlayScene extends Phaser.Scene {
       const dist = Phaser.Math.Distance.Between(helper.x, helper.y, helper.target.x, helper.target.y);
       if (dist < MAGNET_RADIUS) {
         const plot = this.plots[helper.targetPlotIndex];
-        if (plot && !plot.harvested && this.time.now >= plot.readyAt) {
+        // Same carry-stack cap as the player's own harvest (defect #1) --
+        // the helper adds to the shared player carry stack (_addToCarryStack
+        // below), so it must respect the same bound.
+        const carryFull = this.carrySprites.length >= CARRY_STACK_MAX;
+        if (plot && !plot.harvested && this.time.now >= plot.readyAt && !carryFull) {
           plot.harvested = true;
           plot.cropSprite.setVisible(false);
           if (plot.pulseTween) {
@@ -3300,16 +3735,24 @@ class PlayScene extends Phaser.Scene {
           if (plot.progressBarFill) plot.progressBarFill.setVisible(false);
           if (plot.progressBarBg) plot.progressBarBg.setVisible(false);
           plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
-          // Add to player's carry stack (not helper's own carrying)
-          this._addToCarryStack();
+          // Add a burst of goods to the player's carry stack (defect #5),
+          // same as the player's own harvest -- not helper's own carrying.
+          this._addHarvestBurst();
           // Helper can carry multiple crops before selling
           helper.carryCount = (helper.carryCount || 0) + 1;
           if (helper.carryCount >= HELPER_MAX_CARRY) {
             helper.state = 'moving_to_stall';
-            helper.target = { x: STALL_X + STALL_W / 2, y: STALL_Y + STALL_H / 2 };
+            const stall = this._computeStallLayout();
+            helper.target = { x: stall.centerX, y: stall.centerY };
           } else {
             helper.state = 'seeking_plot';
           }
+        } else if (carryFull && this.carrySprites.length > 0) {
+          // Carry stack is full -- go deposit at the market instead of
+          // idling right next to a plot it can't harvest.
+          helper.state = 'moving_to_stall';
+          const stall = this._computeStallLayout();
+          helper.target = { x: stall.centerX, y: stall.centerY };
         } else {
           helper.state = 'idle';
         }
@@ -3404,11 +3847,18 @@ class PlayScene extends Phaser.Scene {
       }
     });
 
-    // Update top-center progress bar: plots owned / MAX_PLOTS
+    // Update top-center progress bar: coins toward the next affordable
+    // upgrade (real-device defect #4 -- see _cheapestUpgradeCost()).
     if (this.progressBarFill && this.progressBarBg && this.progressText) {
-      const progress = Math.min(this.plots.length / MAX_PLOTS, 1);
-      this.progressBarFill.width = 392 * progress;
-      this.progressText.setText('Plots: ' + this.plots.length + ' / ' + MAX_PLOTS);
+      const nextCost = this._cheapestUpgradeCost();
+      if (nextCost === null) {
+        this.progressBarFill.width = 392;
+        this.progressText.setText('All upgrades maxed!');
+      } else {
+        const progress = Math.min(this.coins / nextCost, 1);
+        this.progressBarFill.width = 392 * progress;
+        this.progressText.setText('Next upgrade: ' + this.coins + ' / ' + nextCost);
+      }
     }
 
     if (this.state !== STATE.PLAYING) return;
