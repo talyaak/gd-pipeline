@@ -178,12 +178,14 @@ class PlayScene extends Phaser.Scene {
     }
 
     // Farmer
-    this.farmer = this.add.circle(W / 2, PLOT_AREA_TOP + 320, FARMER_RADIUS, 0xe65100);
-    this.farmer.setStrokeStyle(5, 0xbf360c, 1);
+        this.farmer = this.add.circle(W / 2, PLOT_AREA_TOP + 320, FARMER_RADIUS, 0xe65100);
+        this.farmer.setStrokeStyle(5, 0xbf360c, 1);
+        this.farmer.setDepth(10);  // gameplay foreground, above plots
 
     // Carried crop indicator - now a stack container
-    this.carryStack = this.add.container(this.farmer.x, this.farmer.y - 56);
-    this.carryStack.setVisible(false);
+        this.carryStack = this.add.container(this.farmer.x, this.farmer.y - 56);
+        this.carryStack.setDepth(10);  // gameplay foreground, above plots
+        this.carryStack.setVisible(false);
     this.carrySprites = [];
 
     // Explicit visible capacity readout for the carry stack (defect #5 /
@@ -210,14 +212,17 @@ class PlayScene extends Phaser.Scene {
     }).setOrigin(0, 0.5);
 
     // Progress bar top-center: coins toward the next affordable upgrade
-    // (real-device defect #4 -- see _cheapestUpgradeCost())
-    this.progressBarBg = this.add.rectangle(W / 2, COINS_Y, 400, 24, 0x222222, 0.7);
-    this.progressBarBg.setStrokeStyle(2, 0x444444, 1);
-    this.progressBarFill = this.add.rectangle(W / 2 - 200 + 4, COINS_Y, 0, 16, 0xffd700, 1);
-    this.progressBarFill.setOrigin(0, 0.5);
-    this.progressText = this.add.text(W / 2, COINS_Y, 'Next upgrade: 0 / ' + PLOT_UPGRADE_BASE_COST, {
-      fontFamily: 'monospace', fontSize: '18px', color: '#fff'
-    }).setOrigin(0.5);
+        // (real-device defect #4 -- see _cheapestUpgradeCost()).
+        this.progressBarBg = this.add.rectangle(W / 2, COINS_Y, 400, 24, 0x222222, 0.7);
+                 this.progressBarBg.setDepth(0);  // bg layer, below fill and text
+                 this.progressBarBg.setStrokeStyle(2, 0x444444, 1);
+        this.progressBarFill = this.add.rectangle(W / 2 - 200 + 4, COINS_Y, 0, 16, 0xffd700, 1);
+        this.progressBarFill.setOrigin(0, 0.5);
+        this.progressBarFill.setDepth(1);  // above bg, below text
+        this.progressText = this.add.text(W / 2, COINS_Y, 'Next upgrade: 0 / ' + PLOT_UPGRADE_BASE_COST, {
+          fontFamily: 'monospace', fontSize: '18px', color: '#fff',
+          stroke: '#000', strokeThickness: 4
+        }).setOrigin(0.5).setDepth(2);  // text with black outline on top
 
     // HUD scene/layer for screen-space elements (setScrollFactor(0))
     // This is the separate camera that stays fixed on screen while world camera moves
@@ -269,7 +274,7 @@ class PlayScene extends Phaser.Scene {
     // _layoutHUD() can reposition it on every real layout pass, the same
     // as every other top-HUD element, for as long as it's still alive.
     const { bannerY } = this._computeTopHudLayout();
-    const introBanner = Juice.IntroBanner.create(this, { label: 'HARVEST \u2022 SELL \u2022 UPGRADE', y: bannerY });
+        const introBanner = Juice.IntroBanner.create(this, { label: 'HARVEST \u2022 SELL \u2022 UPGRADE', y: bannerY, color: '#e65100' });
     this._introBannerText = this.children.list[this.children.list.length - 1];
     const introHint = Juice.TapHint.create(this, this.farmer.x, this.farmer.y, { color: 0xe65100, radius: 64 });
     this.time.delayedCall(2500, () => {
@@ -609,21 +614,39 @@ class PlayScene extends Phaser.Scene {
       this.startHintText.setVisible(true);
       this._showStartHint();
     } else {
-    }
-  }
+        }
+      }
 
-  _showStartHint() {
-    // Position hint near farmer, above them with pulse animation
-    if (!this.startHint || !this.startHintText) return;
-    const fx = this.farmer.x;
-    const fy = this.farmer.y;
-    const hintX = fx;
-    const hintY = fy - 120;
-    this.startHint.x = hintX;
-    this.startHint.y = hintY;
-    this.startHintText.x = hintX;
-    this.startHintText.y = hintY;
-    this.startHint.clear();
+      _showStartHint() {
+        // Position hint near farmer, above them with pulse animation
+        if (!this.startHint || !this.startHintText) return;
+        const fx = this.farmer.x;
+        const fy = this.farmer.y;
+        // Ensure hint doesn't overlap the plot row. _plotPosition() places row 0
+        // at PLOT_AREA_TOP + 96 (not PLOT_AREA_TOP itself -- that extra offset
+        // is header/progress-bar space above the plots), so the row's actual
+        // bottom edge is _plotPosition(0).y + PLOT_SIZE. startHintText has
+        // origin(0.5), so hintY is its vertical CENTER -- the floor must also
+        // clear the text's own half-height above that center, not just add a
+        // flat margin to the plot's bottom edge (an earlier version of this
+        // fix used PLOT_AREA_TOP + PLOT_SIZE + 20, which landed inside the
+        // plot row's own vertical span; a later version fixed the plot-row
+        // offset but still only added a flat +20, leaving the text's top edge
+        // a few px inside the plot row on short viewports).
+        const plotRowBottom = this._plotPosition(0).y + PLOT_SIZE;
+        const hintHalfHeight = this.startHintText.height / 2;
+        const minHintY = plotRowBottom + hintHalfHeight + 20;
+        // Same origin(0.5) reasoning as the vertical clamp above, but
+        // horizontal: hintX is the text's center, so when the farmer is near
+        // the left/right edge (e.g. the far-right plot column) the label can
+        // extend past the screen edge unless clamped by its own half-width.
+        const hintHalfWidth = this.startHintText.width / 2;
+        const hintX = Math.min(Math.max(fx, hintHalfWidth + 8), W - hintHalfWidth - 8);
+        const hintY = Math.max(fy - 120, minHintY);
+        this.startHint.x = hintX;
+        this.startHint.y = hintY;
+        this.startHintText.x = hintX;
+        this.startHintText.y = hintY;
     // Draw arrow pointing down to farmer
     this.startHint.fillStyle(0x2e7d32, 0.9);
     this.startHint.fillTriangle(hintX, hintY + 30, hintX - 20, hintY + 10, hintX + 20, hintY + 10);
@@ -809,18 +832,22 @@ class PlayScene extends Phaser.Scene {
   }
 
   _createPlot(index, x, y) {
-    const plot = this.add.graphics();
-    plot.fillStyle(0x5d4037, 1);
-    plot.fillRoundedRect(x, y, PLOT_SIZE, PLOT_SIZE, 13);
+      const plot = this.add.graphics();
+      plot.fillStyle(0x5d4037, 1);
+      plot.fillRoundedRect(x, y, PLOT_SIZE, PLOT_SIZE, 13);
+      plot.setDepth(0);  // ground layer, below gameplay objects
 
-    const crop = this.add.circle(x + PLOT_SIZE / 2, y + PLOT_SIZE / 2, 29, 0x8bc34a);
-    crop.setVisible(false);
+      const crop = this.add.circle(x + PLOT_SIZE / 2, y + PLOT_SIZE / 2, 29, 0x8bc34a);
+      crop.setVisible(false);
+      crop.setDepth(0);  // ground layer, below gameplay objects
 
     // Progress bar for crop growth (on the plot itself)
-    const progressBarBg = this.add.rectangle(x + PLOT_SIZE / 2, y - 16, PLOT_SIZE - 8, 8, 0x000000, 0.5);
-    progressBarBg.setOrigin(0.5, 1);
-    const progressBarFill = this.add.rectangle(x + 4, y - 16, 0, 6, 0x8bc34a, 1);
-    progressBarFill.setOrigin(0, 1);
+        const progressBarBg = this.add.rectangle(x + PLOT_SIZE / 2, y - 16, PLOT_SIZE - 8, 8, 0x000000, 0.5);
+        progressBarBg.setOrigin(0.5, 1);
+        progressBarBg.setDepth(0);  // ground layer, below gameplay objects
+        const progressBarFill = this.add.rectangle(x + 4, y - 16, 0, 6, 0x8bc34a, 1);
+        progressBarFill.setOrigin(0, 1);
+        progressBarFill.setDepth(0);  // ground layer, below gameplay objects
     progressBarFill.setVisible(false);
 
     this.plots.push({
