@@ -1,0 +1,6 @@
+# Shell scripts must check out with LF, never CRLF -- a CRLF shebang line
+# (`#!/usr/bin/env bash\r`) fails to exec under bash with
+# "env: 'bash\r': No such file or directory". This bit scripts/instinct-wire.sh
+# and scripts/build_harness_html.sh on Windows checkouts with
+# core.autocrlf=true before this was added.
+*.sh text eol=lf
