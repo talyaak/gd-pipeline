@@ -3062,7 +3062,12 @@ class PlayScene extends Phaser.Scene {
         const plotRowBottom = this._plotPosition(0).y + PLOT_SIZE;
         const hintHalfHeight = this.startHintText.height / 2;
         const minHintY = plotRowBottom + hintHalfHeight + 20;
-        const hintX = fx;
+        // Same origin(0.5) reasoning as the vertical clamp above, but
+        // horizontal: hintX is the text's center, so when the farmer is near
+        // the left/right edge (e.g. the far-right plot column) the label can
+        // extend past the screen edge unless clamped by its own half-width.
+        const hintHalfWidth = this.startHintText.width / 2;
+        const hintX = Math.min(Math.max(fx, hintHalfWidth + 8), W - hintHalfWidth - 8);
         const hintY = Math.max(fy - 120, minHintY);
         this.startHint.x = hintX;
         this.startHint.y = hintY;
