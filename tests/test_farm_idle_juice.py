@@ -61,8 +61,17 @@ def test_stacking_visual_reflects_carried_count():
             }
 
             // After 3 harvests, carryCount should have hit HELPER_MAX_CARRY
-            // and helper.state should already be 'moving_to_stall'.
-            helper.x = 176; helper.y = 1308;  // STALL_X + STALL_W/2, STALL_Y + STALL_H/2
+            // and helper.state should already be 'moving_to_stall'. Teleport
+            // to the LIVE computed stall position (scene._computeStallLayout()
+            // -- real-device defect #3's single source of truth) rather than
+            // a hardcoded (176, 1308): that value only matched the stall's
+            // rendered position back when _updateMagnet()/helper-targeting
+            // read the separate fixed STALL_Y constant, which is exactly the
+            // drift bug defect #3 fixes -- a hardcoded coordinate here would
+            // now silently stop landing within MAGNET_RADIUS of the real
+            // sell target on most viewports.
+            const stall = scene._computeStallLayout();
+            helper.x = stall.centerX; helper.y = stall.centerY;
             helper.sprite.x = helper.x; helper.sprite.y = helper.y;
             scene.update(scene.time.now, 16);
             console.log(`After sell attempt: carrySprites=${scene.carrySprites.length}, helper.state=${helper.state}`);
@@ -136,8 +145,11 @@ def test_coin_fly_to_counter_completes_and_updates():
             scene.update(scene.time.now, 16);
             console.log(`After harvest: carrySprites=${scene.carrySprites.length}, helper.carryCount=${helper.carryCount}, helper.state=${helper.state}`);
 
-            // Teleport helper near stall and tick again to sell.
-            helper.x = 176; helper.y = 1308;  // STALL_X + STALL_W/2, STALL_Y + STALL_H/2
+            // Teleport helper near stall and tick again to sell. Uses the
+            // LIVE computed stall position (see the sibling test above for
+            // why a hardcoded coordinate is wrong post-defect-#3-fix).
+            const stall = scene._computeStallLayout();
+            helper.x = stall.centerX; helper.y = stall.centerY;
             helper.sprite.x = helper.x; helper.sprite.y = helper.y;
             scene.update(scene.time.now, 16);
 
@@ -162,8 +174,11 @@ def test_coin_fly_to_counter_completes_and_updates():
         print(f"Carry stack length: {result['carryStackLength']}")
         print(f"Coins text: {result['coinsText']}")
 
-        # The coin count should have increased by exactly 10 (1 crop * CROP_SELL_VALUE)
-        expected_increase = 10  # CROP_SELL_VALUE = 10
+        # Real-device defect #5 fix: a single harvest now bursts
+        # HARVEST_BURST_SIZE (3) goods into the carry stack instead of
+        # exactly 1 (see harness/farm_idle.game.js), so one harvest-sell
+        # cycle nets 3 * CROP_SELL_VALUE(10) = 30, not 10.
+        expected_increase = 30
         actual_increase = final_coins - initial_coins
         assert actual_increase == expected_increase, (
             f"Expected coins to increase by {expected_increase}, "
@@ -182,8 +197,12 @@ def test_coin_fly_to_counter_completes_and_updates():
 @pytest.mark.slow
 def test_progress_bar_updates_with_plots():
     """
-    Test that the top-center progress bar updates to show progress
-    toward the next plot unlock.
+    Test that the top-center progress bar exists and keeps working (does
+    not error/disappear) across a purchase. As of the real-device defect #4
+    fix, the bar shows coins-toward-next-upgrade rather than a plot-count
+    ratio (see PlayScene._cheapestUpgradeCost() in farm_idle.game.js) --
+    this test only checks the bar's existence/wiring survives a purchase,
+    not its specific numeric proportion.
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
