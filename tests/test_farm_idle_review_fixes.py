@@ -49,11 +49,10 @@ def test_plot_row_wrapping_on_canvas():
             return scene.plots.map(p => ({ x: p.x, y: p.y, index: p.index }));
         }""")
         
-        # Constants from the game (720x1280 portrait design base, 1.6x scale
-        # from the original 450x800 base)
+        # Constants from the game (720x1412 portrait design base, minimax-optimal ratio
         W = 720
         PLOT_SIZE = 96
-        STALL_Y = 1120
+        STALL_Y = 1252
         
         print(f"Total plots after 6 purchases: {len(plots_data)}")
         for p in plots_data:
@@ -288,11 +287,11 @@ def test_plot_grid_caps_and_redirects_to_buffs():
             };
         }""")
 
-        # 720x1280 portrait design base, 1.6x scale from the original 450x800 base
+        # 720x1412 portrait design base (minimax-optimal, was 1560 then 1280)
         MAX_PLOTS = 18
         PLOT_SIZE = 96
         UPGRADE_PANEL_TOP = 672
-        STALL_Y = 1120
+        STALL_Y = 1252
         W = 720
 
         assert result['plotCount'] == MAX_PLOTS, (

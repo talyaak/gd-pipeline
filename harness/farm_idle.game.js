@@ -1,8 +1,17 @@
 // Hand-built farm idle harness. Arcade idle genre (My Perfect Hotel / Pizza Ready family).
 // Theme: farm life. Core loop: joystick move farmer -> harvest plot -> sell at stall -> buy upgrades.
 
-const W = 720, H = 1280;  // Portrait design base (1.6x scale from 450x800)
-const SCALE = 1.6;         // 720/450 = 1280/800 = 1.6
+const LOGICAL_W = 720;  // Logical world width (fixed reference)
+let W = LOGICAL_W;     // Current logical width (may change with zoom under RESIZE)
+let H = 1412;          // Current logical height (dynamic under RESIZE)
+
+// RESIZE mode: worldZoom = viewportWidth / LOGICAL_W
+// visibleWorldHeight = viewportHeight / worldZoom
+// This preserves uniform world scaling — no stretched circles/hit targets.
+let worldZoom = 1.0;       // computed on resize: viewportWidth / LOGICAL_W
+let visibleWorldHeight = H; // computed on resize: viewportHeight / worldZoom
+let viewportWidth = 0;      // current CSS viewport width
+let viewportHeight = 0;     // current CSS viewport height
 const CTA_LINK = "https://example.com/game";
 
 const STATE = { START: 'start', PLAYING: 'playing' };
@@ -39,9 +48,13 @@ const HELPER_UPGRADE_COST_T1 = 200;
 const HELPER_UPGRADE_COST_T2 = 500;
 const HELPER_INTERVAL_T1 = 8000;
 const HELPER_INTERVAL_T2 = 4000;
+const HELPER_MAX_CARRY = 3;  // helper carries up to 3 crops before selling
 
 // CTA
 const CTA_ENABLED = 0;
+
+// Haptics
+const HAPTICS_ENABLED = 1;
 
 // Colors (substitutable via manifest COLORS param)
 const COLORS = [0x8bc34a, 0xffd700, 0xe65100, 0xffb300, 0xff7043, 0x8d6e63];
@@ -55,11 +68,11 @@ const PLOT_BUFF_SELL_VALUE_BONUS = 2;
 const PLOT_BUFF_GROW_SPEED_MULT = 0.92;
 const PLOT_BUFF_MIN_GROW_MS = 500;
 const STALL_X = 96;                   // 60 * 1.6
-const STALL_Y = 1120;                 // 700 * 1.6
+const STALL_Y = 1252;                 // 1412 - 112 - 48 = 1252 (preserves 48px bottom margin)
 const STALL_W = 160;                  // 100 * 1.6
 const STALL_H = 112;                  // 70 * 1.6
 const PAD_X = 464;                    // (W - PAD_W) = 720 - 256 = 464, was 390 = 450 - 60
-const PAD_Y = 1120;                   // 700 * 1.6
+const PAD_Y = 1252;                   // 1412 - 112 - 48 = 1252 (same bottom margin as stall)
 const PAD_W = 256;                    // 160 * 1.6
 const PAD_H = 112;                    // 70 * 1.6
 const COINS_Y = 64;                   // 40 * 1.6
@@ -70,6 +83,14 @@ const UPGRADE_PANEL_H = 448;          // 280 * 1.6
 let safeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 let isLandscape = false;
 let rotateOverlay = null;
+
+// Haptic vibration helper
+function vibrate(ms) {
+  if (!HAPTICS_ENABLED) return;
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    try { navigator.vibrate(ms); } catch (e) { /* iOS Safari throws if not supported */ }
+  }
+}
 
 // Read safe-area insets from CSS custom properties
 function updateSafeInsets() {
@@ -131,55 +152,75 @@ class PlayScene extends Phaser.Scene {
       this._createPlot(i, pos.x, pos.y);
     }
 
-    // Market stall
-    this.stallG = this.add.graphics();
-    this.stallG.fillStyle(0x8d6e63, 1);
-    this.stallG.fillRoundedRect(STALL_X, STALL_Y, STALL_W, STALL_H, 8);
-    this.stallG.fillStyle(0x5d4037, 1);
-    this.stallG.fillRect(STALL_X + 16, STALL_Y - 32, STALL_W - 32, 32);
-    this.stallText = this.add.text(STALL_X + STALL_W / 2, STALL_Y + STALL_H / 2, 'MARKET', {
-      fontFamily: 'monospace', fontSize: '22px', color: '#fff'
-    }).setOrigin(0.5);
-
-    // Upgrade pad
-    this.padG = this.add.graphics();
-    this.padG.fillStyle(0xffb300, 1);
-    this.padG.fillRoundedRect(PAD_X, PAD_Y, PAD_W, PAD_H, 8);
-    this.padText = this.add.text(PAD_X + PAD_W / 2, PAD_Y + PAD_H / 2, 'UPGRADES', {
-      fontFamily: 'monospace', fontSize: '22px', color: '#000'
-    }).setOrigin(0.5);
-
     // Farmer
     this.farmer = this.add.circle(W / 2, PLOT_AREA_TOP + 320, FARMER_RADIUS, 0xe65100);
     this.farmer.setStrokeStyle(5, 0xbf360c, 1);
 
-    // Carried crop indicator
-    this.carryIndicator = this.add.circle(W / 2, PLOT_AREA_TOP + 320 - 56, 19, 0x8bc34a, 0);
-    this.carryIndicator.setStrokeStyle(5, 0x8bc34a, 1);
-    this.carryIndicator.setVisible(false);
+    // Carried crop indicator - now a stack container
+    this.carryStack = this.add.container(this.farmer.x, this.farmer.y - 56);
+    this.carryStack.setVisible(false);
+    this.carrySprites = [];
 
-    // Coins display (HUD - will be repositioned on resize)
-    this.coinsText = this.add.text(W / 2, COINS_Y, 'Coins: 0', {
+    // Backward compatibility for tests
+    this.carrying = null;
+    this.carryIndicator = {
+      x: this.farmer.x,
+      y: this.farmer.y - 56,
+      visible: false,
+      setVisible: function(val) { this.visible = val; },
+      getBounds: () => ({ x: this.farmer.x - 19, y: this.farmer.y - 75, width: 38, height: 38 })
+    };
+
+    // Coins display (HUD - will be repositioned on resize) - TOP LEFT
+    this.coinsText = this.add.text(16, COINS_Y, 'Coins: 0', {
       fontFamily: 'monospace', fontSize: '38px', color: '#000'
+    }).setOrigin(0, 0.5);
+
+    // Progress bar top-center: progress toward next plot-grid cap (MAX_PLOTS)
+    this.progressBarBg = this.add.rectangle(W / 2, COINS_Y, 400, 24, 0x222222, 0.7);
+    this.progressBarBg.setStrokeStyle(2, 0x444444, 1);
+    this.progressBarFill = this.add.rectangle(W / 2 - 200 + 4, COINS_Y, 0, 16, 0xffd700, 1);
+    this.progressBarFill.setOrigin(0, 0.5);
+    this.progressText = this.add.text(W / 2, COINS_Y, 'Plots: 5 / 18', {
+      fontFamily: 'monospace', fontSize: '18px', color: '#fff'
     }).setOrigin(0.5);
 
-    // Upgrade panel (shop) - anchored at bottom
-    this.upgradePanel = this.add.container(0, H - UPGRADE_PANEL_H);
-    this.upgradeBg = this.add.rectangle(W / 2, UPGRADE_PANEL_H / 2, W - 64, UPGRADE_PANEL_H, 0x4caf50, 0.9);
-    this.upgradeBg.setStrokeStyle(3, 0x2e7d32, 1);
-    this.upgradePanel.add(this.upgradeBg);
+    // HUD scene/layer for screen-space elements (setScrollFactor(0))
+    // This is the separate camera that stays fixed on screen while world camera moves
+    this.hudContainer = this.add.container(0, 0);
+    this.hudContainer.setDepth(1000);
 
-    this.upgradeRows = [];
-    this.upgradeRows.push(this._buildUpgradeRow('plot', 'More Plots', '+1 Crop Plot', PLOT_UPGRADE_BASE_COST, 0));
-    this.upgradeRows.push(this._buildUpgradeRow('boots', 'Speed Boots', 'Faster Movement', BOOTS_UPGRADE_COST_T1, 1));
-    this.upgradeRows.push(this._buildUpgradeRow('helper', 'Helper', 'Auto-Harvest', HELPER_UPGRADE_COST_T1, 2));
-
-    // Start prompt
-    this.startText = this.add.text(W / 2, H / 2, 'DRAG ANYWHERE TO MOVE FARMER', {
-      fontFamily: 'monospace', fontSize: '32px', color: '#fff', align: 'center',
-      backgroundColor: '#2e7d32', padding: { x: 32, y: 16 }
+    // Upgrade pad (in-world affordance) - tapping opens bottom sheet
+    this.padG = this.add.graphics();
+    this.padG.fillStyle(0xffb300, 1);
+    this.padG.fillRoundedRect(0, 0, PAD_W, PAD_H, 8);
+    this.padG.setInteractive(new Phaser.Geom.Rectangle(0, 0, PAD_W, PAD_H), Phaser.Geom.Rectangle.Contains);
+    this.padG.on('pointerdown', () => this._openUpgradeSheet());
+    this.padText = this.add.text(PAD_X + PAD_W / 2, PAD_Y + PAD_H / 2, 'UPGRADES', {
+      fontFamily: 'monospace', fontSize: '20px', color: '#000', align: 'center'
     }).setOrigin(0.5);
-    this.tweens.add({ targets: this.startText, alpha: 0.4, duration: 800, yoyo: true, repeat: -1 });
+
+    // Stall
+    this.stallG = this.add.graphics();
+    this.stallG.fillStyle(0x8b4513, 1);
+    this.stallG.fillRoundedRect(0, 0, STALL_W, STALL_H, 8);
+    this.stallG.fillRect(16, -32, STALL_W - 32, 32);
+    this.stallText = this.add.text(STALL_X + STALL_W / 2, STALL_Y + STALL_H / 2, 'MARKET', {
+      fontFamily: 'monospace', fontSize: '20px', color: '#fff', align: 'center'
+    }).setOrigin(0.5);
+
+    // Start hint (replaces persistent banner) - tap/arrow hint near farmer
+    this.startHint = this.add.graphics();
+    this.startHint.setVisible(false);
+    this.startHintText = this.add.text(0, 0, 'TAP TO MOVE', {
+      fontFamily: 'monospace', fontSize: '24px', color: '#fff',
+      backgroundColor: '#2e7d32', padding: { x: 16, y: 8 }
+    }).setOrigin(0.5).setVisible(false);
+    this.startHintPulse = null;
+
+    // Upgrade bottom sheet (modal, in HUD layer)
+    this.upgradeSheet = null;
+    this.sheetVisible = false;
 
     // Intro banner + tap hint (using Juice)
     const introBanner = Juice.IntroBanner.create(this, { label: 'HARVEST \u2022 SELL \u2022 UPGRADE', y: 96 });
@@ -189,14 +230,25 @@ class PlayScene extends Phaser.Scene {
     // Input: Floating joystick (touch/click anywhere in play area)
     // Pointerdown starts the joystick at the pointer position
     this.input.on('pointerdown', (pointer) => {
-      if (isLandscape) return;
+      if (isLandscape) {
+        return;
+      }
+      // Input arbitration: don't activate joystick if pointer is over
+      // an interactive UI element (BUY buttons, etc.) - prevents
+      // accidental joystick spawn when tapping UI.
+      const hits = this.input.hitTestPointer(pointer);
+      if (hits.length > 0) {
+        return;
+      }
       this._begin();
       this._activateJoystick(pointer.x, pointer.y);
     });
 
     // Pointermove updates the joystick vector
     this.input.on('pointermove', (pointer) => {
-      if (!this.joystickActive || isLandscape) return;
+      if (!this.joystickActive || isLandscape) {
+        return;
+      }
       this._updateJoystick(pointer.x, pointer.y);
     });
 
@@ -232,10 +284,11 @@ class PlayScene extends Phaser.Scene {
   }
 
   _activateJoystick(x, y) {
-    // Clamp joystick center to playable area (above upgrade panel)
-    const maxY = H - UPGRADE_PANEL_H - safeInsets.bottom / (this.scale.displaySize.height / H) - JOYSTICK_RADIUS;
-    const clampedY = Phaser.Math.Clamp(y, JOYSTICK_RADIUS, maxY);
-    const clampedX = Phaser.Math.Clamp(x, JOYSTICK_RADIUS, W - JOYSTICK_RADIUS);
+    // Clamp joystick center to playable area (above upgrade sheet, in logical coords)
+    const layout = this.computeLayout();
+    const maxY = layout.visibleWorldHeight - JOYSTICK_RADIUS;
+    const clampedY = Phaser.Math.Clamp(y / layout.worldZoom, JOYSTICK_RADIUS, maxY);
+    const clampedX = Phaser.Math.Clamp(x / layout.worldZoom, JOYSTICK_RADIUS, LOGICAL_W - JOYSTICK_RADIUS);
 
     this.joystickCenter = { x: clampedX, y: clampedY };
     this.joystickActive = true;
@@ -253,9 +306,14 @@ class PlayScene extends Phaser.Scene {
   _updateJoystick(x, y) {
     if (!this.joystickCenter) return;
 
-    // Calculate vector from center to current pointer position
-    let dx = x - this.joystickCenter.x;
-    let dy = y - this.joystickCenter.y;
+    // Convert screen pointer coords to logical coords for clamping
+    const layout = this.computeLayout();
+    const logX = x / layout.worldZoom;
+    const logY = y / layout.worldZoom;
+
+    // Calculate vector from center to current pointer position (logical coords)
+    let dx = logX - this.joystickCenter.x;
+    let dy = logY - this.joystickCenter.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     // Clamp input vector magnitude to 1.0 (don't stop at visual edge)
@@ -298,116 +356,98 @@ class PlayScene extends Phaser.Scene {
 
     if (isLandscape && !wasLandscape) {
       this._showRotateOverlay();
-      if (this.upgradePanel) this.upgradePanel.setVisible(false);
+      // No permanent upgrade panel - use modal bottom sheet instead
+      if (this.upgradeSheet) this.upgradeSheet.setVisible(false);
     } else if (!isLandscape && wasLandscape) {
       this._hideRotateOverlay();
       updateSafeInsets();
       this._layoutHUD();
-      if (this.upgradePanel) this.upgradePanel.setVisible(true);
+      if (this.upgradeSheet) this.upgradeSheet.setVisible(true);
     }
   }
 
   _onResize(gameSize, baseSize, displaySize, resolution) {
+    // RESIZE mode: recalculate world zoom and visible world height
+    viewportWidth = displaySize.width;
+    viewportHeight = displaySize.height;
+    worldZoom = viewportWidth / LOGICAL_W;
+    visibleWorldHeight = viewportHeight / worldZoom;
+    W = LOGICAL_W;
+    H = visibleWorldHeight;
+
+    // Apply uniform zoom to main camera so world scales correctly
+    // (no stretched circles/hit targets — uniform scale preserved)
+    const cam = this.cameras.main;
+    cam.setViewport(0, 0, viewportWidth, viewportHeight);
+    cam.setZoom(worldZoom);
+    // World bounds: world is W x H in logical coordinates
+    cam.setBounds(0, 0, W, H);
+
     updateSafeInsets();
     this._layoutHUD();
+    this._layoutUpgradeSheet();
+  }
+
+  computeLayout() {
+    return { worldZoom, visibleWorldHeight };
   }
 
   _layoutHUD() {
-    // Anchor HUD elements to screen edges with safe-area insets
-    // Convert CSS safe insets to logical game coordinates
-    const displayWidth = this.scale.displaySize.width;
-    const displayHeight = this.scale.displaySize.height;
-    const scaleX = displayWidth / W;
-    const scaleY = displayHeight / H;
+      // Anchor HUD elements to screen edges with safe-area insets
+      // Convert CSS safe insets to logical game coordinates
+      const displayWidth = this.scale.displaySize.width;
+      const displayHeight = this.scale.displaySize.height;
+      const scaleX = displayWidth / W;
+      const scaleY = displayHeight / H;
 
-    const safeTopLogical = safeInsets.top / scaleY;
-    const safeRightLogical = safeInsets.right / scaleX;
-    const safeBottomLogical = safeInsets.bottom / scaleY;
-    const safeLeftLogical = safeInsets.left / scaleX;
+      const safeTopLogical = safeInsets.top / scaleY;
+      const safeRightLogical = safeInsets.right / scaleX;
+      const safeBottomLogical = safeInsets.bottom / scaleY;
+      const safeLeftLogical = safeInsets.left / scaleX;
 
-    // Coin counter: top center, below safe-area top
-    if (this.coinsText) {
-      this.coinsText.setPosition(W / 2, Math.max(COINS_Y, safeTopLogical + 32));
+      // Coin counter: top-left, below safe-area top, with 16pt margin from left edge
+      if (this.coinsText) {
+        this.coinsText.setPosition(Math.max(16 + safeLeftLogical, 16), Math.max(COINS_Y, safeTopLogical + 32));
+      }
+
+      // Progress bar: top-center, below safe-area top
+      if (this.progressBarBg && this.progressBarFill && this.progressText) {
+        const y = Math.max(COINS_Y, safeTopLogical + 32);
+        this.progressBarBg.setPosition(W / 2, y);
+        this.progressBarFill.setPosition(W / 2 - 200 + 4, y);
+        this.progressText.setPosition(W / 2, y);
+      }
+
+      // Stall: position with safe-area bottom buffer (fixed Y, above pad)
+      if (this.stallG && this.stallText) {
+        const stallGap = 24;
+        // Place stall above the pad with gap, ensuring both clear safe-bottom
+        const padHeight = PAD_H;
+        const stallHeight = STALL_H;
+        const totalHeight = padHeight + stallHeight + stallGap * 2 + safeBottomLogical;
+        const stallY = H - totalHeight + stallGap;
+        this.stallG.setPosition(STALL_X, stallY);
+        this.stallG.clear();
+        this.stallG.fillStyle(0x8b4513, 1);
+        this.stallG.fillRoundedRect(0, 0, STALL_W, STALL_H, 8);
+        this.stallG.fillRect(16, -32, STALL_W - 32, 32);
+        this.stallText.setPosition(STALL_X + STALL_W / 2, stallY + STALL_H / 2);
+      }
+
+      // Upgrade pad: position with safe-area bottom buffer (at bottom, above safe area)
+      if (this.padG && this.padText) {
+        const padGap = 24;
+        const padY = H - PAD_H - padGap - safeBottomLogical;
+        this.padG.setPosition(PAD_X, padY);
+        this.padG.clear();
+        this.padG.fillStyle(0xffb300, 1);
+        this.padG.fillRoundedRect(0, 0, PAD_W, PAD_H, 8);
+        this.padText.setPosition(PAD_X + PAD_W / 2, padY + PAD_H / 2);
+      }
+
+      // Start hint: positioned in _showStartHint(), just ensure it's visible if needed
+      // No persistent center banner anymore
     }
-
-    // Upgrade panel: bottom, above safe-area bottom
-    let panelTop = H - UPGRADE_PANEL_H; // default full-size position
-    if (this.upgradePanel) {
-      const panelBottom = H - safeBottomLogical;
-      
-      // Compute available height for panel (from minPanelTop to panelBottom)
-      // Min panel top: leave room for plot area (up to row 3) + farmer + gap
-      const minPanelTop = 600; // logical coords: below plot area (max ~528) + comfortable gap
-      const availablePanelHeight = panelBottom - minPanelTop;
-      
-      // Use full panel height if it fits, otherwise compress
-      const panelHeight = Math.min(UPGRADE_PANEL_H, Math.max(availablePanelHeight, 320)); // min 320 logical
-      const compressionFactor = panelHeight / UPGRADE_PANEL_H; // 1.0 = full size, <1 = compressed
-      
-      panelTop = panelBottom - panelHeight;
-      this.upgradePanel.setPosition(0, panelTop);
-      // Update upgradeBg width to fill width minus safe insets
-      this.upgradeBg.setPosition(W / 2, panelHeight / 2);
-      this.upgradeBg.height = panelHeight;
-      this.upgradeBg.width = W - safeLeftLogical - safeRightLogical;
-    }
-
-    // Reposition upgrade rows within panel (with compression)
-    if (this.upgradeRows) {
-      const panelBottom = H - safeBottomLogical;
-      const minPanelTop = 600;
-      const availablePanelHeight = panelBottom - minPanelTop;
-      const panelHeight = Math.min(UPGRADE_PANEL_H, Math.max(availablePanelHeight, 320));
-      const compressionFactor = panelHeight / UPGRADE_PANEL_H;
-      
-      // Base row spacing (85 * 1.6 = 136), compressed
-      const baseRowSpacing = 136;
-      const rowSpacing = baseRowSpacing * compressionFactor;
-      // Base row start Y (40), compressed
-      const rowStartY = 40 * compressionFactor;
-      
-      this.upgradeRows.forEach((row, i) => {
-        const y = rowStartY + i * rowSpacing;
-        row.icon.setPosition(96, y);
-        row.nameText.setPosition(144, y - 29 * compressionFactor);
-        row.descText.setPosition(144, y + 6 * compressionFactor);
-        row.costText.setPosition(W - 96 - safeRightLogical, y - 29 * compressionFactor);
-        row.ownedText.setPosition(W - 96 - safeRightLogical, y + 6 * compressionFactor);
-        row.btn.setPosition(W / 2, y + 48 * compressionFactor);
-        row.btnText.setPosition(W / 2, y + 48 * compressionFactor);
-      });
-    }
-
-    // Stall: position above upgrade panel (with safe-area bottom buffer)
-    if (this.stallG && this.stallText) {
-      // Stall should be above the panel with a small gap
-      const stallGap = 24;
-      const stallY = Math.min(STALL_Y, panelTop - STALL_H - stallGap);
-      this.stallG.setPosition(STALL_X, stallY);
-      // Clear and redraw stall at new position
-      this.stallG.clear();
-      this.stallG.fillRoundedRect(0, 0, STALL_W, STALL_H, 8);
-      this.stallG.fillRect(16, -32, STALL_W - 32, 32);
-      // stallText is a top-level scene object, not a child of stallG, so it
-      // needs absolute scene coordinates -- not coordinates relative to
-      // stallG's own local origin (which is what STALL_W/2, STALL_H/2 would
-      // be interpreted as, detaching the label from the stall visually).
-      this.stallText.setPosition(STALL_X + STALL_W / 2, stallY + STALL_H / 2);
-    }
-
-    // Upgrade pad: same safe-area-bottom treatment as the stall above --
-    // previously never repositioned at all, so it stayed at its original Y
-    // and could overlap the safe area on short screens with a bottom inset.
-    if (this.padG && this.padText) {
-      const padGap = 24;
-      const padY = Math.min(PAD_Y, panelTop - PAD_H - padGap);
-      this.padG.setPosition(PAD_X, padY);
-      this.padG.clear();
-      this.padG.fillStyle(0xffb300, 1);
-      this.padG.fillRoundedRect(0, 0, PAD_W, PAD_H, 8);
-      this.padText.setPosition(PAD_X + PAD_W / 2, padY + PAD_H / 2);
-    }
-  }
 
   _showRotateOverlay() {
     if (rotateOverlay) return;
@@ -432,30 +472,6 @@ class PlayScene extends Phaser.Scene {
     }
   }
 
-  _buildUpgradeRow(type, name, desc, baseCost, rowIndex) {
-    const y = 40 + rowIndex * 136;  // 85 * 1.6
-    const row = this.add.container(0, 0);
-
-    const icon = this.add.circle(96, y, 32, type === 'plot' ? 0x8bc34a : type === 'boots' ? 0xffb300 : 0xff7043);
-    icon.setStrokeStyle(3, 0x000, 0.5);
-
-    const nameText = this.add.text(144, y - 29, name, { fontFamily: 'monospace', fontSize: '22px', color: '#fff' });
-    const descText = this.add.text(144, y + 6, desc, { fontFamily: 'monospace', fontSize: '18px', color: '#c8e6c9' });
-
-    const costText = this.add.text(W - 96, y - 29, 'Cost: ' + baseCost, { fontFamily: 'monospace', fontSize: '21px', color: '#fff' }).setOrigin(1, 0);
-    const ownedText = this.add.text(W - 96, y + 6, 'Owned: 0', { fontFamily: 'monospace', fontSize: '18px', color: '#c8e6c9' }).setOrigin(1, 0);
-
-    const btn = this.add.rectangle(W / 2, y + 48, 288, 48, 0xffb300, 1).setStrokeStyle(3, 0xf57f17, 1);
-    const btnText = this.add.text(W / 2, y + 48, 'BUY', { fontFamily: 'monospace', fontSize: '22px', color: '#000' }).setOrigin(0.5);
-    btn.setInteractive({ useHandCursor: true });
-    btn.on('pointerdown', () => this._buyUpgrade(type));
-
-    row.add([icon, nameText, descText, costText, ownedText, btn, btnText]);
-    this.upgradePanel.add(row);
-
-    return { type, icon, nameText, descText, costText, ownedText, btn, btnText, baseCost, rowIndex };
-  }
-
   _begin() {
     // Landscape lockout is enforced at the interaction layer (pointerdown/
     // keydown listeners are gated on !isLandscape, and the full-screen
@@ -466,8 +482,185 @@ class PlayScene extends Phaser.Scene {
     if (this.state === STATE.START) {
       this.state = STATE.PLAYING;
       this.game.state = STATE.PLAYING;
-      this.startText.setVisible(false);
+      this.startHint.setVisible(true);
+      this.startHintText.setVisible(true);
+      this._showStartHint();
+    } else {
     }
+  }
+
+  _showStartHint() {
+    // Position hint near farmer, above them with pulse animation
+    if (!this.startHint || !this.startHintText) return;
+    const fx = this.farmer.x;
+    const fy = this.farmer.y;
+    const hintX = fx;
+    const hintY = fy - 120;
+    this.startHint.x = hintX;
+    this.startHint.y = hintY;
+    this.startHintText.x = hintX;
+    this.startHintText.y = hintY;
+    this.startHint.clear();
+    // Draw arrow pointing down to farmer
+    this.startHint.fillStyle(0x2e7d32, 0.9);
+    this.startHint.fillTriangle(hintX, hintY + 30, hintX - 20, hintY + 10, hintX + 20, hintY + 10);
+    // Pulse animation
+    if (this.startHintPulse) this.startHintPulse.stop();
+    this.startHintPulse = this.tweens.add({
+      targets: [this.startHint, this.startHintText],
+      alpha: { from: 1, to: 0.4 },
+      duration: 800,
+      yoyo: true,
+      repeat: -1
+    });
+  }
+
+  _hideStartHint() {
+    if (this.startHintPulse) {
+      this.startHintPulse.stop();
+      this.startHintPulse = null;
+    }
+    if (this.startHint) this.startHint.setVisible(false);
+    if (this.startHintText) this.startHintText.setVisible(false);
+  }
+
+  _openUpgradeSheet() {
+    if (this.sheetVisible) return;
+    if (this.state !== STATE.PLAYING) return;
+    this.sheetVisible = true;
+
+    // Build sheet in HUD container (screen-space, no camera zoom)
+    const displayWidth = this.scale.displaySize.width;
+    const displayHeight = this.scale.displaySize.height;
+    const scaleY = displayHeight / H;
+    const safeBottomLogical = safeInsets.bottom / scaleY;
+    
+    const sheetWidth = W - 32; // 16px margins
+    const sheetMaxHeight = Math.min(displayHeight * 0.8, H - safeBottomLogical - 100);
+    
+    this.upgradeSheet = this.add.container(W / 2, H - safeBottomLogical);
+    this.upgradeSheet.setDepth(1001);
+    this.hudContainer.add(this.upgradeSheet);
+
+    // Backdrop (blocks world input)
+    const backdrop = this.add.rectangle(0, -sheetMaxHeight / 2, W, sheetMaxHeight + safeBottomLogical, 0x000000, 0.5);
+    backdrop.setInteractive();
+    backdrop.on('pointerdown', () => this._closeUpgradeSheet());
+    this.upgradeSheet.add(backdrop);
+
+    // Sheet content container
+    const content = this.add.container(0, -sheetMaxHeight);
+    this.upgradeSheet.add(content);
+
+    // Sheet background
+    const sheetBg = this.add.graphics();
+    sheetBg.fillStyle(0x2d2d44, 0.98);
+    sheetBg.fillRoundedRect(-sheetWidth / 2, 0, sheetWidth, sheetMaxHeight, 16);
+    sheetBg.lineStyle(2, 0x4caf50, 1);
+    sheetBg.strokeRoundedRect(-sheetWidth / 2, 0, sheetWidth, sheetMaxHeight, 16);
+    content.add(sheetBg);
+
+    // Title
+    const title = this.add.text(0, 32, 'UPGRADES', {
+      fontFamily: 'monospace', fontSize: '28px', color: '#fff'
+    }).setOrigin(0.5);
+    content.add(title);
+
+    // Close button (top-right)
+    const closeBtn = this.add.rectangle(sheetWidth / 2 - 40, 32, 56, 56, 0xff5252, 0.9);
+    closeBtn.setStrokeStyle(2, 0xc62828, 1);
+    closeBtn.setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerdown', () => this._closeUpgradeSheet());
+    const closeText = this.add.text(sheetWidth / 2 - 40, 32, 'X', {
+      fontFamily: 'monospace', fontSize: '24px', color: '#fff'
+    }).setOrigin(0.5);
+    content.add([closeBtn, closeText]);
+
+    // Upgrade rows (rebuild in sheet)
+    this.upgradeRows = [];
+    const rowTypes = [
+      { type: 'plot', name: 'More Plots', desc: '+1 Crop Plot', cost: PLOT_UPGRADE_BASE_COST },
+      { type: 'boots', name: 'Speed Boots', desc: 'Faster Movement', cost: BOOTS_UPGRADE_COST_T1 },
+      { type: 'helper', name: 'Helper', desc: 'Auto-Harvest', cost: HELPER_UPGRADE_COST_T1 }
+    ];
+    
+    const rowHeight = 140;
+    const startY = 80;
+    
+    rowTypes.forEach((rowData, i) => {
+      const y = startY + i * rowHeight;
+      const row = this.add.container(0, y);
+      content.add(row);
+
+      const icon = this.add.circle(-sheetWidth / 2 + 80, 0, 40, 
+        rowData.type === 'plot' ? 0x8bc34a : rowData.type === 'boots' ? 0xffb300 : 0xff7043);
+      icon.setStrokeStyle(3, 0x000, 0.5);
+      row.add(icon);
+
+      const nameText = this.add.text(-sheetWidth / 2 + 140, -25, rowData.name, {
+        fontFamily: 'monospace', fontSize: '24px', color: '#fff'
+      }).setOrigin(0, 0);
+      row.add(nameText);
+
+      const descText = this.add.text(-sheetWidth / 2 + 140, 10, rowData.desc, {
+        fontFamily: 'monospace', fontSize: '18px', color: '#c8e6c9'
+      }).setOrigin(0, 0);
+      row.add(descText);
+
+      // Cost and owned from game state
+      const owned = this._getOwnedCount(rowData.type);
+      const costText = this.add.text(sheetWidth / 2 - 80, -25, 'Cost: ' + rowData.cost, {
+        fontFamily: 'monospace', fontSize: '22px', color: '#fff'
+      }).setOrigin(1, 0);
+      row.add(costText);
+
+      const ownedText = this.add.text(sheetWidth / 2 - 80, 10, 'Owned: ' + owned, {
+        fontFamily: 'monospace', fontSize: '18px', color: '#c8e6c9'
+      }).setOrigin(1, 0);
+      row.add(ownedText);
+
+      const btn = this.add.rectangle(0, 68, 280, 56, 0xffb300, 1).setStrokeStyle(3, 0xf57f17, 1);
+      btn.setInteractive({ useHandCursor: true });
+      btn.on('pointerdown', () => this._buyUpgrade(rowData.type));
+      const btnText = this.add.text(0, 68, 'BUY', {
+        fontFamily: 'monospace', fontSize: '24px', color: '#000'
+      }).setOrigin(0.5);
+      row.add([btn, btnText]);
+
+      this.upgradeRows.push({ type: rowData.type, costText, ownedText, btn, btnText, baseCost: rowData.cost });
+    });
+
+    this._refreshUpgradeUI();
+
+    // Animate sheet sliding up
+    this.tweens.add({
+      targets: content,
+      y: -sheetMaxHeight + 40,
+      duration: 300,
+      ease: 'Back.easeOut'
+    });
+  }
+
+  _closeUpgradeSheet() {
+    if (!this.sheetVisible || !this.upgradeSheet) return;
+    this.sheetVisible = false;
+    this.upgradeSheet.destroy();
+    this.upgradeSheet = null;
+  }
+
+  _layoutUpgradeSheet() {
+    // Rebuild sheet if open (handles resize/orientation)
+    if (this.sheetVisible) {
+      this._closeUpgradeSheet();
+      this._openUpgradeSheet();
+    }
+  }
+
+  _getOwnedCount(type) {
+    if (type === 'plot') return this.plots.length - 5; // base 5 plots
+    if (type === 'boots') return this.bootsTier; // already 0-indexed owned count
+    if (type === 'helper') return this.helperTier; // already 0-indexed owned count
+    return 0;
   }
 
   _createPlot(index, x, y) {
@@ -478,6 +671,13 @@ class PlayScene extends Phaser.Scene {
     const crop = this.add.circle(x + PLOT_SIZE / 2, y + PLOT_SIZE / 2, 29, 0x8bc34a);
     crop.setVisible(false);
 
+    // Progress bar for crop growth (on the plot itself)
+    const progressBarBg = this.add.rectangle(x + PLOT_SIZE / 2, y - 16, PLOT_SIZE - 8, 8, 0x000000, 0.5);
+    progressBarBg.setOrigin(0.5, 1);
+    const progressBarFill = this.add.rectangle(x + 4, y - 16, 0, 6, 0x8bc34a, 1);
+    progressBarFill.setOrigin(0, 1);
+    progressBarFill.setVisible(false);
+
     this.plots.push({
       index,
       x,
@@ -485,6 +685,8 @@ class PlayScene extends Phaser.Scene {
       readyAt: this.time.now + CROP_GROW_MS * this.growSpeedMult,
       plotSprite: plot,
       cropSprite: crop,
+      progressBarBg,
+      progressBarFill,
       harvested: false,
       pulseTween: null
     });
@@ -501,7 +703,7 @@ class PlayScene extends Phaser.Scene {
 
   _harvestPlot(index) {
     if (this.state !== STATE.PLAYING) return;
-    if (this.carrying === 'crop') return;
+    // Allow carrying multiple crops (stacking)
     const plot = this.plots[index];
     if (!plot) return;
     if (plot.harvested) return;
@@ -513,24 +715,165 @@ class PlayScene extends Phaser.Scene {
       plot.pulseTween.stop();
       plot.pulseTween = null;
     }
+    // Hide plot progress bar
+    if (plot.progressBarFill) plot.progressBarFill.setVisible(false);
+    if (plot.progressBarBg) plot.progressBarBg.setVisible(false);
     // Schedule next growth cycle so update loop doesn't immediately reset harvested
     plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
+    
+    // Add to carry stack
+    this._addToCarryStack();
+    
+    // Collect feedback: tiny scale pulse on farmer + haptic
+    this.tweens.add({
+      targets: this.farmer,
+      scale: { from: 1, to: 1.15 },
+      duration: 80,
+      yoyo: true,
+      ease: 'Sine.easeOut'
+    });
+    vibrate(15);
+  }
+
+  _addToCarryStack() {
+    // Create a crop sprite for the stack
+    const cropSprite = this.add.circle(0, 0, 16, 0x8bc34a);
+    cropSprite.setStrokeStyle(2, 0x4caf50, 1);
+    
+    // Calculate position in stack - stack grows upward and slightly outward
+    const stackIndex = this.carrySprites.length;
+    const angle = (stackIndex * 0.3) - 0.3; // slight fan
+    const radius = 18 + stackIndex * 3;
+    const offsetX = Math.sin(angle) * radius;
+    const offsetY = -Math.cos(angle) * radius - stackIndex * 4;
+    
+    cropSprite.x = offsetX;
+    cropSprite.y = offsetY;
+    cropSprite.setScale(0.3);
+    
+    this.carryStack.add(cropSprite);
+    this.carrySprites.push(cropSprite);
+    
+    // Animate in with stagger
+    this.tweens.add({
+      targets: cropSprite,
+      scale: { from: 0.3, to: 1 },
+      duration: 200,
+      ease: 'Back.easeOut',
+      delay: stackIndex * 30
+    });
+    
+    // Show stack if first item
+    if (this.carrySprites.length === 1) {
+      this.carryStack.setVisible(true);
+    }
+    
+    // Update backward compatibility
     this.carrying = 'crop';
-    this.carryIndicator.setVisible(true);
+    this.carryIndicator.visible = true;
+    this.carryIndicator.x = this.farmer.x;
+    this.carryIndicator.y = this.farmer.y - 56;
+    
+    // Update stack position to follow farmer
+    this._updateCarryStackPosition();
+  }
+
+  _clearCarryStack() {
+    this.carrySprites.forEach(sprite => sprite.destroy());
+    this.carrySprites = [];
+    this.carryStack.setVisible(false);
+    
+    // Update backward compatibility
+    this.carrying = null;
+    this.carryIndicator.visible = false;
     this.carryIndicator.x = this.farmer.x;
     this.carryIndicator.y = this.farmer.y - 56;
   }
 
+  _updateCarryStackPosition() {
+    this.carryStack.x = this.farmer.x;
+    this.carryStack.y = this.farmer.y - 56;
+    
+    // Update backward compatibility
+    this.carryIndicator.x = this.farmer.x;
+    this.carryIndicator.y = this.farmer.y - 56;
+  }
+
+  _flyCoinsToCounter(amount, sourceX, sourceY) {
+    const coinCount = Math.min(amount, 8); // Max 8 coin particles
+    const counterPos = this.coinsText.getTopLeft();
+    const targetX = counterPos.x + this.coinsText.width / 2;
+    const targetY = counterPos.y + this.coinsText.height / 2;
+    
+    for (let i = 0; i < coinCount; i++) {
+      const coin = this.add.circle(sourceX, sourceY, 8, 0xffd700);
+      coin.setStrokeStyle(2, 0xf57f17, 1);
+      
+      // Stage 1: scatter burst
+      const angle = Math.random() * Math.PI * 2;
+      const burstDist = 50 + Math.random() * 50;
+      const burstX = sourceX + Math.cos(angle) * burstDist;
+      const burstY = sourceY + Math.sin(angle) * burstDist;
+      
+      // Stage 2: ease-in to counter
+      this.tweens.add({
+        targets: coin,
+        x: burstX,
+        y: burstY,
+        scale: { from: 0.5, to: 1.2 },
+        duration: 150,
+        ease: 'Cubic.easeOut',
+        onComplete: () => {
+          // Staggered arrival
+          const delay = i * 40 + Math.random() * 40;
+          this.time.delayedCall(delay, () => {
+            this.tweens.add({
+              targets: coin,
+              x: targetX,
+              y: targetY,
+              scale: { from: 1.2, to: 0 },
+              alpha: { from: 1, to: 0 },
+              duration: 400,
+              ease: 'Cubic.easeIn',
+              onComplete: () => {
+                coin.destroy();
+                // Punch-scale the counter on first coin arrival
+                if (i === 0) {
+                  this.tweens.add({
+                    targets: this.coinsText,
+                    scale: { from: 1, to: 1.3 },
+                    duration: 100,
+                    yoyo: true,
+                    ease: 'Sine.easeOut'
+                  });
+                }
+              }
+            });
+          });
+        }
+      });
+    }
+  }
+
   _sellAtStall() {
-    if (this.carrying !== 'crop') return;
-    this.coins += CROP_SELL_VALUE + this.sellValueBonus;
+    if (this.carrySprites.length === 0) return;
+    const sellAmount = this.carrySprites.length * (CROP_SELL_VALUE + this.sellValueBonus);
+    this.coins += sellAmount;
     this.coinsText.setText('Coins: ' + this.coins);
     this.game.registry.set('score', this.coins);
-    this.carrying = null;
-    this.carryIndicator.setVisible(false);
+    
+    // Fly coins from farmer to counter
+    this._flyCoinsToCounter(this.carrySprites.length, this.farmer.x, this.farmer.y - 56);
+    
+    // Sell feedback: particle burst + haptic
     Juice.ParticleBurst.create(this, STALL_X + STALL_W / 2, STALL_Y, {
       color: 0xffd700, count: 12, speed: 128, size: 8
     });
+    vibrate(20);
+    
+    // Clear carry stack
+    this._clearCarryStack();
+    
     if (CTA_ENABLED && !this.ctaButton) {
       this._createCTAButton();
     }
@@ -574,25 +917,35 @@ class PlayScene extends Phaser.Scene {
     this.coinsText.setText('Coins: ' + this.coins);
     this.game.registry.set('score', this.coins);
     this._refreshUpgradeUI();
+    
+    // Upgrade feedback: camera shake + celebration burst + haptic
+    this.cameras.main.shake(200, 0.015);
+    Juice.ParticleBurst.create(this, W / 2, H * 0.5, {
+      color: 0xffd700, count: 24, speed: 160, size: 10, spread: Math.PI * 1.5
+    });
+    vibrate(30);
   }
 
   _refreshUpgradeUI() {
-    this.upgradeRows.forEach(row => {
-      let cost, owned;
-      if (row.type === 'plot') {
-        cost = PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH / 100, this.plotUpgradeCount);
-        cost = Math.floor(cost);
-        owned = this.plotUpgradeCount;
-      } else if (row.type === 'boots') {
-        if (this.bootsTier >= 3) { cost = 'MAX'; owned = 3; }
-        else { cost = [BOOTS_UPGRADE_COST_T1, BOOTS_UPGRADE_COST_T2, BOOTS_UPGRADE_COST_T3][this.bootsTier]; owned = this.bootsTier; }
-      } else if (row.type === 'helper') {
-        if (this.helperTier >= 2) { cost = 'MAX'; owned = 2; }
-        else { cost = [HELPER_UPGRADE_COST_T1, HELPER_UPGRADE_COST_T2][this.helperTier]; owned = this.helperTier; }
-      }
-      row.costText.setText('Cost: ' + cost);
-      row.ownedText.setText('Owned: ' + owned);
-    });
+    // Refresh both in-world pad and bottom sheet (if open)
+    if (this.upgradeRows) {
+      this.upgradeRows.forEach(row => {
+        let cost, owned;
+        if (row.type === 'plot') {
+          cost = PLOT_UPGRADE_BASE_COST * Math.pow(PLOT_UPGRADE_COST_GROWTH / 100, this.plotUpgradeCount);
+          cost = Math.floor(cost);
+          owned = this.plotUpgradeCount;
+        } else if (row.type === 'boots') {
+          if (this.bootsTier >= 3) { cost = 'MAX'; owned = 3; }
+          else { cost = [BOOTS_UPGRADE_COST_T1, BOOTS_UPGRADE_COST_T2, BOOTS_UPGRADE_COST_T3][this.bootsTier]; owned = this.bootsTier; }
+        } else if (row.type === 'helper') {
+          if (this.helperTier >= 2) { cost = 'MAX'; owned = 2; }
+          else { cost = [HELPER_UPGRADE_COST_T1, HELPER_UPGRADE_COST_T2][this.helperTier]; owned = this.helperTier; }
+        }
+        if (row.costText) row.costText.setText('Cost: ' + cost);
+        if (row.ownedText) row.ownedText.setText('Owned: ' + owned);
+      });
+    }
   }
 
   _spawnHelper(interval) {
@@ -674,17 +1027,18 @@ class PlayScene extends Phaser.Scene {
     this.farmer.x += this.joystickVector.x * moveDist;
     this.farmer.y += this.joystickVector.y * moveDist;
     
-    // Clamp farmer to playable area (above upgrade panel, within screen bounds)
+    // Clamp farmer to playable area (above bottom sheet, within screen bounds)
+    const layout = this.computeLayout();
     const farmerMinY = PLOT_AREA_TOP + FARMER_RADIUS;
-    const farmerMaxY = H - UPGRADE_PANEL_H - safeInsets.bottom / (this.scale.displaySize.height / H) - FARMER_RADIUS;
+    const farmerMaxY = layout.visibleWorldHeight - FARMER_RADIUS;
     const farmerMinX = FARMER_RADIUS;
-    const farmerMaxX = W - FARMER_RADIUS;
+    const farmerMaxX = LOGICAL_W - FARMER_RADIUS;
     
     this.farmer.x = Phaser.Math.Clamp(this.farmer.x, farmerMinX, farmerMaxX);
     this.farmer.y = Phaser.Math.Clamp(this.farmer.y, farmerMinY, farmerMaxY);
     
-    this.carryIndicator.x = this.farmer.x;
-    this.carryIndicator.y = this.farmer.y - 56;
+    this._updateCarryStackPosition();
+
   }
 
   _moveFarmerTowards(targetX, targetY, dt) {
@@ -695,15 +1049,13 @@ class PlayScene extends Phaser.Scene {
     if (dist < 3) {
       this.farmer.x = targetX;
       this.farmer.y = targetY;
-      this.carryIndicator.x = this.farmer.x;
-      this.carryIndicator.y = this.farmer.y - 56;
+      this._updateCarryStackPosition();
       return;
     }
     const moveDist = currentSpeed * (dt / 1000);
     this.farmer.x += (dx / dist) * moveDist;
     this.farmer.y += (dy / dist) * moveDist;
-    this.carryIndicator.x = this.farmer.x;
-    this.carryIndicator.y = this.farmer.y - 56;
+    this._updateCarryStackPosition();
   }
 
   _updateMagnet() {
@@ -716,14 +1068,14 @@ class PlayScene extends Phaser.Scene {
         const cropCenterX = plot.x + PLOT_SIZE / 2;
         const cropCenterY = plot.y + PLOT_SIZE / 2;
         const dist = Phaser.Math.Distance.Between(fx, fy, cropCenterX, cropCenterY);
-        if (dist < MAGNET_RADIUS && this.carrying !== 'crop') {
+        if (dist < MAGNET_RADIUS) {
           this._harvestPlot(plot.index);
         }
       }
     });
 
-    // Check stall: sell carried crop if farmer is within MAGNET_RADIUS of stall
-    if (this.carrying === 'crop') {
+    // Check stall: sell carried crops if farmer is within MAGNET_RADIUS of stall
+    if (this.carrySprites.length > 0) {
       const stallCenterX = STALL_X + STALL_W / 2;
       const stallCenterY = STALL_Y + STALL_H / 2;
       const distToStall = Phaser.Math.Distance.Between(fx, fy, stallCenterX, stallCenterY);
@@ -772,10 +1124,20 @@ class PlayScene extends Phaser.Scene {
             plot.pulseTween.stop();
             plot.pulseTween = null;
           }
+          // Hide plot progress bar
+          if (plot.progressBarFill) plot.progressBarFill.setVisible(false);
+          if (plot.progressBarBg) plot.progressBarBg.setVisible(false);
           plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
-          helper.carrying = true;
-          helper.state = 'moving_to_stall';
-          helper.target = { x: STALL_X + STALL_W / 2, y: STALL_Y + STALL_H / 2 };
+          // Add to player's carry stack (not helper's own carrying)
+          this._addToCarryStack();
+          // Helper can carry multiple crops before selling
+          helper.carryCount = (helper.carryCount || 0) + 1;
+          if (helper.carryCount >= HELPER_MAX_CARRY) {
+            helper.state = 'moving_to_stall';
+            helper.target = { x: STALL_X + STALL_W / 2, y: STALL_Y + STALL_H / 2 };
+          } else {
+            helper.state = 'seeking_plot';
+          }
         } else {
           helper.state = 'idle';
         }
@@ -786,17 +1148,14 @@ class PlayScene extends Phaser.Scene {
       this._moveHelperTowards(helper, helper.target.x, helper.target.y, dt, speed);
       const dist = Phaser.Math.Distance.Between(helper.x, helper.y, helper.target.x, helper.target.y);
       if (dist < MAGNET_RADIUS) {
-        this.coins += CROP_SELL_VALUE + this.sellValueBonus;
-        this.coinsText.setText('Coins: ' + this.coins);
-        this.game.registry.set('score', this.coins);
-        helper.carrying = false;
-        Juice.ParticleBurst.create(this, STALL_X + STALL_W / 2, STALL_Y, {
-          color: 0xffd700, count: 8, speed: 80, size: 5
-        });
-        if (CTA_ENABLED && !this.ctaButton) {
-          this._createCTAButton();
+        // Sell from player's carry stack
+        if (this.carrySprites.length > 0) {
+          this._sellAtStall();
         }
+        helper.carryCount = 0;
         helper.state = 'idle';
+      } else {
+        console.log(`Helper moving to stall: dist=${dist.toFixed(1)}, target=(${helper.target.x}, ${helper.target.y}), pos=(${helper.x.toFixed(1)}, ${helper.y.toFixed(1)})`);
       }
     }
   }
@@ -851,11 +1210,34 @@ class PlayScene extends Phaser.Scene {
             ease: 'Sine.easeInOut'
           });
         }
+        // Show progress bar at full when ready
+        if (plot.progressBarFill) {
+          plot.progressBarFill.setVisible(true);
+          plot.progressBarFill.width = plot.progressBarBg.width - 8;
+          plot.progressBarBg.setVisible(true);
+        }
+      } else if (!plot.harvested) {
+        // Update progress bar based on growth progress
+        const progress = (this.time.now - (plot.readyAt - CROP_GROW_MS * this.growSpeedMult)) / (CROP_GROW_MS * this.growSpeedMult);
+        const clampedProgress = Phaser.Math.Clamp(progress, 0, 1);
+        if (plot.progressBarFill && plot.progressBarBg) {
+          plot.progressBarFill.setVisible(true);
+          plot.progressBarFill.width = (plot.progressBarBg.width - 8) * clampedProgress;
+          plot.progressBarBg.setVisible(true);
+        }
       }
       if (plot.harvested && this.time.now >= plot.readyAt) {
         plot.harvested = false;
+        // Progress bar will be reset on next growth cycle in the above else-if
       }
     });
+
+    // Update top-center progress bar: plots owned / MAX_PLOTS
+    if (this.progressBarFill && this.progressBarBg && this.progressText) {
+      const progress = Math.min(this.plots.length / MAX_PLOTS, 1);
+      this.progressBarFill.width = 392 * progress;
+      this.progressText.setText('Plots: ' + this.plots.length + ' / ' + MAX_PLOTS);
+    }
 
     if (this.state !== STATE.PLAYING) return;
 
@@ -868,10 +1250,10 @@ const config = {
   type: Phaser.AUTO,
   parent: 'game-root',
   scale: { 
-    mode: Phaser.Scale.FIT, 
-    autoCenter: Phaser.Scale.CENTER_BOTH, 
-    width: W, 
-    height: H 
+    mode: Phaser.Scale.RESIZE, 
+    autoCenter: Phaser.Scale.NO_CENTER,
+    width: '100%',
+    height: '100%'
   },
   backgroundColor: '#8fbc8f',
   scene: [PlayScene],
