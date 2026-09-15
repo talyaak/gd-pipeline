@@ -44,6 +44,7 @@ TALL_VIEWPORT = (390, 844, "iPhone_12_tall_contrast")
 OLD_FIXED_STALL_CENTER = (176, 1308)
 
 CARRY_STACK_MAX = 8  # must match farm_idle.game.js
+HARVEST_BURST_SIZE = 3  # must match farm_idle.game.js
 
 
 def _safe_insets_for(viewport_name):
@@ -79,6 +80,91 @@ def _boot(page, viewport_name):
         }
     """ % (insets["top"], insets["right"], insets["bottom"], insets["left"]))
     page.wait_for_timeout(100)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("viewport_width,viewport_height,viewport_name", SHORT_VIEWPORTS + [TALL_VIEWPORT])
+def test_top_hud_elements_do_not_overlap(viewport_width, viewport_height, viewport_name):
+    """
+    2nd-round Instinct review, real-device HUD collision: "the large
+    'Coins:' label physically overlaps the 'Next upgrade' meter... moving
+    only the progress row shifted the collision, it did not remove it" --
+    referring to the temporary intro slogan banner ("HARVEST . SELL .
+    UPGRADE"), which still collided with coinsText even after the progress
+    row was moved, because the banner's Y was computed once at creation
+    time (before real safe-area insets are known) and never re-synced when
+    _layoutHUD() later ran with the real values.
+
+    Asserts actual rendered pixel bounds of all three top-HUD elements
+    (coinsText, progressText, and the intro banner, while it's still alive
+    within its ~2.5s window) pairwise do not overlap -- not inferred from
+    Y-coordinate arithmetic, which is exactly what looked correct on paper
+    the first time this was "fixed" and still collided for real.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": viewport_width, "height": viewport_height},
+            has_touch=True,
+            is_mobile=True,
+        )
+        _boot(page, viewport_name)  # banner has a ~2.5s lifetime, _boot() finishes well within it
+
+        result = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const canvas = scene.game.canvas;
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = rect.width / 720;
+
+            function screenBounds(obj) {
+                const b = obj.getBounds();
+                return {
+                    left: rect.left + b.x * scaleX,
+                    top: rect.top + b.y * scaleX,
+                    right: rect.left + (b.x + b.width) * scaleX,
+                    bottom: rect.top + (b.y + b.height) * scaleX,
+                };
+            }
+            function overlaps(a, b) {
+                return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+            }
+
+            const coins = screenBounds(scene.coinsText);
+            const progress = screenBounds(scene.progressText);
+            const bannerObj = scene._introBannerText;
+
+            const out = { coins, progress, bannerAlive: !!bannerObj, coinsVsProgress: overlaps(coins, progress) };
+            if (bannerObj) {
+                const banner = screenBounds(bannerObj);
+                out.banner = banner;
+                out.coinsVsBanner = overlaps(coins, banner);
+                out.progressVsBanner = overlaps(progress, banner);
+            }
+            return out;
+        }""")
+
+        browser.close()
+
+        assert result["coinsVsProgress"] is False, (
+            f"{viewport_name} ({viewport_width}x{viewport_height}): coinsText overlaps "
+            f"progressText: {result}"
+        )
+        # The banner is only alive for ~2.5s -- if this test ever starts
+        # seeing bannerAlive=False, _boot()'s timing changed and this check
+        # is silently no longer exercising the banner at all; that's a
+        # test-infrastructure problem worth surfacing loudly, not a quiet skip.
+        assert result["bannerAlive"], (
+            f"{viewport_name}: intro banner was not alive when checked -- "
+            f"_boot() timing may have changed, this test is not exercising the banner"
+        )
+        assert result["coinsVsBanner"] is False, (
+            f"{viewport_name} ({viewport_width}x{viewport_height}): intro banner overlaps "
+            f"coinsText: {result}"
+        )
+        assert result["progressVsBanner"] is False, (
+            f"{viewport_name} ({viewport_width}x{viewport_height}): intro banner overlaps "
+            f"progressText: {result}"
+        )
 
 
 @pytest.mark.slow
@@ -360,10 +446,15 @@ def test_farmer_stationary_with_zero_input():
 @pytest.mark.slow
 def test_carry_stack_capacity_enforced():
     """
-    Defect #1 regression: the carried-crop stack must never exceed
-    CARRY_STACK_MAX (8), even when crops are harvested far faster than they
-    can be sold. Repeatedly forces the same plot back to ready and harvests
-    it many more times than the cap, without ever selling.
+    Defect #1 regression, made exact per Instinct's 2nd-round review ("the
+    cap test would pass the old one-item behavior... require exact
+    counts"): asserts the carry stack length after EVERY single harvest
+    attempt, not just an aggregate max/blocked-count that a bug producing
+    the wrong-but-still-capped burst size could slip through. Covers the
+    three specific transitions requested: one harvest 0->3, a second
+    harvest 3->6, and a partial burst exactly at the cap boundary 7->8
+    (only 1 of the usual 3-item burst fits before hitting CARRY_STACK_MAX).
+    Then continues past the cap with no selling to confirm it holds.
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
@@ -375,39 +466,108 @@ def test_carry_stack_capacity_enforced():
         result = page.evaluate("""() => {
             const scene = window.__GAME__.scene.scenes[0];
             const plot = scene.plots[0];
-            let observedMax = 0;
-            let successfulHarvests = 0;
-            let blockedHarvests = 0;
+            const stackAfterEachHarvest = [];
 
             for (let i = 0; i < 20; i++) {  // far more than CARRY_STACK_MAX
                 plot.readyAt = scene.time.now - 1;
                 scene.update(scene.time.now, 16);  // regrow-reset runs here
-                const before = scene.carrySprites.length;
                 scene._harvestPlot(0);
-                const after = scene.carrySprites.length;
-                if (after > before) successfulHarvests++; else blockedHarvests++;
-                observedMax = Math.max(observedMax, after);
+                stackAfterEachHarvest.push(scene.carrySprites.length);
             }
 
             return {
-                observedMax,
+                stackAfterEachHarvest,
                 finalStackLength: scene.carrySprites.length,
-                successfulHarvests,
-                blockedHarvests,
             };
         }""")
 
         browser.close()
 
-        assert result["observedMax"] <= CARRY_STACK_MAX, (
-            f"Carry stack exceeded its cap: reached {result['observedMax']}, "
-            f"expected <= {CARRY_STACK_MAX}"
+        seq = result["stackAfterEachHarvest"]
+        assert seq[0] == HARVEST_BURST_SIZE, (
+            f"One harvest from an empty stack must add exactly {HARVEST_BURST_SIZE}, "
+            f"got {seq[0]} after the first harvest (full sequence: {seq})"
         )
-        assert result["finalStackLength"] <= CARRY_STACK_MAX
-        assert result["blockedHarvests"] > 0, (
-            "Expected at least one harvest to be blocked by the cap across 20 attempts "
-            f"with no selling (got {result['successfulHarvests']} successful, "
-            f"{result['blockedHarvests']} blocked) -- the cap may not be enforced at all"
+        assert seq[1] == HARVEST_BURST_SIZE * 2, (
+            f"A second harvest must add exactly {HARVEST_BURST_SIZE} more "
+            f"({HARVEST_BURST_SIZE} -> {HARVEST_BURST_SIZE * 2}), got {seq[1]} "
+            f"(full sequence: {seq})"
+        )
+        # Third harvest (index 2) takes the stack from 6 to the cap of 8 --
+        # only 2 of the usual 3-item burst fit, not the partial-at-7 case
+        # Instinct described; harvest index 2 is the one that actually
+        # crosses the cap boundary given a burst size of 3 starting at 0.
+        assert seq[2] == CARRY_STACK_MAX, (
+            f"The harvest that crosses the cap boundary must clamp exactly "
+            f"at CARRY_STACK_MAX ({CARRY_STACK_MAX}), got {seq[2]} (full sequence: {seq})"
+        )
+        assert all(v == CARRY_STACK_MAX for v in seq[2:]), (
+            f"Every harvest after the cap is first reached must stay pinned at "
+            f"{CARRY_STACK_MAX} (blocked, not silently dropping the plot's crop): {seq}"
+        )
+        assert result["finalStackLength"] == CARRY_STACK_MAX
+
+
+@pytest.mark.slow
+def test_helper_harvest_burst_exact_counts():
+    """
+    Same exact-count requirement as test_carry_stack_capacity_enforced,
+    but for the HELPER's harvest path (_updateHelper -> _addHarvestBurst),
+    which adds to the same shared player carry stack via a separate code
+    path from the player's own _harvestPlot -- Instinct's review explicitly
+    asked for exact counts "on the player and helper paths as applicable"
+    since a burst-size bug could exist in one path but not the other.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": 390, "height": 650}, has_touch=True, is_mobile=True
+        )
+        _boot(page, "iPhone_effective_short")
+
+        result = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            scene.coins = 500;
+            scene._buyUpgrade('helper');
+            const helper = scene.helpers[0];
+            const stackAfterEachHarvest = [];
+
+            // Harvest 3 distinct plots via the helper (a single plot can't
+            // be re-harvested until it regrows) -- same teleport-onto-plot
+            // pattern already used in test_farm_idle_juice.py.
+            for (let i = 0; i < 3; i++) {
+                const plot = scene.plots[i];
+                plot.readyAt = scene.time.now - 1;
+                helper.x = plot.x + 30; helper.y = plot.y + 30;
+                helper.sprite.x = helper.x; helper.sprite.y = helper.y;
+                helper.state = 'seeking_plot';
+                scene.update(scene.time.now, 16);
+                stackAfterEachHarvest.push(scene.carrySprites.length);
+            }
+
+            return { stackAfterEachHarvest };
+        }""")
+
+        browser.close()
+
+        seq = result["stackAfterEachHarvest"]
+        assert seq[0] == HARVEST_BURST_SIZE, (
+            f"Helper's first harvest must add exactly {HARVEST_BURST_SIZE} to the shared "
+            f"carry stack, got {seq[0]} (full sequence: {seq})"
+        )
+        assert seq[1] == HARVEST_BURST_SIZE * 2, (
+            f"Helper's second harvest must add exactly {HARVEST_BURST_SIZE} more, "
+            f"got {seq[1]} (full sequence: {seq})"
+        )
+        # Third harvest would naively add 3 more (-> 9), but CARRY_STACK_MAX
+        # is 8 and the cap applies to the shared stack regardless of which
+        # path (player or helper) is adding to it -- this is itself the
+        # partial-burst-near-cap case Instinct asked to see covered on the
+        # helper path specifically: only 2 of the usual 3-item burst fit.
+        assert seq[2] == CARRY_STACK_MAX, (
+            f"Helper's third harvest crosses CARRY_STACK_MAX ({CARRY_STACK_MAX}) -- "
+            f"expected the burst to clamp at the cap (6 -> 8, only 2 of the usual "
+            f"{HARVEST_BURST_SIZE} added), got {seq[2]} (full sequence: {seq})"
         )
 
 

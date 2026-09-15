@@ -256,10 +256,27 @@ class PlayScene extends Phaser.Scene {
     this.upgradeSheet = null;
     this.sheetVisible = false;
 
-    // Intro banner + tap hint (using Juice)
-    const introBanner = Juice.IntroBanner.create(this, { label: 'HARVEST \u2022 SELL \u2022 UPGRADE', y: 96 });
+    // Intro banner + tap hint (using Juice). y comes from the same shared
+    // top-HUD layout as coinsText/progressBar (_computeTopHudLayout()), but
+    // that alone is NOT sufficient: real safe-area insets are often not
+    // known yet at this point in create() (they arrive later via a CSS/
+    // MRAID update), so a Y computed once HERE can go stale the moment
+    // _layoutHUD() next runs with the real values -- coinsText/progressBar
+    // get repositioned then, the banner did not, and the two drifted apart
+    // again exactly like the first fix's bug. Fixed properly this time:
+    // find the banner's actual text object (IntroBanner.create() only
+    // returns a destroy() closure, not the object) and keep a reference so
+    // _layoutHUD() can reposition it on every real layout pass, the same
+    // as every other top-HUD element, for as long as it's still alive.
+    const { bannerY } = this._computeTopHudLayout();
+    const introBanner = Juice.IntroBanner.create(this, { label: 'HARVEST \u2022 SELL \u2022 UPGRADE', y: bannerY });
+    this._introBannerText = this.children.list[this.children.list.length - 1];
     const introHint = Juice.TapHint.create(this, this.farmer.x, this.farmer.y, { color: 0xe65100, radius: 64 });
-    this.time.delayedCall(2500, () => { introBanner.destroy(); introHint.destroy(); });
+    this.time.delayedCall(2500, () => {
+      introBanner.destroy();
+      introHint.destroy();
+      this._introBannerText = null;
+    });
 
     // Input: Floating joystick (touch/click anywhere in play area)
     // Pointerdown starts the joystick at the pointer position
@@ -432,6 +449,34 @@ class PlayScene extends Phaser.Scene {
     return safeInsets.bottom / scaleY;
   }
 
+  // Single source of truth for EVERY top-HUD element's Y position (coins
+  // counter, next-upgrade progress row, and the temporary intro slogan
+  // banner). Instinct's 2nd-round review on this branch: moving only the
+  // progress row in the first fix "shifted the collision, it did not
+  // remove it" -- the intro banner (a separate, temporary element created
+  // once in create() with its own hardcoded y, never touched by the first
+  // fix) still collided with the coins label at 390x650. Computing all
+  // three Ys here, stacked with guaranteed gaps derived from each
+  // element's own known height, makes their bounds structurally unable to
+  // intersect at any viewport -- not just the ones tested. coinsY/progressY
+  // are unchanged from the first fix (already verified correct across the
+  // full viewport suite); only the banner is newly computed, positioned
+  // below the persistent 2-row HUD block instead of a magic-number y that
+  // predated the progress row's existence.
+  _computeTopHudLayout() {
+    const displayHeight = this.scale.displaySize.height;
+    const scaleY = displayHeight / H;
+    const safeTopLogical = safeInsets.top / scaleY;
+
+    const coinsY = Math.max(COINS_Y, safeTopLogical + 32);
+    const progressY = coinsY + 36; // clears coinsText's 38px font height
+    // Banner sits below the progress row with enough gap to clear the
+    // progress bar's own height (24px) and its own font height (13px).
+    const bannerY = progressY + 12 + 8 + 10;
+
+    return { coinsY, progressY, bannerY };
+  }
+
   // Single source of truth for the stall/market's live position (real-device
   // defect #3 root-cause fix). _layoutHUD() uses this to place the visible
   // stall graphics/text; _updateMagnet() (sell detection), _sellAtStall()
@@ -465,10 +510,22 @@ class PlayScene extends Phaser.Scene {
       const safeBottomLogical = safeInsets.bottom / scaleY;
       const safeLeftLogical = safeInsets.left / scaleX;
 
-      // Coin counter: top-left, below safe-area top, with 16pt margin from left edge
-      const coinsY = Math.max(COINS_Y, safeTopLogical + 32);
+      // Coin counter, progress row, and (if still alive) the intro banner
+      // all come from the SAME shared layout computation -- see
+      // _computeTopHudLayout() -- so their bounds cannot intersect.
+      const { coinsY, progressY, bannerY } = this._computeTopHudLayout();
       if (this.coinsText) {
         this.coinsText.setPosition(Math.max(16 + safeLeftLogical, 16), coinsY);
+      }
+
+      // Intro banner (temporary, ~2.5s): repositioned here on every real
+      // layout pass, not just once at creation time -- real safe-area
+      // insets are often not known yet when the banner is first created in
+      // create(), so a Y computed only once there goes stale the instant
+      // _layoutHUD() next runs with the real values (this was the actual
+      // root cause of Instinct's 2nd-round HUD-collision finding).
+      if (this._introBannerText) {
+        this._introBannerText.setPosition(W / 2, bannerY);
       }
 
       // Progress bar: top-center, on its OWN row below the coin counter.
@@ -480,7 +537,7 @@ class PlayScene extends Phaser.Scene {
       // exact viewport width or text content length, rather than trying to
       // dodge it with per-viewport pixel thresholds.
       if (this.progressBarBg && this.progressBarFill && this.progressText) {
-        const y = coinsY + 36;
+        const y = progressY;
         this.progressBarBg.setPosition(W / 2, y);
         this.progressBarFill.setPosition(W / 2 - 200 + 4, y);
         this.progressText.setPosition(W / 2, y);
