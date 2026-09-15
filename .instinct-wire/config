@@ -1,0 +1,12 @@
+# Instinct Wire configuration. Sourced by scripts/instinct-wire.sh.
+# Not secret -- GH_TOKEN comes from the environment (gh's own auth), not from here.
+
+REPO="talyaak/gd-pipeline"
+ISSUE_NUMBER="2"
+POLL_INTERVAL_SECONDS="45"
+
+# The dedicated GitHub account Instinct posts as. This MUST be an account
+# distinct from whatever this machine's own gh auth resolves to -- the
+# watcher refuses to start if they match. See scripts/instinct-wire.sh
+# and .instinct-wire/README.md for why.
+INSTINCT_GH_USER="talyaak-headless"
