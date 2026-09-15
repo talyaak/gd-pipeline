@@ -215,8 +215,19 @@ def test_tween_leak_bounded_across_helper_regrow_cycles():
                 if (plot.harvested) harvestCycles++;
 
                 // Teleport the helper to the stall and tick again to sell,
-                // which frees it to seek again next cycle.
-                helper.x = 110; helper.y = 735;  // STALL_X + STALL_W/2, STALL_Y + STALL_H/2
+                // which frees it to seek again next cycle. Reads the live
+                // computed stall position (scene._computeStallLayout()) --
+                // real-device defect #3's single source of truth -- rather
+                // than a hardcoded (110, 735), which was stale pre-1.6x-scale
+                // coordinates matching neither STALL_X/STALL_Y nor the actual
+                // rendered stall at any viewport. With the stale coordinate,
+                // this teleport never actually landed within MAGNET_RADIUS of
+                // the sell target, so _sellAtStall() silently never fired and
+                // the carry stack grew unbounded for the whole test -- this
+                // test was unknowingly relying on exactly the unbounded-stack
+                // bug that real-device defect #1 fixes.
+                const stall = scene._computeStallLayout();
+                helper.x = stall.centerX; helper.y = stall.centerY;
                 helper.sprite.x = helper.x; helper.sprite.y = helper.y;
                 scene.update(scene.time.now, 16);
             }
