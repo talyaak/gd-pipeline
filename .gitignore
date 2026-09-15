@@ -27,3 +27,8 @@ harness/*_reskinned/
 .claude/
 # Generated game files
 generated_game_standalone.html
+# Instinct Wire local state (config + README + script are committed, these aren't)
+.instinct-wire/state
+.instinct-wire/inbox.md
+.instinct-wire/watcher.log
+.instinct-wire/watcher.pid
