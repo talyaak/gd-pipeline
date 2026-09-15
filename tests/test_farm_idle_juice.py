@@ -174,8 +174,11 @@ def test_coin_fly_to_counter_completes_and_updates():
         print(f"Carry stack length: {result['carryStackLength']}")
         print(f"Coins text: {result['coinsText']}")
 
-        # The coin count should have increased by exactly 10 (1 crop * CROP_SELL_VALUE)
-        expected_increase = 10  # CROP_SELL_VALUE = 10
+        # Real-device defect #5 fix: a single harvest now bursts
+        # HARVEST_BURST_SIZE (3) goods into the carry stack instead of
+        # exactly 1 (see harness/farm_idle.game.js), so one harvest-sell
+        # cycle nets 3 * CROP_SELL_VALUE(10) = 30, not 10.
+        expected_increase = 30
         actual_increase = final_coins - initial_coins
         assert actual_increase == expected_increase, (
             f"Expected coins to increase by {expected_increase}, "

@@ -195,19 +195,30 @@ def test_old_fixed_stall_target_no_longer_sells_and_diverges_from_real_position(
             f"position unexpectedly succeeded ({result['coinsBefore']} -> {result['coinsAfter']}) "
             f"-- this should be unreachable now that sell-detection reads the live computed layout"
         )
-        assert result["carryAfter"] == 1, "Crop should still be carried, not silently lost"
+        # Not asserting an exact count: defect #5's burst fix means a single
+        # harvest adds HARVEST_BURST_SIZE goods, not exactly one. The point
+        # of this assertion is unchanged -- nothing was silently lost.
+        assert result["carryAfter"] > 0, "Crop(s) should still be carried, not silently lost"
 
 
 @pytest.mark.slow
 def test_natural_harvest_sell_coins_buy_loop_at_short_viewport():
     """
     The full "real flow" the review asked for, at the shortest real
-    viewport (390x650): magnet-proximity harvest (farmer walks near a ready
-    plot) -> magnet-proximity sell at the VISIBLE market -> coins increment
-    -> BUY an upgrade with those coins. Exercises defect #3's fix through
-    the actual proximity-based magnet path (not a teleport-to-exact-point
-    shortcut), matching how _test_magnet_collection already drives the
-    harvest half of this flow elsewhere in the suite.
+    viewport (390x650): magnet-proximity harvest (farmer walks near ready
+    plots) -> magnet-proximity sell at the VISIBLE market -> coins increment
+    -> BUY an upgrade using the ACTUAL earned coins (not a forced balance)
+    -> the top-HUD coins-toward-next-upgrade meter refreshes afterward.
+    Exercises defect #3's fix through the actual proximity-based magnet path
+    (not a teleport-to-exact-point shortcut), matching how
+    _test_magnet_collection already drives the harvest half of this flow
+    elsewhere in the suite.
+
+    Harvests 2 plots (not 1) before selling: with the defect #5 burst fix
+    each harvest now adds HARVEST_BURST_SIZE (3) goods, so 2 harvests -> 6
+    items -> a real sell of 6 * CROP_SELL_VALUE(10) = 60 coins, enough to
+    genuinely afford the 50-coin base plot upgrade without cheating the
+    balance -- this is the test-debt item the review flagged.
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
@@ -220,19 +231,26 @@ def test_natural_harvest_sell_coins_buy_loop_at_short_viewport():
             const scene = window.__GAME__.scene.scenes[0];
             const MAGNET_RADIUS = 60;
 
-            // 1. Natural harvest: place farmer within magnet radius of a
-            // forced-ready plot and tick, exactly like _test_magnet_collection
-            // does elsewhere in the suite.
-            const plot = scene.plots[0];
-            plot.readyAt = scene.time.now - 1;
-            const plotCenterX = plot.x + 48, plotCenterY = plot.y + 48;
-            scene.farmer.x = plotCenterX + (MAGNET_RADIUS - 10);
-            scene.farmer.y = plotCenterY;
-            scene.update(scene.time.now, 16);
-            const harvested = scene.carrySprites.length === 1 && plot.harvested;
+            // 1. Natural harvest: place farmer within magnet radius of two
+            // forced-ready plots in turn and tick, exactly like
+            // _test_magnet_collection does elsewhere in the suite. Two
+            // harvests (not one) so the real sale proceeds are enough to
+            // genuinely afford an upgrade -- see docstring.
+            const carryAfterHarvests = [];
+            for (const plot of [scene.plots[0], scene.plots[1]]) {
+                plot.readyAt = scene.time.now - 1;
+                const plotCenterX = plot.x + 48, plotCenterY = plot.y + 48;
+                scene.farmer.x = plotCenterX + (MAGNET_RADIUS - 10);
+                scene.farmer.y = plotCenterY;
+                scene.update(scene.time.now, 16);
+                carryAfterHarvests.push(scene.carrySprites.length);
+            }
+            const harvested = scene.plots[0].harvested && scene.plots[1].harvested
+                && scene.carrySprites.length === carryAfterHarvests[carryAfterHarvests.length - 1]
+                && scene.carrySprites.length > 0;
 
             // 2. Move farmer to within magnet radius of the VISIBLE market
-            // (live computed layout) and tick to sell.
+            // (live computed layout) and tick to sell everything carried.
             const stall = scene._computeStallLayout();
             scene.farmer.x = stall.centerX + (MAGNET_RADIUS - 10);
             scene.farmer.y = stall.centerY;
@@ -240,31 +258,47 @@ def test_natural_harvest_sell_coins_buy_loop_at_short_viewport():
             scene.update(scene.time.now, 16);
             const sold = scene.coins > coinsBeforeSell && scene.carrySprites.length === 0;
 
-            // 3. Coins increment then afford + BUY an upgrade.
+            // 3. Buy an upgrade using the REAL earned coins -- no forced
+            // balance. The progress-bar text is captured before and after
+            // so the assertions can prove the meter actually refreshes.
             const coinsAfterSell = scene.coins;
-            scene.coins = 999999;  // guarantee affordability regardless of exact sell value
+            const progressTextBefore = scene.progressText.text;
             const plotsBefore = scene.plots.length;
             scene._buyUpgrade('plot');
+            scene.update(scene.time.now, 16);  // let the per-tick HUD refresh run
             const bought = scene.plots.length === plotsBefore + 1;
+            const progressTextAfter = scene.progressText.text;
 
             return {
                 harvested, sold, bought,
-                coinsBeforeSell, coinsAfterSell,
+                carryAfterHarvests,
+                coinsBeforeSell, coinsAfterSell, coinsAfterBuy: scene.coins,
                 plotsBefore, plotsAfter: scene.plots.length,
+                progressTextBefore, progressTextAfter,
                 stall,
             };
         }""")
 
         browser.close()
 
-        assert result["harvested"], f"Natural magnet-proximity harvest failed: {result}"
+        assert result["harvested"], f"Natural magnet-proximity harvest (x2) failed: {result}"
         assert result["sold"], (
             f"Magnet-proximity sell at the visible market failed: "
             f"coins {result['coinsBeforeSell']} -> {result['coinsAfterSell']}, stall={result['stall']}"
         )
         assert result["coinsAfterSell"] > result["coinsBeforeSell"], "Coins must increment on sale"
+        assert result["coinsAfterSell"] >= 50, (
+            f"Test setup assumption broken: 2 harvests' worth of real sale proceeds "
+            f"({result['coinsAfterSell']}) should comfortably afford the 50-coin base "
+            f"plot upgrade without forcing the balance -- got {result}"
+        )
         assert result["bought"], (
-            f"BUY upgrade did not add a plot: {result['plotsBefore']} -> {result['plotsAfter']}"
+            f"BUY upgrade did not add a plot using real earned coins: "
+            f"{result['plotsBefore']} -> {result['plotsAfter']}, coins={result['coinsAfterSell']}"
+        )
+        assert result["progressTextAfter"] != result["progressTextBefore"], (
+            f"Coins-toward-next-upgrade meter did not refresh after purchase: "
+            f"before={result['progressTextBefore']!r} after={result['progressTextAfter']!r}"
         )
 
 

@@ -35,6 +35,10 @@ const MAGNET_RADIUS = 60;     // coins/crops within this radius fly to farmer au
 // silently dropping the crop, so nothing is lost -- the plot just stays
 // ready until the player (or helper) sells and frees capacity.
 const CARRY_STACK_MAX = 8;
+// Goods added to the carry stack per single harvest (defect #5: a harvest
+// must visibly burst multiple goods, not add exactly one), bounded by
+// CARRY_STACK_MAX -- see _addHarvestBurst().
+const HARVEST_BURST_SIZE = 3;
 
 // Plots
 const PLOT_COUNT = 5;
@@ -462,13 +466,21 @@ class PlayScene extends Phaser.Scene {
       const safeLeftLogical = safeInsets.left / scaleX;
 
       // Coin counter: top-left, below safe-area top, with 16pt margin from left edge
+      const coinsY = Math.max(COINS_Y, safeTopLogical + 32);
       if (this.coinsText) {
-        this.coinsText.setPosition(Math.max(16 + safeLeftLogical, 16), Math.max(COINS_Y, safeTopLogical + 32));
+        this.coinsText.setPosition(Math.max(16 + safeLeftLogical, 16), coinsY);
       }
 
-      // Progress bar: top-center, below safe-area top
+      // Progress bar: top-center, on its OWN row below the coin counter.
+      // Real-device defect (HUD collision at 390x650): this used to share
+      // the same Y as coinsText, both horizontally spanning the full HUD
+      // width (coinsText left-aligned, progress bar centered) -- on a real
+      // narrow-viewport render the two collided. Stacking them on separate
+      // rows removes the horizontal-collision risk entirely, regardless of
+      // exact viewport width or text content length, rather than trying to
+      // dodge it with per-viewport pixel thresholds.
       if (this.progressBarBg && this.progressBarFill && this.progressText) {
-        const y = Math.max(COINS_Y, safeTopLogical + 32);
+        const y = coinsY + 36;
         this.progressBarBg.setPosition(W / 2, y);
         this.progressBarFill.setPosition(W / 2 - 200 + 4, y);
         this.progressText.setPosition(W / 2, y);
@@ -800,10 +812,11 @@ class PlayScene extends Phaser.Scene {
     if (plot.progressBarBg) plot.progressBarBg.setVisible(false);
     // Schedule next growth cycle so update loop doesn't immediately reset harvested
     plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
-    
-    // Add to carry stack
-    this._addToCarryStack();
-    
+
+    // Add a burst of goods to the carry stack (defect #5): a single harvest
+    // must visibly add multiple items, not one, bounded by CARRY_STACK_MAX.
+    this._addHarvestBurst();
+
     // Collect feedback: tiny scale pulse on farmer + haptic
     this.tweens.add({
       targets: this.farmer,
@@ -813,6 +826,19 @@ class PlayScene extends Phaser.Scene {
       ease: 'Sine.easeOut'
     });
     vibrate(15);
+  }
+
+  // Real-device defect #5 fix: a single harvest must visibly burst multiple
+  // goods into the carry stack (genre expectation), not add exactly one
+  // sprite. Bounded by the existing CARRY_STACK_MAX cap -- shared by both
+  // the player's own harvest (_harvestPlot) and the helper's harvest path,
+  // since both add to the same shared player carry stack via
+  // _addToCarryStack().
+  _addHarvestBurst() {
+    const goodsToAdd = Math.min(HARVEST_BURST_SIZE, CARRY_STACK_MAX - this.carrySprites.length);
+    for (let i = 0; i < goodsToAdd; i++) {
+      this._addToCarryStack();
+    }
   }
 
   _addToCarryStack() {
@@ -1226,8 +1252,9 @@ class PlayScene extends Phaser.Scene {
           if (plot.progressBarFill) plot.progressBarFill.setVisible(false);
           if (plot.progressBarBg) plot.progressBarBg.setVisible(false);
           plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
-          // Add to player's carry stack (not helper's own carrying)
-          this._addToCarryStack();
+          // Add a burst of goods to the player's carry stack (defect #5),
+          // same as the player's own harvest -- not helper's own carrying.
+          this._addHarvestBurst();
           // Helper can carry multiple crops before selling
           helper.carryCount = (helper.carryCount || 0) + 1;
           if (helper.carryCount >= HELPER_MAX_CARRY) {
