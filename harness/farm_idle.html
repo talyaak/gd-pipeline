@@ -2431,6 +2431,9 @@ const LOGICAL_W = 720;  // Logical world width (fixed reference)
 let W = LOGICAL_W;     // Current logical width (may change with zoom under RESIZE)
 let H = 1412;          // Current logical height (dynamic under RESIZE)
 
+const WORLD_W = 1440;  // Fixed logical world width -- independent of viewport, never changes on resize
+const WORLD_H = 2000;  // Fixed logical world height -- independent of viewport, never changes on resize
+
 // RESIZE mode: worldZoom = viewportWidth / LOGICAL_W
 // visibleWorldHeight = viewportHeight / worldZoom
 // This preserves uniform world scaling — no stretched circles/hit targets.
@@ -2626,6 +2629,9 @@ class PlayScene extends Phaser.Scene {
         this.farmer = this.add.circle(W / 2, PLOT_AREA_TOP + 320, FARMER_RADIUS, 0xe65100);
         this.farmer.setStrokeStyle(5, 0xbf360c, 1);
         this.farmer.setDepth(10);  // gameplay foreground, above plots
+
+    this.cameras.main.startFollow(this.farmer, true, 0.12, 0.12);
+    this.cameras.main.roundPixels = true;
 
     // Carried crop indicator - now a stack container
         this.carryStack = this.add.container(this.farmer.x, this.farmer.y - 56);
@@ -2885,8 +2891,16 @@ class PlayScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setViewport(0, 0, viewportWidth, viewportHeight);
     cam.setZoom(worldZoom);
-    // World bounds: world is W x H in logical coordinates
-    cam.setBounds(0, 0, W, H);
+    // World bounds are FIXED (WORLD_W x WORLD_H) and independent of viewport --
+    // they must never be derived from viewportWidth/viewportHeight/W/H. Resize
+    // changes the camera's viewport/zoom (above) and deadzone (below), never
+    // the world bounds themselves.
+    cam.setBounds(0, 0, WORLD_W, WORLD_H);
+
+    // Deadzone: ~35% of logical viewport width, ~25% of current logical
+    // height, recomputed every resize since it's viewport-relative (unlike
+    // the fixed world bounds above).
+    cam.setDeadzone(W * 0.35, H * 0.25);
 
     updateSafeInsets();
     this._layoutHUD();
