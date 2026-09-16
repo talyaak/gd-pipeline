@@ -155,7 +155,10 @@ def test_coin_fly_to_counter_completes_and_updates():
             const helper = scene.helpers[0];
             const plot = scene.plots[0];
 
-            helper.carryCount = 2;  // HELPER_MAX_CARRY - 1
+            // helper.carryCount is now a read-only derived getter over
+            // helper.inventory (Round 1 of the collectible/producer refactor)
+            // -- seed the real source of truth instead of the derived value.
+            helper.inventory = ['crop', 'crop'];  // HELPER_MAX_CARRY - 1
 
             // Ready the plot and place helper on it
             plot.readyAt = scene.time.now - 1;

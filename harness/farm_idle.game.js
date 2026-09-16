@@ -47,6 +47,24 @@ const PLOT_GAP = 16;          // 10 * 1.6
 const CROP_GROW_MS = 4000;
 const CROP_SELL_VALUE = 10;
 
+// Collectible type registry: sell values, weights, colors, yields
+const COLLECTIBLE_TYPES = {
+  crop: {
+    sellValue: 10, weight: 1,
+    carryColor: 0x8bc34a, carryStroke: 0x4caf50,
+    worldColor: 0x8bc34a,
+    playerYield: 3, helperYield: 1,
+    receivesPlotSellBonus: true,
+  },
+  egg: {
+    sellValue: 15, weight: 1,
+    carryColor: 0xfff3c4, carryStroke: 0xf9a825,
+    worldColor: 0xfff3c4,
+    playerYield: 1, helperYield: 1,
+    receivesPlotSellBonus: false,
+  },
+};
+
 // Upgrade: More Crop Plots (repeatable)
 const PLOT_UPGRADE_BASE_COST = 50;
 const PLOT_UPGRADE_COST_GROWTH = 150;
@@ -186,7 +204,11 @@ class PlayScene extends Phaser.Scene {
         this.carryStack = this.add.container(this.farmer.x, this.farmer.y - 56);
         this.carryStack.setDepth(10);  // gameplay foreground, above plots
         this.carryStack.setVisible(false);
-    this.carrySprites = [];
+    this.carryItems = [];
+    Object.defineProperty(this, 'carrySprites', {
+      get() { return this.carryItems.map(item => item.sprite); },
+      configurable: true,
+    });
 
     // Explicit visible capacity readout for the carry stack (defect #5 /
     // ties directly into the defect #1 cap fix): shows current/max so the
@@ -883,7 +905,7 @@ class PlayScene extends Phaser.Scene {
     // Carry-stack cap (defect #1): block the harvest entirely rather than
     // consuming the plot and dropping the crop -- the plot just stays ready
     // until the player sells and frees capacity.
-    if (this.carrySprites.length >= CARRY_STACK_MAX) return;
+    if (this.carryItems.reduce((sum, item) => sum + COLLECTIBLE_TYPES[item.typeId].weight, 0) >= CARRY_STACK_MAX) return;
 
     plot.harvested = true;
     plot.cropSprite.setVisible(false);
@@ -899,7 +921,7 @@ class PlayScene extends Phaser.Scene {
 
     // Add a burst of goods to the carry stack (defect #5): a single harvest
     // must visibly add multiple items, not one, bounded by CARRY_STACK_MAX.
-    this._addHarvestBurst();
+    this._addCollectiblesToPlayer('crop', COLLECTIBLE_TYPES.crop.playerYield);
 
     // Collect feedback: tiny scale pulse on farmer + haptic
     this.tweens.add({
@@ -918,68 +940,63 @@ class PlayScene extends Phaser.Scene {
   // the player's own harvest (_harvestPlot) and the helper's harvest path,
   // since both add to the same shared player carry stack via
   // _addToCarryStack().
-  _addHarvestBurst() {
-    const goodsToAdd = Math.min(HARVEST_BURST_SIZE, CARRY_STACK_MAX - this.carrySprites.length);
-    for (let i = 0; i < goodsToAdd; i++) {
-      this._addToCarryStack();
+  _addCarryItem(typeId) {
+    const config = COLLECTIBLE_TYPES[typeId]
+    const currentWeight = this.carryItems.reduce((sum, item) => sum + COLLECTIBLE_TYPES[item.typeId].weight, 0)
+    if (currentWeight + config.weight > CARRY_STACK_MAX) return false
+
+    const sprite = this.add.circle(0, 0, 16, config.carryColor)
+    sprite.setStrokeStyle(2, config.carryStroke, 1)
+
+    const stackIndex = this.carryItems.length
+    const angle = (stackIndex * 0.3) - 0.3
+    const radius = 18 + stackIndex * 3
+    sprite.x = Math.sin(angle) * radius
+    sprite.y = -Math.cos(angle) * radius - stackIndex * 4
+    sprite.setScale(0.3)
+
+    this.carryStack.add(sprite)
+    this.carryItems.push({ typeId, sprite })
+
+    this.tweens.add({
+      targets: sprite, scale: { from: 0.3, to: 1 }, duration: 200,
+      ease: 'Back.easeOut', delay: stackIndex * 30,
+    })
+
+    if (this.carryItems.length === 1) this.carryStack.setVisible(true)
+    if (this.carryCountText) {
+      const totalWeight = this.carryItems.reduce((sum, item) => sum + COLLECTIBLE_TYPES[item.typeId].weight, 0)
+      this.carryCountText.setText(totalWeight + '/' + CARRY_STACK_MAX)
     }
+
+    this.carrying = 'crop'
+    this.carryIndicator.visible = true
+    this.carryIndicator.x = this.farmer.x
+    this.carryIndicator.y = this.farmer.y - 56
+
+    this._updateCarryStackPosition()
+    return true
   }
 
-  _addToCarryStack() {
-    // Create a crop sprite for the stack
-    const cropSprite = this.add.circle(0, 0, 16, 0x8bc34a);
-    cropSprite.setStrokeStyle(2, 0x4caf50, 1);
-    
-    // Calculate position in stack - stack grows upward and slightly outward
-    const stackIndex = this.carrySprites.length;
-    const angle = (stackIndex * 0.3) - 0.3; // slight fan
-    const radius = 18 + stackIndex * 3;
-    const offsetX = Math.sin(angle) * radius;
-    const offsetY = -Math.cos(angle) * radius - stackIndex * 4;
-    
-    cropSprite.x = offsetX;
-    cropSprite.y = offsetY;
-    cropSprite.setScale(0.3);
-    
-    this.carryStack.add(cropSprite);
-    this.carrySprites.push(cropSprite);
-    
-    // Animate in with stagger
-    this.tweens.add({
-      targets: cropSprite,
-      scale: { from: 0.3, to: 1 },
-      duration: 200,
-      ease: 'Back.easeOut',
-      delay: stackIndex * 30
-    });
-    
-    // Show stack if first item
-    if (this.carrySprites.length === 1) {
-      this.carryStack.setVisible(true);
+  _addCollectiblesToPlayer(typeId, requestedCount) {
+    let added = 0
+    for (let i = 0; i < requestedCount; i++) {
+      if (!this._addCarryItem(typeId)) break
+      added++
     }
-
-    // Explicit visible capacity readout (defect #1 / #5)
-    if (this.carryCountText) {
-      this.carryCountText.setText(this.carrySprites.length + '/' + CARRY_STACK_MAX);
-    }
-
-    // Update backward compatibility
-    this.carrying = 'crop';
-    this.carryIndicator.visible = true;
-    this.carryIndicator.x = this.farmer.x;
-    this.carryIndicator.y = this.farmer.y - 56;
-    
-    // Update stack position to follow farmer
-    this._updateCarryStackPosition();
+    return added
   }
   _helperSellAtStall(helper) {
-    const sellAmount = helper.carryCount * (CROP_SELL_VALUE + this.sellValueBonus);
+    const sellAmount = helper.inventory.reduce((sum, typeId) => {
+      const config = COLLECTIBLE_TYPES[typeId]
+      return sum + config.sellValue + (config.receivesPlotSellBonus ? this.sellValueBonus : 0)
+    }, 0)
     this.coins += sellAmount;
     this.coinsText.setText('Coins: ' + this.coins);
     this.game.registry.set('score', this.coins);
 
     // Fly coins from helper's position to counter
-    this._flyCoinsToCounter(helper.carryCount, helper.x, helper.y);
+    this._flyCoinsToCounter(helper.inventory.length, helper.x, helper.y);
 
     // Sell feedback: particle burst + haptic at helper's position
     const stall = this._computeStallLayout();
@@ -989,13 +1006,13 @@ class PlayScene extends Phaser.Scene {
     vibrate(20);
 
     // Reset helper carry count
-    helper.carryCount = 0;
+    helper.inventory = [];
   }
 
 
   _clearCarryStack() {
-    this.carrySprites.forEach(sprite => sprite.destroy());
-    this.carrySprites = [];
+    this.carryItems.forEach(item => item.sprite.destroy());
+    this.carryItems = [];
     this.carryStack.setVisible(false);
     if (this.carryCountText) this.carryCountText.setText('');
 
@@ -1072,8 +1089,11 @@ class PlayScene extends Phaser.Scene {
   }
 
   _sellAtStall() {
-    if (this.carrySprites.length === 0) return;
-    const sellAmount = this.carrySprites.length * (CROP_SELL_VALUE + this.sellValueBonus);
+    if (this.carryItems.length === 0) return;
+    const sellAmount = this.carryItems.reduce((sum, item) => {
+      const config = COLLECTIBLE_TYPES[item.typeId]
+      return sum + config.sellValue + (config.receivesPlotSellBonus ? this.sellValueBonus : 0)
+    }, 0)
     this.coins += sellAmount;
     this.coinsText.setText('Coins: ' + this.coins);
     this.game.registry.set('score', this.coins);
@@ -1200,7 +1220,7 @@ class PlayScene extends Phaser.Scene {
       const helper = this.add.circle(W / 2, PLOT_AREA_TOP + 320, 24, 0xff7043);
       helper.setDepth(10);
       helper.setStrokeStyle(3, 0xc62828, 1);
-      this.helpers.push({
+      const helperObj = {
       sprite: helper,
       x: W / 2,
       y: PLOT_AREA_TOP + 320,
@@ -1209,8 +1229,14 @@ class PlayScene extends Phaser.Scene {
       interval,
       timer: 0,
       carrying: false,
-      targetPlotIndex: -1
+      targetPlotIndex: -1,
+      inventory: []
+    };
+    Object.defineProperty(helperObj, 'carryCount', {
+      get() { return helperObj.inventory.length; },
+      configurable: true
     });
+    this.helpers.push(helperObj);
   }
 
   _updateAutoAssist(dt) {
@@ -1359,7 +1385,7 @@ class PlayScene extends Phaser.Scene {
           plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
           // Helper harvests the crop -- increment the helper's own carry count.
           // Do NOT touch the player's carrySprites/carryStack (shared inventory bug fix).
-          helper.carryCount = (helper.carryCount || 0) + 1;
+          helper.inventory.push('crop');
           if (helper.carryCount >= HELPER_MAX_CARRY) {
             helper.state = 'moving_to_stall';
             const stall = this._computeStallLayout();
@@ -1387,7 +1413,7 @@ class PlayScene extends Phaser.Scene {
         if (helper.carryCount > 0) {
           this._helperSellAtStall(helper);
         }
-        helper.carryCount = 0;
+        helper.inventory = [];
         helper.state = 'idle';
       } else {
         console.log(`Helper moving to stall: dist=${dist.toFixed(1)}, target=(${helper.target.x}, ${helper.target.y}), pos=(${helper.x.toFixed(1)}, ${helper.y.toFixed(1)})`);
