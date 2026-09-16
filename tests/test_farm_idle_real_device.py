@@ -1949,3 +1949,92 @@ def test_camera_bounds_are_fixed_world_size_independent_of_viewport():
                 f"[{viewport_name}] camera bounds height {bounds['height']} != 2000 "
                 f"(WORLD_H) -- bounds must be fixed, not viewport-derived"
             )
+
+
+def test_coin_flight_starts_at_visible_source_under_world_scroll():
+    """Behavioral/pixel proof (per Instinct gate review on the two-camera
+    split) that _flyCoinsToCounter's world-to-HUD coordinate conversion is
+    correct: a coin's FIRST rendered pixel must be at the farmer's actual
+    on-screen position, not at some offset, once the world camera has
+    scrolled both horizontally and vertically away from its boot position.
+    Object-coordinate assertions (checking .x/.y properties) would pass
+    even with the exact bug this catches -- only a real rendered pixel,
+    at the real physical position a player would see, proves the fix.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
+        )
+        _boot(page, "iPhone_12_tall_contrast")
+
+        # Force nonzero horizontal AND vertical world scroll (real frames,
+        # not scene.update() -- camera follow easing runs on Phaser's own
+        # render loop).
+        page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            scene.farmer.x = 1100;
+            scene.farmer.y = 1700;
+        }""")
+        page.wait_for_timeout(600)
+
+        setup = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+            const zoom = cam.zoom;
+            // Farmer's actual physical (screen) position -- what a player
+            // sees. Phaser cameras default to a CENTERED origin (0.5, 0.5),
+            // and the world camera (unlike uiCamera) is never centerOn'd --
+            // it just follows the farmer -- so plain (worldX - scrollX)*zoom
+            // is NOT the true screen position; the origin term must be
+            // included (verified against camera.getWorldPoint-sampled
+            // ground truth).
+            const farmerScreenX = (scene.farmer.x - cam.scrollX) * zoom +
+                cam.originX * cam.width * (1 - zoom);
+            const farmerScreenY = (scene.farmer.y - cam.scrollY) * zoom +
+                cam.originY * cam.height * (1 - zoom);
+            // Trigger exactly one coin, sourced at the farmer's current
+            // world position -- same call shape _sellAtStall() uses.
+            scene._flyCoinsToCounter(1, scene.farmer.x, scene.farmer.y);
+            // Freeze the scatter-burst tween immediately, in this same
+            // synchronous turn, before any time has elapsed. page.evaluate()
+            // and page.screenshot() are separate round-trips (unlike this
+            // single synchronous call), so without pausing, real wall-clock
+            // time could elapse before the screenshot is taken and the
+            // 150ms tween would have already moved the coin measurably away
+            // from its start position -- this decouples the pixel assertion
+            // from that round-trip timing entirely.
+            scene.tweens.pauseAll();
+            return {
+                farmerScreenX, farmerScreenY,
+                worldScrollX: cam.scrollX, worldScrollY: cam.scrollY,
+            };
+        }""")
+
+        assert setup["worldScrollX"] > 50 and setup["worldScrollY"] > 50, (
+            f"world camera didn't scroll enough to be a meaningful proof: "
+            f"scrollX={setup['worldScrollX']}, scrollY={setup['worldScrollY']}"
+        )
+
+        # No wait: read the very next composited frame, before the coin's
+        # scatter-burst tween (150ms) has had time to move it away from its
+        # start position.
+        region_size = 24
+        rows = _read_pixel_region_via_screenshot(
+            page,
+            round(setup["farmerScreenX"] - region_size / 2),
+            round(setup["farmerScreenY"] - region_size / 2),
+            region_size, region_size,
+        )
+        browser.close()
+
+        pixels = [p for row in rows for p in row]
+        has_gold_pixel = any(r > 200 and 150 < g < 230 and b < 60 for r, g, b in pixels)
+
+        assert has_gold_pixel, (
+            f"no gold (0xffd700-ish) coin pixel found in a {region_size}x{region_size}px "
+            f"region centered on the farmer's actual screen position "
+            f"({setup['farmerScreenX']:.1f}, {setup['farmerScreenY']:.1f}) after world scroll "
+            f"({setup['worldScrollX']:.1f}, {setup['worldScrollY']:.1f}) -- the coin rendered "
+            f"somewhere else, meaning the world-to-HUD conversion is wrong"
+        )
