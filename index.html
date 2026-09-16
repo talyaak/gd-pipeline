@@ -47,15 +47,33 @@
     height: 140px;
     background: linear-gradient(135deg, rgba(51,230,255,0.18), rgba(255,51,204,0.14));
     display: flex; align-items: center; justify-content: center;
-    font-size: 40px;
   }
+  .thumb svg { width: 56px; height: 56px; }
   .body { padding: 16px 18px 18px; }
-  a.card .name { font-size: 18px; font-weight: 600; margin: 0 0 5px; }
+  a.card .name-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin: 0 0 5px;
+  }
+  a.card .name { font-size: 18px; font-weight: 600; margin: 0; }
   a.card .desc { font-size: 13px; color: var(--dim); margin: 0; line-height: 1.45; }
   a.card .tag {
     display: inline-block; margin-top: 10px; font-size: 11px; padding: 4px 10px;
     border-radius: 20px; background: rgba(51,230,255,0.12); color: var(--accent);
     letter-spacing: 0.3px;
+  }
+  /* Play affordance: a pure CSS triangle in a pill, zero font/glyph
+     dependency -- the emoji hero it replaced rendered as a hollow
+     missing-glyph square in real Chromium (no color-emoji font), so
+     nothing here may depend on a font glyph rendering correctly. */
+  .play-pill {
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.4px; color: var(--bg);
+    background: var(--accent); padding: 5px 10px 5px 8px; border-radius: 20px;
+  }
+  .play-tri {
+    width: 0; height: 0;
+    border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+    border-left: 8px solid var(--bg);
   }
   #empty { text-align: center; color: var(--dim); font-size: 13px; padding: 40px 20px; }
   footer { text-align: center; padding: 14px 0 34px; font-size: 11px; color: #555a7a; }
@@ -69,6 +87,18 @@
 <main id="cards"></main>
 <footer>gd-gpt · playable prototypes</footer>
 <script>
+// Inline SVG icons -- never a font glyph/emoji, so a thumbnail can't ever
+// render as a hollow missing-glyph square regardless of what fonts the
+// viewer's browser has installed. Add a new icon key here if a future
+// variant needs a different mark; 'crop' below covers farm/harvest themes.
+const ICONS = {
+  crop: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+    '<path d="M12 21V10" stroke="#33e6ff" stroke-width="2" stroke-linecap="round"/>' +
+    '<path d="M12 13C12 13 6 12 6 6C12 6 12 13 12 13Z" fill="#ff33cc" opacity="0.85"/>' +
+    '<path d="M12 10C12 10 18 9 18 4C12 4 12 10 12 10Z" fill="#33e6ff" opacity="0.85"/>' +
+    '</svg>',
+};
+
 // Adding a new variant is exactly one entry here -- no layout changes needed.
 const VARIANTS = [
   {
@@ -76,7 +106,7 @@ const VARIANTS = [
     name: 'Farm Idle',
     tag: 'Arcade Idle / Farm',
     desc: 'Harvest, sell, upgrade -- grow an idle farm empire.',
-    emoji: '🌾',
+    icon: 'crop',
   },
 ];
 
@@ -93,9 +123,12 @@ if (VARIANTS.length === 0) {
     a.className = 'card';
     a.href = v.file;
     a.innerHTML =
-      '<div class="thumb">' + v.emoji + '</div>' +
+      '<div class="thumb">' + ICONS[v.icon] + '</div>' +
       '<div class="body">' +
-        '<p class="name">' + v.name + '</p>' +
+        '<div class="name-row">' +
+          '<p class="name">' + v.name + '</p>' +
+          '<span class="play-pill"><span class="play-tri"></span>Play</span>' +
+        '</div>' +
         '<p class="desc">' + v.desc + '</p>' +
         '<span class="tag">' + v.tag + '</span>' +
       '</div>';
