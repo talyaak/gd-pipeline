@@ -2599,6 +2599,7 @@ class PlayScene extends Phaser.Scene {
     this.joystickVector = { x: 0, y: 0 };
 
     this.plots = [];
+    this.producers = [];
 
     this.plotUpgradeCount = 0;
     this.bootsTier = 0;
@@ -3298,7 +3299,7 @@ class PlayScene extends Phaser.Scene {
         progressBarFill.setDepth(0);  // ground layer, below gameplay objects
     progressBarFill.setVisible(false);
 
-    this.plots.push({
+    const plotObj = {
       index,
       x,
       y,
@@ -3308,8 +3309,26 @@ class PlayScene extends Phaser.Scene {
       progressBarBg,
       progressBarFill,
       harvested: false,
-      pulseTween: null
+      pulseTween: null,
+      // Producer-abstraction fields (Round 2): generic code (readiness
+      // loop, magnet, helper targeting, _collectProducer) reads these.
+      // Plot-specific code (layout, upgrades, existing tests) keeps using
+      // the original field names above, unchanged -- both sets of field
+      // names live on the SAME object.
+      id: index,
+      producerTypeId: 'plot',
+      collectibleTypeId: 'crop',
+      worldSprite: plot,
+      productSprite: crop,
+      centerX: x + PLOT_SIZE / 2,
+      centerY: y + PLOT_SIZE / 2,
+    };
+    Object.defineProperty(plotObj, 'cycleMs', {
+      get: () => CROP_GROW_MS * this.growSpeedMult,
+      configurable: true
     });
+    this.plots.push(plotObj);
+    this.producers.push(plotObj);
   }
 
   _plotPosition(index) {
@@ -3321,43 +3340,52 @@ class PlayScene extends Phaser.Scene {
     return { x, y };
   }
 
+  _collectProducer(producer, collector) {
+    if (producer.harvested) return false;
+    if (this.time.now < producer.readyAt) return false;
+
+    const collectibleTypeId = producer.collectibleTypeId;
+    const config = COLLECTIBLE_TYPES[collectibleTypeId];
+    const isPlayer = collector === 'player';
+
+    if (isPlayer) {
+      const currentWeight = this.carryItems.reduce((sum, item) => sum + COLLECTIBLE_TYPES[item.typeId].weight, 0);
+      if (currentWeight >= CARRY_STACK_MAX) return false;
+    } else {
+      const helperWeight = collector.inventory.reduce((sum, typeId) => sum + COLLECTIBLE_TYPES[typeId].weight, 0);
+      if (helperWeight >= HELPER_MAX_CARRY) return false;
+    }
+
+    producer.harvested = true;
+    producer.productSprite.setVisible(false);
+    if (producer.pulseTween) {
+      producer.pulseTween.stop();
+      producer.pulseTween = null;
+    }
+    if (producer.progressBarFill) producer.progressBarFill.setVisible(false);
+    if (producer.progressBarBg) producer.progressBarBg.setVisible(false);
+    producer.readyAt = this.time.now + producer.cycleMs;
+
+    if (isPlayer) {
+      this._addCollectiblesToPlayer(collectibleTypeId, config.playerYield);
+      this.tweens.add({
+        targets: this.farmer, scale: { from: 1, to: 1.15 }, duration: 80,
+        yoyo: true, ease: 'Sine.easeOut'
+      });
+      vibrate(15);
+    } else {
+      for (let i = 0; i < config.helperYield; i++) {
+        collector.inventory.push(collectibleTypeId);
+      }
+    }
+    return true;
+  }
+
   _harvestPlot(index) {
     if (this.state !== STATE.PLAYING) return;
-    // Allow carrying multiple crops (stacking)
     const plot = this.plots[index];
     if (!plot) return;
-    if (plot.harvested) return;
-    if (this.time.now < plot.readyAt) return;
-    // Carry-stack cap (defect #1): block the harvest entirely rather than
-    // consuming the plot and dropping the crop -- the plot just stays ready
-    // until the player sells and frees capacity.
-    if (this.carryItems.reduce((sum, item) => sum + COLLECTIBLE_TYPES[item.typeId].weight, 0) >= CARRY_STACK_MAX) return;
-
-    plot.harvested = true;
-    plot.cropSprite.setVisible(false);
-    if (plot.pulseTween) {
-      plot.pulseTween.stop();
-      plot.pulseTween = null;
-    }
-    // Hide plot progress bar
-    if (plot.progressBarFill) plot.progressBarFill.setVisible(false);
-    if (plot.progressBarBg) plot.progressBarBg.setVisible(false);
-    // Schedule next growth cycle so update loop doesn't immediately reset harvested
-    plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
-
-    // Add a burst of goods to the carry stack (defect #5): a single harvest
-    // must visibly add multiple items, not one, bounded by CARRY_STACK_MAX.
-    this._addCollectiblesToPlayer('crop', COLLECTIBLE_TYPES.crop.playerYield);
-
-    // Collect feedback: tiny scale pulse on farmer + haptic
-    this.tweens.add({
-      targets: this.farmer,
-      scale: { from: 1, to: 1.15 },
-      duration: 80,
-      yoyo: true,
-      ease: 'Sine.easeOut'
-    });
-    vibrate(15);
+    this._collectProducer(plot, 'player');
   }
 
   // Real-device defect #5 fix: a single harvest must visibly burst multiple
@@ -3737,18 +3765,15 @@ class PlayScene extends Phaser.Scene {
     const fx = this.farmer.x;
     const fy = this.farmer.y;
 
-    // Check plots: harvest ready crops within MAGNET_RADIUS
-    this.plots.forEach(plot => {
-      if (!plot.harvested && this.time.now >= plot.readyAt) {
-        const cropCenterX = plot.x + PLOT_SIZE / 2;
-        const cropCenterY = plot.y + PLOT_SIZE / 2;
-        const dist = Phaser.Math.Distance.Between(fx, fy, cropCenterX, cropCenterY);
+    // Check producers: harvest ready crops within MAGNET_RADIUS
+    this.producers.forEach(producer => {
+      if (!producer.harvested && this.time.now >= producer.readyAt) {
+        const dist = Phaser.Math.Distance.Between(fx, fy, producer.centerX, producer.centerY);
         if (dist < MAGNET_RADIUS) {
-          this._harvestPlot(plot.index);
+          this._collectProducer(producer, 'player');
         }
       }
     });
-
     // Check stall: sell carried crops if farmer is within MAGNET_RADIUS of
     // the stall's REAL rendered position (single source of truth --
     // _computeStallLayout() -- not the separate STALL_Y constant that used
@@ -3769,20 +3794,20 @@ class PlayScene extends Phaser.Scene {
     const speed = MOVE_SPEED * (this.bootsTier > 0 ? Math.pow(BOOTS_SPEED_MULT, this.bootsTier) : 1);
 
     if (helper.state === 'seeking_plot') {
-      let targetPlot = null;
+      let targetProducer = null;
       let minDist = Infinity;
-      this.plots.forEach(plot => {
-        if (!plot.harvested && this.time.now >= plot.readyAt) {
-          const dist = Phaser.Math.Distance.Between(helper.x, helper.y, plot.x + PLOT_SIZE / 2, plot.y + PLOT_SIZE / 2);
+      this.producers.forEach(producer => {
+        if (!producer.harvested && this.time.now >= producer.readyAt) {
+          const dist = Phaser.Math.Distance.Between(helper.x, helper.y, producer.centerX, producer.centerY);
           if (dist < minDist) {
             minDist = dist;
-            targetPlot = plot;
+            targetProducer = producer;
           }
         }
       });
-      if (targetPlot) {
-        helper.target = { x: targetPlot.x + PLOT_SIZE / 2, y: targetPlot.y + PLOT_SIZE / 2 };
-        helper.targetPlotIndex = targetPlot.index;
+      if (targetProducer) {
+        helper.target = { x: targetProducer.centerX, y: targetProducer.centerY };
+        helper.targetProducer = targetProducer;
         helper.state = 'moving_to_plot';
       } else {
         helper.state = 'idle';
@@ -3793,25 +3818,9 @@ class PlayScene extends Phaser.Scene {
       this._moveHelperTowards(helper, helper.target.x, helper.target.y, dt, speed);
       const dist = Phaser.Math.Distance.Between(helper.x, helper.y, helper.target.x, helper.target.y);
       if (dist < MAGNET_RADIUS) {
-        const plot = this.plots[helper.targetPlotIndex];
-        // Same carry-stack cap as the player's own harvest (defect #1) --
-        // the helper adds to the shared player carry stack (_addToCarryStack
-        // below), so it must respect the same bound.
-        const carryFull = this.carrySprites.length >= CARRY_STACK_MAX;
-        if (plot && !plot.harvested && this.time.now >= plot.readyAt && !carryFull) {
-          plot.harvested = true;
-          plot.cropSprite.setVisible(false);
-          if (plot.pulseTween) {
-            plot.pulseTween.stop();
-            plot.pulseTween = null;
-          }
-          // Hide plot progress bar
-          if (plot.progressBarFill) plot.progressBarFill.setVisible(false);
-          if (plot.progressBarBg) plot.progressBarBg.setVisible(false);
-          plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
-          // Helper harvests the crop -- increment the helper's own carry count.
-          // Do NOT touch the player's carrySprites/carryStack (shared inventory bug fix).
-          helper.inventory.push('crop');
+        const producer = helper.targetProducer;
+        const collected = producer ? this._collectProducer(producer, helper) : false;
+        if (collected) {
           if (helper.carryCount >= HELPER_MAX_CARRY) {
             helper.state = 'moving_to_stall';
             const stall = this._computeStallLayout();
@@ -3819,9 +3828,7 @@ class PlayScene extends Phaser.Scene {
           } else {
             helper.state = 'seeking_plot';
           }
-        } else if (carryFull && this.carrySprites.length > 0) {
-          // Carry stack is full -- go deposit at the market instead of
-          // idling right next to a plot it can't harvest.
+        } else if (helper.carryCount >= HELPER_MAX_CARRY) {
           helper.state = 'moving_to_stall';
           const stall = this._computeStallLayout();
           helper.target = { x: stall.centerX, y: stall.centerY };
@@ -3884,12 +3891,12 @@ class PlayScene extends Phaser.Scene {
   update(time, dt) {
     this.game.sessionTime = (this.game.sessionTime || 0) + dt;
 
-    this.plots.forEach(plot => {
-      if (!plot.harvested && this.time.now >= plot.readyAt) {
-        plot.cropSprite.setVisible(true);
-        if (!plot.pulseTween) {
-          plot.pulseTween = this.tweens.add({
-            targets: plot.cropSprite,
+    this.producers.forEach(producer => {
+      if (!producer.harvested && this.time.now >= producer.readyAt) {
+        producer.productSprite.setVisible(true);
+        if (!producer.pulseTween) {
+          producer.pulseTween = this.tweens.add({
+            targets: producer.productSprite,
             scale: { from: 1, to: 1.15 },
             duration: 800,
             yoyo: true,
@@ -3897,25 +3904,22 @@ class PlayScene extends Phaser.Scene {
             ease: 'Sine.easeInOut'
           });
         }
-        // Show progress bar at full when ready
-        if (plot.progressBarFill) {
-          plot.progressBarFill.setVisible(true);
-          plot.progressBarFill.width = plot.progressBarBg.width - 8;
-          plot.progressBarBg.setVisible(true);
+        if (producer.progressBarFill) {
+          producer.progressBarFill.setVisible(true);
+          producer.progressBarFill.width = producer.progressBarBg.width - 8;
+          producer.progressBarBg.setVisible(true);
         }
-      } else if (!plot.harvested) {
-        // Update progress bar based on growth progress
-        const progress = (this.time.now - (plot.readyAt - CROP_GROW_MS * this.growSpeedMult)) / (CROP_GROW_MS * this.growSpeedMult);
+      } else if (!producer.harvested) {
+        const progress = (this.time.now - (producer.readyAt - producer.cycleMs)) / producer.cycleMs;
         const clampedProgress = Phaser.Math.Clamp(progress, 0, 1);
-        if (plot.progressBarFill && plot.progressBarBg) {
-          plot.progressBarFill.setVisible(true);
-          plot.progressBarFill.width = (plot.progressBarBg.width - 8) * clampedProgress;
-          plot.progressBarBg.setVisible(true);
+        if (producer.progressBarFill && producer.progressBarBg) {
+          producer.progressBarFill.setVisible(true);
+          producer.progressBarFill.width = (producer.progressBarBg.width - 8) * clampedProgress;
+          producer.progressBarBg.setVisible(true);
         }
       }
-      if (plot.harvested && this.time.now >= plot.readyAt) {
-        plot.harvested = false;
-        // Progress bar will be reset on next growth cycle in the above else-if
+      if (producer.harvested && this.time.now >= producer.readyAt) {
+        producer.harvested = false;
       }
     });
 

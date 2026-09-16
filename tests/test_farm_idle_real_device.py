@@ -1811,3 +1811,107 @@ def test_helper_carryCount_is_derived_from_inventory():
             f"helper.carryCount should be >=2 after _updateHelper, "
             f"got {result['carryCountAfterUpdate']}"
         )
+
+@pytest.mark.slow
+def test_producers_array_mirrors_plots_and_readiness_generalized():
+    """Assert producers array mirrors plots array with same object references,
+    and that collecting a ready producer yields the same carry count as pre-refactor
+    plot harvest (3 items)."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=['--no-sandbox'])
+        page = browser.new_page(
+            viewport={'width': 390, 'height': 650}, has_touch=True, is_mobile=True
+        )
+        _boot(page, 'iPhone_effective_short')
+
+        result = page.evaluate("""(() => {
+            const scene = window.__GAME__.scene.scenes[0];
+
+            // 1) producers.length must equal plots.length
+            const lengthOk = scene.producers.length === scene.plots.length;
+
+            // 2) every producers[i] must be the same object reference as plots[i]
+            const refsOk = scene.plots.length > 0 &&
+                scene.plots.every((p, i) => scene.producers[i] === p);
+
+            // 3) first producer has the expected type IDs
+            const typeOk = scene.producers[0].collectibleTypeId === 'crop'
+                && scene.producers[0].producerTypeId === 'plot';
+
+            // 4) collect the first producer via the generic path
+            scene.producers[0].readyAt = scene.time.now - 1;
+            const collected = scene._collectProducer(scene.producers[0], 'player');
+
+            // 5) collect returns true and carry count is 3 (same as pre-refactor plot harvest)
+            const carryOk = scene.carryItems.length === 3;
+
+            return {
+                lengthOk, refsOk, typeOk, collected, carryOk,
+            };
+        })""");
+
+        browser.close();
+
+        assert result['lengthOk'], (
+            f'producers.length ({result["lengthOk"]}) !== plots.length'
+        );
+        assert result['refsOk'], (
+            f'producers are not same refs as plots'
+        );
+        assert result['typeOk'], (
+            f'producers[0].collectibleTypeId or producerTypeId mismatch: {result["typeOk"]}'
+        );
+        assert result['collected'] is True, (
+            f'_collectProducer did not return true, got {result["collected"]}'
+        );
+        assert result['carryOk'], (
+            f'scene.carryItems.length should be 3 after collect, got {result["carryOk"]}'
+        )
+
+def test_plot_regrow_speed_buff_applies_to_existing_plots_after_cap():
+    """Buying past the plot grid cap speeds up regrowth for plots created
+    before the buff was purchased -- proves producer.cycleMs stays live,
+    not a frozen snapshot from plot-creation time."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=['--no-sandbox'])
+        page = browser.new_page(
+            viewport={'width': 390, 'height': 650}, has_touch=True, is_mobile=True
+        )
+        _boot(page, 'iPhone_effective_short')
+
+        result = page.evaluate("""(() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            scene.coins = 999999;
+
+            let safety = 0;
+            while (!scene.plotGridCapped && safety < 30) {
+                scene._buyUpgrade('plot');
+                safety++;
+            }
+            const cappedReached = scene.plotGridCapped === true;
+
+            const plot = scene.plots[0];
+            plot.readyAt = scene.time.now - 1;
+            plot.harvested = false;
+            const collected = scene._collectProducer(plot, 'player');
+
+            const expectedReadyAt = scene.time.now + CROP_GROW_MS * scene.growSpeedMult;
+            const actualReadyAt = scene.plots[0].readyAt;
+            const withinTolerance = Math.abs(actualReadyAt - expectedReadyAt) <= 50;
+
+            return { cappedReached, collected, expectedReadyAt, actualReadyAt, withinTolerance };
+        })""");
+
+        browser.close();
+
+        assert result['cappedReached'], (
+            f"plotGridCapped never became true within 30 buy attempts"
+        )
+        assert result['collected'] is True, (
+            f"_collectProducer did not return true, got {result['collected']}"
+        )
+        assert result['withinTolerance'], (
+            f"plot.readyAt ({result['actualReadyAt']}) not within tolerance of "
+            f"expected ({result['expectedReadyAt']}) -- cycleMs is not reflecting "
+            f"the live growSpeedMult buff"
+        )
