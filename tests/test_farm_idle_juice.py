@@ -10,8 +10,15 @@ HARNESS_DIR = Path(__file__).parent.parent / "harness"
 @pytest.mark.slow
 def test_stacking_visual_reflects_carried_count():
     """
-    Test that the stacking visual on the farmer actually reflects the
-    number of carried crops, and clears on sell.
+    Test that the helper's own carried-goods count grows as it harvests
+    and clears on sell.
+
+    Updated for the Defect 3 fix (shared inventory bug): this test
+    previously asserted that scene.carrySprites (the player's shared
+    visual stack) grows as the HELPER harvests -- that was the exact
+    pre-fix behavior the Defect 3 fix deliberately removed (helper
+    inventory now lives entirely on helper.carryCount and never touches
+    scene.carrySprites). Rewritten to assert the new, correct behavior.
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
@@ -42,7 +49,8 @@ def test_stacking_visual_reflects_carried_count():
         result = page.evaluate("""() => {
             const scene = window.__GAME__.scene.scenes[0];
             const helper = scene.helpers[0];
-            let maxStackSize = 0;
+            let maxHelperCarryCount = 0;
+            let playerCarryLenStayedZero = true;
             helper.carryCount = 0;
 
             for (let i = 0; i < 3; i++) {
@@ -56,7 +64,8 @@ def test_stacking_visual_reflects_carried_count():
                 // moving_to_plot -> harvest, all in the same _updateHelper
                 // call since the three state blocks run sequentially.
                 scene.update(scene.time.now, 16);
-                maxStackSize = Math.max(maxStackSize, scene.carrySprites.length);
+                maxHelperCarryCount = Math.max(maxHelperCarryCount, helper.carryCount);
+                if (scene.carrySprites.length !== 0) playerCarryLenStayedZero = false;
                 console.log(`Harvest ${i}: carrySprites=${scene.carrySprites.length}, helper.carryCount=${helper.carryCount}, helper.state=${helper.state}`);
             }
 
@@ -74,22 +83,37 @@ def test_stacking_visual_reflects_carried_count():
             helper.x = stall.centerX; helper.y = stall.centerY;
             helper.sprite.x = helper.x; helper.sprite.y = helper.y;
             scene.update(scene.time.now, 16);
-            console.log(`After sell attempt: carrySprites=${scene.carrySprites.length}, helper.state=${helper.state}`);
+            console.log(`After sell attempt: carrySprites=${scene.carrySprites.length}, helper.carryCount=${helper.carryCount}, helper.state=${helper.state}`);
 
-            return { maxStackSize, stackCleared: scene.carrySprites.length === 0, finalStack: scene.carrySprites.length };
+            return {
+                maxHelperCarryCount,
+                playerCarryLenStayedZero,
+                helperCarryCountClearedOnSell: helper.carryCount === 0,
+                finalHelperCarryCount: helper.carryCount,
+            };
         }""")
 
         browser.close()
 
-        print(f"Max stack size observed: {result['maxStackSize']}")
-        print(f"Stack cleared on sell: {result['stackCleared']}")
+        print(f"Max helper.carryCount observed: {result['maxHelperCarryCount']}")
+        print(f"helper.carryCount cleared on sell: {result['helperCarryCountClearedOnSell']}")
 
-        # Stack should grow to at least 2 (multiple crops carried at once)
-        assert result['maxStackSize'] >= 2, f"Expected stack to grow to at least 2, got max {result['maxStackSize']}"
-        # Stack should clear on sell
-        assert result['stackCleared'] is True, f"Stack should clear on sell, but had {result['finalStack']} items left"
-        # Final stack should be 0
-        assert result['finalStack'] == 0, f"Expected final stack to be 0, got {result['finalStack']}"
+        # helper.carryCount should grow to at least 2 (multiple crops carried at once)
+        assert result['maxHelperCarryCount'] >= 2, (
+            f"Expected helper.carryCount to grow to at least 2, got max {result['maxHelperCarryCount']}"
+        )
+        # Player's shared visual stack must never be touched by helper harvesting
+        assert result['playerCarryLenStayedZero'], (
+            "scene.carrySprites.length must stay 0 throughout helper harvesting"
+        )
+        # helper.carryCount should clear on sell
+        assert result['helperCarryCountClearedOnSell'], (
+            f"helper.carryCount should clear on sell, but had {result['finalHelperCarryCount']} left"
+        )
+        # Final helper carry count should be 0
+        assert result['finalHelperCarryCount'] == 0, (
+            f"Expected final helper.carryCount to be 0, got {result['finalHelperCarryCount']}"
+        )
 
 
 @pytest.mark.slow
