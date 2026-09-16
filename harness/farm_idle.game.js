@@ -972,6 +972,26 @@ class PlayScene extends Phaser.Scene {
     // Update stack position to follow farmer
     this._updateCarryStackPosition();
   }
+  _helperSellAtStall(helper) {
+    const sellAmount = helper.carryCount * (CROP_SELL_VALUE + this.sellValueBonus);
+    this.coins += sellAmount;
+    this.coinsText.setText('Coins: ' + this.coins);
+    this.game.registry.set('score', this.coins);
+
+    // Fly coins from helper's position to counter
+    this._flyCoinsToCounter(helper.carryCount, helper.x, helper.y);
+
+    // Sell feedback: particle burst + haptic at helper's position
+    const stall = this._computeStallLayout();
+    Juice.ParticleBurst.create(this, stall.centerX, stall.y, {
+      color: 0xffd700, count: 12, speed: 128, size: 8
+    });
+    vibrate(20);
+
+    // Reset helper carry count
+    helper.carryCount = 0;
+  }
+
 
   _clearCarryStack() {
     this.carrySprites.forEach(sprite => sprite.destroy());
@@ -1177,9 +1197,10 @@ class PlayScene extends Phaser.Scene {
   }
 
   _spawnHelper(interval) {
-    const helper = this.add.circle(W / 2, PLOT_AREA_TOP + 320, 24, 0xff7043);
-    helper.setStrokeStyle(3, 0xc62828, 1);
-    this.helpers.push({
+      const helper = this.add.circle(W / 2, PLOT_AREA_TOP + 320, 24, 0xff7043);
+      helper.setDepth(10);
+      helper.setStrokeStyle(3, 0xc62828, 1);
+      this.helpers.push({
       sprite: helper,
       x: W / 2,
       y: PLOT_AREA_TOP + 320,
@@ -1336,10 +1357,8 @@ class PlayScene extends Phaser.Scene {
           if (plot.progressBarFill) plot.progressBarFill.setVisible(false);
           if (plot.progressBarBg) plot.progressBarBg.setVisible(false);
           plot.readyAt = this.time.now + CROP_GROW_MS * this.growSpeedMult;
-          // Add a burst of goods to the player's carry stack (defect #5),
-          // same as the player's own harvest -- not helper's own carrying.
-          this._addHarvestBurst();
-          // Helper can carry multiple crops before selling
+          // Helper harvests the crop -- increment the helper's own carry count.
+          // Do NOT touch the player's carrySprites/carryStack (shared inventory bug fix).
           helper.carryCount = (helper.carryCount || 0) + 1;
           if (helper.carryCount >= HELPER_MAX_CARRY) {
             helper.state = 'moving_to_stall';
@@ -1364,9 +1383,9 @@ class PlayScene extends Phaser.Scene {
       this._moveHelperTowards(helper, helper.target.x, helper.target.y, dt, speed);
       const dist = Phaser.Math.Distance.Between(helper.x, helper.y, helper.target.x, helper.target.y);
       if (dist < MAGNET_RADIUS) {
-        // Sell from player's carry stack
-        if (this.carrySprites.length > 0) {
-          this._sellAtStall();
+        // Sell from the helper's own carry count -- not the player's carrySprites.
+        if (helper.carryCount > 0) {
+          this._helperSellAtStall(helper);
         }
         helper.carryCount = 0;
         helper.state = 'idle';
