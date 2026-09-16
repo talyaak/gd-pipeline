@@ -1915,3 +1915,37 @@ def test_plot_regrow_speed_buff_applies_to_existing_plots_after_cap():
             f"expected ({result['expectedReadyAt']}) -- cycleMs is not reflecting "
             f"the live growSpeedMult buff"
         )
+
+
+def test_camera_bounds_are_fixed_world_size_independent_of_viewport():
+    """Section D: camera world bounds must be the fixed WORLD_W x WORLD_H
+    (1440x2000) at every viewport, never derived from the viewport itself --
+    proves the bounds stopped being viewport-height-derived."""
+    for viewport_width, viewport_height, viewport_name in [
+        (390, 650, "iPhone_effective_short"),
+        (390, 844, "iPhone_12_tall_contrast"),
+    ]:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(args=['--no-sandbox'])
+            page = browser.new_page(
+                viewport={'width': viewport_width, 'height': viewport_height},
+                has_touch=True, is_mobile=True
+            )
+            _boot(page, viewport_name)
+
+            bounds = page.evaluate("""(() => {
+                const scene = window.__GAME__.scene.scenes[0];
+                const b = scene.cameras.main.getBounds();
+                return { width: b.width, height: b.height };
+            })""")
+
+            browser.close()
+
+            assert bounds['width'] == 1440, (
+                f"[{viewport_name}] camera bounds width {bounds['width']} != 1440 "
+                f"(WORLD_W) -- bounds must be fixed, not viewport-derived"
+            )
+            assert bounds['height'] == 2000, (
+                f"[{viewport_name}] camera bounds height {bounds['height']} != 2000 "
+                f"(WORLD_H) -- bounds must be fixed, not viewport-derived"
+            )
