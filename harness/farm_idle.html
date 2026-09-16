@@ -3681,18 +3681,34 @@ class PlayScene extends Phaser.Scene {
     const targetY = counterPos.y + this.coinsText.height / 2;
 
     // sourceX/sourceY are WORLD coordinates (caller passes helper.x/y or
-    // farmer.x/y). The coin sprite itself is a HUD object (its whole flight
-    // ends at coinsText, a HUD object, and it must visually track over
-    // in-world content correctly regardless of the world camera's current
-    // scroll) -- so its start position is converted from world-space to
-    // UI-camera-space by subtracting the world camera's current scroll.
-    // Without this, the coin would start at the wrong on-screen position
-    // the moment the world camera has scrolled away from (0,0), even
-    // though it visually needs to start exactly where the source
-    // (helper/farmer) currently appears on screen.
+    // farmer.x/y). The coin sprite itself is a HUD object rendered by
+    // uiCamera, so its start position must be converted from world-camera
+    // physical screen position to uiCamera logical space.
+    //
+    // A naive `sourceX - worldCam.scrollX` is NOT the world camera's true
+    // physical screen position: Phaser cameras default to a CENTERED origin
+    // (0.5, 0.5), and worldCam (unlike uiCamera) is never centerOn'd -- it
+    // just follows the farmer -- so that origin offset is never cancelled
+    // out. The true formula includes the origin term:
+    //   physicalX = (worldX - scrollX) * zoom + originX * width * (1 - zoom)
+    // (confirmed empirically against camera.getWorldPoint-sampled ground
+    // truth; the naive formula was off by exactly originX*width*(1-zoom),
+    // ~89px horizontally / ~193px vertically at 390x844 -- the same
+    // magnitude Instinct's gate review originally flagged, meaning an
+    // earlier version of this fix, which merely added uiCamera.scrollX
+    // back in, patched the wrong term and still failed a real pixel test).
+    // Once we have the source's true physical screen position, converting
+    // it into uiCamera's logical space is exactly what getWorldPoint is
+    // for (uiCamera IS correctly origin-compensated post-centerOn, so this
+    // round-trips precisely).
     const worldCam = this.cameras.main;
-    const startX = sourceX - worldCam.scrollX;
-    const startY = sourceY - worldCam.scrollY;
+    const physicalX = (sourceX - worldCam.scrollX) * worldCam.zoom +
+      worldCam.originX * worldCam.width * (1 - worldCam.zoom);
+    const physicalY = (sourceY - worldCam.scrollY) * worldCam.zoom +
+      worldCam.originY * worldCam.height * (1 - worldCam.zoom);
+    const uiPoint = this.uiCamera.getWorldPoint(physicalX, physicalY);
+    const startX = uiPoint.x;
+    const startY = uiPoint.y;
 
     for (let i = 0; i < coinCount; i++) {
       const coin = this.add.circle(startX, startY, 8, 0xffd700);
