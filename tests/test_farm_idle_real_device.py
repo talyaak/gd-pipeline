@@ -2462,3 +2462,284 @@ def test_market_sell_works_while_offscreen():
             f"({result['coinsBefore']} -> {result['coinsAfter']})"
         )
         assert result["carryAfter"] == 0, "Carry stack should be empty after a successful offscreen sale"
+
+
+@pytest.mark.slow
+def test_helper_completes_harvest_and_sale_while_offscreen():
+    """Section D acceptance criterion 14 (Offscreen AI): with the camera and
+    farmer positioned far from the helper, the helper must still
+    autonomously complete a harvest at a ready plot and a sale at the
+    market -- driven purely by real elapsed time (Phaser's own per-frame
+    _updateHelper()/update loop), not by manually invoking any private
+    collection/sale method. Coins increase (the shared currency the helper's
+    sale credits); the PLAYER's own carrySprites are untouched (proving the
+    helper's autonomous action never touches player inventory); the
+    helper's own inventory clears right after its first sale. This sale
+    also doubles as criterion 13's "helper target resolves the same fixed
+    market coordinate" proof, since it only succeeds if _updateHelper()'s
+    own _computeStallLayout() call is correct.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        setup = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+
+            // Ready plot for the helper to harvest.
+            scene.plots[0].readyAt = scene.time.now - 1;
+
+            // Spawn a helper and put it straight into its real AI loop
+            // (bypassing only the idle-timer cadence before the FIRST
+            // search, which is unrelated to this proof -- the helper's
+            // actual movement/collection/sale from here on all runs
+            // through the real per-frame _updateHelper() path).
+            scene._spawnHelper(500);
+            const helper = scene.helpers[scene.helpers.length - 1];
+            helper.state = 'seeking_plot';
+
+            // Move the FARMER (and therefore the camera, which follows it)
+            // far from both the plot and the helper, so the camera is
+            // rendering a totally different part of the world while the
+            // helper does its own thing.
+            scene.farmer.x = 1300;
+            scene.farmer.y = 1800;
+
+            return {
+                coinsBefore: scene.coins,
+                playerCarryBefore: scene.carrySprites.length,
+            };
+        }""")
+        page.wait_for_timeout(600)  # let the camera settle far from the helper
+
+        scroll_after_settle = page.evaluate("() => { const c = window.__GAME__.scene.scenes[0].cameras.main; return { x: c.scrollX, y: c.scrollY }; }")
+
+        # Poll in real 300ms increments (real elapsed time, letting
+        # Phaser's own per-frame update loop run the helper's walk-harvest-
+        # walk-sell cycle) and stop as soon as the FIRST sale registers.
+        # IMPORTANT: do not just wait one long fixed duration and check once
+        # -- the helper immediately starts a second harvest cycle after
+        # selling (crops regrow), so a long wait can catch it mid-way
+        # through cycle 2, making helper.inventory.length nonzero again even
+        # though the required proof (one autonomous offscreen sale
+        # happened) is already satisfied. Polling and stopping at the first
+        # sale avoids that race -- verified empirically (dry-run) before
+        # writing this test.
+        sold = False
+        result = None
+        for _ in range(20):
+            page.wait_for_timeout(300)
+            result = page.evaluate("""() => {
+                const scene = window.__GAME__.scene.scenes[0];
+                const helper = scene.helpers[scene.helpers.length - 1];
+                return {
+                    coinsAfter: scene.coins,
+                    playerCarryAfter: scene.carrySprites.length,
+                    helperInventoryLength: helper.inventory.length,
+                    helperState: helper.state,
+                };
+            }""")
+            if result["coinsAfter"] > setup["coinsBefore"]:
+                sold = True
+                break
+        browser.close()
+
+        assert scroll_after_settle["x"] > 50 or scroll_after_settle["y"] > 50, (
+            f"world camera didn't scroll away meaningfully: {scroll_after_settle}"
+        )
+        assert sold, (
+            f"helper did not complete an autonomous sale while offscreen within the poll window: "
+            f"{result}"
+        )
+        assert result["playerCarryAfter"] == setup["playerCarryBefore"], (
+            f"player's own carrySprites changed from the helper's autonomous action "
+            f"({setup['playerCarryBefore']} -> {result['playerCarryAfter']}) -- helper activity "
+            f"must never touch player inventory"
+        )
+        assert result["helperInventoryLength"] == 0, (
+            f"helper inventory should be empty right after its first sale, got "
+            f"{result['helperInventoryLength']}"
+        )
+
+
+@pytest.mark.slow
+def test_joystick_tracks_finger_direction_after_large_pan():
+    """Section D acceptance criterion 11 (input under scroll), first half:
+    with the world camera panned far from its boot position, a real held
+    pointer drag must still produce a joystickVector whose sign/direction
+    matches the actual screen-space drag, and a visible thumb offset in the
+    same direction -- proving joystick input stays purely screen-space
+    (only ever divided by worldZoom, per _activateJoystick/_updateJoystick)
+    and is never contaminated by camera scroll.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            scene.farmer.x = 1200;
+            scene.farmer.y = 1700;
+        }""")
+        page.wait_for_timeout(600)
+
+        scroll = page.evaluate("() => { const c = window.__GAME__.scene.scenes[0].cameras.main; return { x: c.scrollX, y: c.scrollY }; }")
+        assert scroll["x"] > 50 and scroll["y"] > 50, (
+            f"world camera didn't pan enough to be a meaningful proof: {scroll}"
+        )
+
+        cx, cy = 195, 422  # roughly screen center at 390x844
+        ddx, ddy = 60, -100  # drag right and up
+        page.mouse.move(cx, cy)
+        page.mouse.down()
+        active = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
+        assert active, "joystick did not activate on pointerdown at screen center"
+
+        page.mouse.move(cx + ddx, cy + ddy, steps=5)
+        state = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            return {
+                vector: scene.joystickVector,
+                center: scene.joystickCenter,
+                thumbX: scene.joystickThumb ? scene.joystickThumb.x : null,
+                thumbY: scene.joystickThumb ? scene.joystickThumb.y : null,
+            };
+        }""")
+        page.mouse.up()
+        browser.close()
+
+        assert state["vector"]["x"] > 0 and state["vector"]["y"] < 0, (
+            f"joystick vector direction doesn't match the drag (right+up expected, got "
+            f"{state['vector']}) after a large camera pan"
+        )
+        assert (state["thumbX"] - state["center"]["x"]) > 0 and (state["thumbY"] - state["center"]["y"]) < 0, (
+            f"joystick thumb visual offset doesn't match the drag direction: "
+            f"thumb=({state['thumbX']}, {state['thumbY']}) center={state['center']}"
+        )
+
+
+@pytest.mark.slow
+def test_pad_tap_after_scroll_does_not_spawn_joystick():
+    """Section D acceptance criterion 11 (input under scroll), second half:
+    a real tap on the in-world upgrade pad after the camera has scrolled
+    must open the sheet WITHOUT also activating the floating joystick --
+    the global pointerdown handler's hitTestPointer guard should return
+    early on any interactive hit (the pad) before ever calling
+    _activateJoystick, so a pad tap and a joystick spawn should never
+    happen together.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const pad = scene._computePadLayout();
+            scene.farmer.x = pad.centerX + 120;
+            scene.farmer.y = pad.centerY - 80;
+        }""")
+        page.wait_for_timeout(600)
+
+        tap_point = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+            function worldToScreen(camera, wx, wy) {
+                const p0 = camera.getWorldPoint(0, 0);
+                const p1 = camera.getWorldPoint(100, 0);
+                const p2 = camera.getWorldPoint(0, 100);
+                const sx = (wx - p0.x) / (p1.x - p0.x) * 100;
+                const sy = (wy - p0.y) / (p2.y - p0.y) * 100;
+                return { x: sx, y: sy };
+            }
+            const pad = scene._computePadLayout();
+            const screen = worldToScreen(cam, pad.centerX, pad.centerY);
+            return {
+                screenX: screen.x, screenY: screen.y,
+                worldScrollX: cam.scrollX, worldScrollY: cam.scrollY,
+            };
+        }""")
+
+        assert tap_point["worldScrollX"] > 50 and tap_point["worldScrollY"] > 50, (
+            f"world camera didn't scroll enough to be a meaningful proof: {tap_point}"
+        )
+
+        page.touchscreen.tap(tap_point["screenX"], tap_point["screenY"])
+        page.wait_for_timeout(150)
+
+        after = page.evaluate("() => { const s = window.__GAME__.scene.scenes[0]; return { sheetVisible: s.sheetVisible, joystickActive: s.joystickActive }; }")
+        browser.close()
+
+        assert after["sheetVisible"], (
+            f"pad tap after scroll did not open the sheet: {after}"
+        )
+        assert not after["joystickActive"], (
+            f"pad tap after scroll incorrectly also activated the joystick: {after}"
+        )
+
+
+@pytest.mark.slow
+def test_hud_pixels_identical_before_and_after_large_pan():
+    """Section D acceptance criterion 12 (HUD pixels): a direct pixel proof,
+    not just implicit coverage via the two-camera architecture's own
+    invariants -- the coins-counter text must render at the EXACT SAME
+    screen pixels before and after a large world-camera pan, since it's a
+    HUD object owned by uiCamera (fixed, only changes on resize) and
+    should be completely unaffected by the world camera's own scroll.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        def hud_region():
+            return page.evaluate("""() => {
+                const scene = window.__GAME__.scene.scenes[0];
+                const ui = scene.uiCamera;
+                function worldToScreen(camera, wx, wy) {
+                    const p0 = camera.getWorldPoint(0, 0);
+                    const p1 = camera.getWorldPoint(100, 0);
+                    const p2 = camera.getWorldPoint(0, 100);
+                    const sx = (wx - p0.x) / (p1.x - p0.x) * 100;
+                    const sy = (wy - p0.y) / (p2.y - p0.y) * 100;
+                    return { x: sx, y: sy };
+                }
+                const b = scene.coinsText.getBounds();
+                const topLeft = worldToScreen(ui, b.x, b.y);
+                return { x: topLeft.x, y: topLeft.y, width: b.width * ui.zoom, height: b.height * ui.zoom };
+            }""")
+
+        region_before = hud_region()
+        rows_before = _read_pixel_region_via_screenshot(
+            page, round(region_before["x"]), round(region_before["y"]),
+            round(region_before["width"]), round(region_before["height"]),
+        )
+
+        page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            scene.farmer.x = 1300;
+            scene.farmer.y = 1800;
+        }""")
+        page.wait_for_timeout(600)
+
+        world_scroll = page.evaluate("() => { const c = window.__GAME__.scene.scenes[0].cameras.main; return { x: c.scrollX, y: c.scrollY }; }")
+        region_after = hud_region()
+        rows_after = _read_pixel_region_via_screenshot(
+            page, round(region_after["x"]), round(region_after["y"]),
+            round(region_after["width"]), round(region_after["height"]),
+        )
+        browser.close()
+
+        assert world_scroll["x"] > 50 and world_scroll["y"] > 50, (
+            f"world camera didn't pan enough to be a meaningful proof: {world_scroll}"
+        )
+        assert region_before == region_after, (
+            f"HUD screen-region coordinates changed under world-camera pan: "
+            f"{region_before} -> {region_after}"
+        )
+        assert rows_before == rows_after, (
+            f"HUD pixel content at the coins-counter region changed under world-camera pan "
+            f"(region {region_after}), even though the region coordinates stayed identical"
+        )
