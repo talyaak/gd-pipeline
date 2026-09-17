@@ -2391,11 +2391,22 @@ def test_farmer_clamps_at_full_world_bounds(viewport_width, viewport_height, vie
                 f"point {candidates} -- all landed on an interactive element"
             )
             page.mouse.move(cx + ddx, cy + ddy, steps=5)
-            page.wait_for_timeout(2500)
+
+            # Poll for the clamp to actually settle instead of one fixed
+            # wait -- CI runners can be measurably slower than a local dev
+            # machine (observed: a 2500ms fixed wait was enough locally,
+            # multiple runs, but left the farmer short of the clamp on a
+            # real CI run). Polling in 400ms increments up to 6s total
+            # makes this robust to that variance either way.
+            final = None
+            for _ in range(15):
+                page.wait_for_timeout(400)
+                final = page.evaluate("() => ({ x: window.__GAME__.scene.scenes[0].farmer.x, y: window.__GAME__.scene.scenes[0].farmer.y })")
+                if final[axis] == expected:
+                    break
             page.mouse.up()
             page.wait_for_timeout(50)
 
-            final = page.evaluate("() => ({ x: window.__GAME__.scene.scenes[0].farmer.x, y: window.__GAME__.scene.scenes[0].farmer.y })")
             assert final[axis] == expected, (
                 f"{viewport_name} ({label}): real joystick drag clamped farmer.{axis} to "
                 f"{final[axis]}, expected {expected}"
