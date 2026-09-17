@@ -3038,6 +3038,27 @@ class PlayScene extends Phaser.Scene {
     // clamp/interfere with the centerOn scroll it actually needs.
     cam.setBounds(0, 0, WORLD_W, WORLD_H);
 
+    // 5.5) One-time explicit initial framing (Section D acceptance round,
+    // "starting-hub framing"). Before this, the camera's boot position was
+    // an ACCIDENTAL side-effect of startFollow's bounds-clamped settling --
+    // correct by construction, but nowhere stated as intentional, so it
+    // could silently regress if farmer spawn point, deadzone math, or
+    // world size ever change. This makes that first-frame composition an
+    // explicit, named, one-time step instead. It intentionally reproduces
+    // the exact same clamped position that already resulted from
+    // startFollow + setBounds (verified: identical camera.worldView before
+    // and after this change, at all 4 real-device viewports) -- this is an
+    // architectural change, not a visual one. Runs exactly once, on the
+    // first-ever _onResize call (boot), never again on subsequent resizes
+    // (e.g. orientation change) -- those must keep using ongoing
+    // deadzone/follow behavior, never re-snap the camera.
+    if (!this._hasFramedInitialView) {
+      const targetX = Phaser.Math.Clamp(this.farmer.x, LOGICAL_W / 2, WORLD_W - LOGICAL_W / 2);
+      const targetY = Phaser.Math.Clamp(this.farmer.y, visibleWorldHeight / 2, WORLD_H - visibleWorldHeight / 2);
+      cam.centerOn(targetX, targetY);
+      this._hasFramedInitialView = true;
+    }
+
     // 6) Deadzone (viewport-relative, recomputed every resize) and follow.
     // startFollow itself is only called once, in create() -- nothing to
     // redo here, this step is the deadzone half of "deadzone/follow".
