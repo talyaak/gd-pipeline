@@ -103,25 +103,25 @@ const PLOT_BUFF_SELL_VALUE_BONUS = 2;
 const PLOT_BUFF_GROW_SPEED_MULT = 0.92;
 const PLOT_BUFF_MIN_GROW_MS = 500;
 const STALL_X = 96;                   // 60 * 1.6
-// STALL_Y is ONLY a pre-first-layout placeholder for the initial
-// this.add.text() call in create() (before _layoutHUD() has run once).
-// Real-device defect #3: this constant used to also be read directly by
-// _updateMagnet()/_sellAtStall()/helper-targeting as if it were the stall's
-// actual rendered Y -- but _layoutHUD() computes the REAL stall Y
-// dynamically per-viewport (H - totalHeight + stallGap) and never wrote it
-// back here, so the two drifted apart on short viewports (the visible
-// market ended up nowhere near where selling was actually detected). The
-// single source of truth for the stall's live position is now
-// PlayScene._computeStallLayout() -- every runtime consumer must call that,
-// not this constant.
-const STALL_Y = 1252;                 // 1412 - 112 - 48 = 1252 (preserves 48px bottom margin)
+// STALL_Y/PAD_Y below are unused legacy placeholders (fixed-world sub-dispatch):
+// the stall and pad's live positions are now solely determined by
+// _computeStallLayout() / _computePadLayout(), which return fixed world
+// coordinates independent of viewport size or safe-area insets. Nothing
+// reads STALL_Y/PAD_Y anymore -- kept only so this diff stays additive.
+const STALL_Y = 1252;                 // 1412 - 112 - 48 = 1252 (legacy, unused)
 const STALL_W = 160;                  // 100 * 1.6
 const STALL_H = 112;                  // 70 * 1.6
 const PAD_X = 464;                    // (W - PAD_W) = 720 - 256 = 464, was 390 = 450 - 60
-const PAD_Y = 1252;                   // 1412 - 112 - 48 = 1252 (same bottom margin as stall)
+const PAD_Y = 1252;                   // 1412 - 112 - 48 = 1252 (legacy, unused)
 const PAD_W = 256;                    // 160 * 1.6
 const PAD_H = 112;                    // 70 * 1.6
 const COINS_Y = 64;                   // 40 * 1.6
+// Fixed world Y coordinates for the stall and upgrade pad (this sub-dispatch).
+// The plot grid's maximum extent is PLOT_AREA_TOP(192) + 96 + (MAX_PLOT_ROWS-1)*(PLOT_SIZE+PLOT_GAP) + PLOT_SIZE
+// = 192 + 96 + 2*112 + 96 = 608. WORLD_H is 2000, so 700/900 leave a comfortable
+// gap below the plot grid with room to spare and no overlap between stall and pad.
+const STALL_FIXED_Y = 700;
+const PAD_FIXED_Y = 900;
 const UPGRADE_PANEL_TOP = 672;        // 420 * 1.6
 const UPGRADE_PANEL_H = 448;          // 280 * 1.6
 
@@ -670,18 +670,28 @@ class PlayScene extends Phaser.Scene {
   // computed value instead of the separate STALL_Y constant, so they can
   // never drift apart from what the player actually sees on screen.
   _computeStallLayout() {
-    const stallGap = 24;
-    const padHeight = PAD_H;
-    const stallHeight = STALL_H;
-    const totalHeight = padHeight + stallHeight + stallGap * 2 + this._safeBottomLogical();
-    const stallY = H - totalHeight + stallGap;
-    return {
-      x: STALL_X,
-      y: stallY,
-      centerX: STALL_X + STALL_W / 2,
-      centerY: stallY + STALL_H / 2
-    };
-  }
+      // Fixed world position, independent of viewport size or safe-area
+      // insets -- the stall is a genuine world entity now, not HUD-relative.
+      return {
+        x: STALL_X,
+        y: STALL_FIXED_Y,
+        centerX: STALL_X + STALL_W / 2,
+        centerY: STALL_FIXED_Y + STALL_H / 2
+      };
+    }
+
+    _computePadLayout() {
+      // Fixed world position, independent of viewport size or safe-area
+      // insets -- the upgrade pad is a genuine world entity now, not
+      // HUD-relative. Single source of truth for every runtime consumer
+      // (rendering, real-tap hit testing) so they can never drift apart.
+      return {
+        x: PAD_X,
+        y: PAD_FIXED_Y,
+        centerX: PAD_X + PAD_W / 2,
+        centerY: PAD_FIXED_Y + PAD_H / 2
+      };
+    }
 
   _layoutHUD() {
       // Anchor HUD elements to screen edges with safe-area insets
@@ -743,16 +753,16 @@ class PlayScene extends Phaser.Scene {
         this.stallText.setPosition(stall.centerX, stall.y + STALL_H / 2);
       }
 
-      // Upgrade pad: position with safe-area bottom buffer (at bottom, above safe area)
-      if (this.padG && this.padText) {
-        const padGap = 24;
-        const padY = H - PAD_H - padGap - safeBottomLogical;
-        this.padG.setPosition(PAD_X, padY);
-        this.padG.clear();
-        this.padG.fillStyle(0xffb300, 1);
-        this.padG.fillRoundedRect(0, 0, PAD_W, PAD_H, 8);
-        this.padText.setPosition(PAD_X + PAD_W / 2, padY + PAD_H / 2);
-      }
+      // Upgrade pad: fixed world position (_computePadLayout()), no longer
+            // recomputed from viewport size or safe-area insets on every resize.
+            if (this.padG && this.padText) {
+              const pad = this._computePadLayout();
+              this.padG.setPosition(pad.x, pad.y);
+              this.padG.clear();
+              this.padG.fillStyle(0xffb300, 1);
+              this.padG.fillRoundedRect(0, 0, PAD_W, PAD_H, 8);
+              this.padText.setPosition(pad.centerX, pad.y + PAD_H / 2);
+            }
 
       // Start hint: positioned in _showStartHint(), just ensure it's visible if needed
       // No persistent center banner anymore
@@ -1524,19 +1534,18 @@ class PlayScene extends Phaser.Scene {
   }
 
   _moveFarmerByJoystick(dt) {
-    const currentSpeed = MOVE_SPEED * (this.bootsTier > 0 ? Math.pow(BOOTS_SPEED_MULT, this.bootsTier) : 1);
-    
-    // Apply joystick vector (already normalized to [-1, 1])
-    const moveDist = currentSpeed * (dt / 1000);
-    this.farmer.x += this.joystickVector.x * moveDist;
-    this.farmer.y += this.joystickVector.y * moveDist;
-    
-    // Clamp farmer to playable area (above bottom sheet, within screen bounds)
-    const layout = this.computeLayout();
-    const farmerMinY = PLOT_AREA_TOP + FARMER_RADIUS;
-    const farmerMaxY = layout.visibleWorldHeight - FARMER_RADIUS;
-    const farmerMinX = FARMER_RADIUS;
-    const farmerMaxX = LOGICAL_W - FARMER_RADIUS;
+      const currentSpeed = MOVE_SPEED * (this.bootsTier > 0 ? Math.pow(BOOTS_SPEED_MULT, this.bootsTier) : 1);
+
+      // Apply joystick vector (already normalized to [-1, 1])
+      const moveDist = currentSpeed * (dt / 1000);
+      this.farmer.x += this.joystickVector.x * moveDist;
+      this.farmer.y += this.joystickVector.y * moveDist;
+
+      // Clamp farmer to playable area (above bottom sheet, within screen bounds)
+      const farmerMinY = PLOT_AREA_TOP + FARMER_RADIUS;
+      const farmerMaxY = WORLD_H - FARMER_RADIUS;
+      const farmerMinX = FARMER_RADIUS;
+      const farmerMaxX = WORLD_W - FARMER_RADIUS;
     
     this.farmer.x = Phaser.Math.Clamp(this.farmer.x, farmerMinX, farmerMaxX);
     this.farmer.y = Phaser.Math.Clamp(this.farmer.y, farmerMinY, farmerMaxY);
