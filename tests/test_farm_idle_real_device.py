@@ -2148,8 +2148,22 @@ def test_market_real_interaction_after_world_scroll(viewport_width, viewport_hei
         # then place the farmer just outside a ready plot's magnet radius
         # (arrange -- the interaction under test starts from here, driven
         # entirely by real input from this point on).
+        #
+        # Pin every OTHER plot's readyAt far into the future: this test's
+        # own real-time budget (two ~600ms settle waits plus up to two
+        # 1500ms drag holds) sits close enough to CROP_GROW_MS (4000ms)
+        # that, without this, another plot can naturally finish regrowing
+        # mid-test and get auto-harvested via magnet proximity as the
+        # farmer's drag path walks near it -- filling the carry stack
+        # before it ever reaches the SPECIFIC plot this test means to
+        # harvest, and making plot[0].harvested falsely read false. Found
+        # via a reproducible (3/3) failure at 390x844 during this branch's
+        # boot-framing change (which itself turned out unrelated -- the
+        # test was already this fragile, the change's timing just tipped
+        # it over) and isolated by re-running against the pre-change commit.
         setup = page.evaluate("""() => {
             const scene = window.__GAME__.scene.scenes[0];
+            scene.plots.forEach((p, i) => { if (i !== 0) p.readyAt = scene.time.now + 999999; });
             const plot = scene.plots[0];
             plot.readyAt = scene.time.now - 1;
             const plotCenterX = plot.x + 48, plotCenterY = plot.y + 48;
@@ -2742,4 +2756,104 @@ def test_hud_pixels_identical_before_and_after_large_pan():
         assert rows_before == rows_after, (
             f"HUD pixel content at the coins-counter region changed under world-camera pan "
             f"(region {region_after}), even though the region coordinates stayed identical"
+        )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("viewport_width,viewport_height,viewport_name", SHORT_VIEWPORTS + [TALL_VIEWPORT])
+def test_boot_camera_worldview_pinned(viewport_width, viewport_height, viewport_name):
+    """Starting-hub framing (Section D acceptance round): pins the exact
+    camera.worldView produced by the new explicit one-time _onResize
+    framing step (this._hasFramedInitialView) at boot, at all 4 real-device
+    viewports. This is the "before/after-identical" regression proof --
+    the explicit step is an architectural change (making an already-correct
+    accidental clamp result into a deliberate, named one), not a visual
+    one, so this pins it to the exact same values measured before that
+    change existed.
+    """
+    EXPECTED_WORLDVIEW = {
+        "iPhone_effective_short": {"x": 0, "y": 0, "width": 720, "height": 1200},
+        "iPhone_11_short_chrome": {"x": 0, "y": 0, "width": 720, "height": 1217.3913043478262},
+        "Galaxy_short_chrome": {"x": 0, "y": 0, "width": 720, "height": 1230},
+        "iPhone_12_tall_contrast": {"x": 0, "y": 0, "width": 720, "height": 1558.1538461538462},
+    }
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": viewport_width, "height": viewport_height}, has_touch=True, is_mobile=True
+        )
+        _boot(page, viewport_name)
+
+        result = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+            return {
+                worldView: { x: cam.worldView.x, y: cam.worldView.y, width: cam.worldView.width, height: cam.worldView.height },
+                hasFramedFlag: scene._hasFramedInitialView,
+            };
+        }""")
+        browser.close()
+
+        assert result["hasFramedFlag"] is True, (
+            f"{viewport_name}: the explicit one-time initial-framing step did not run "
+            f"(_hasFramedInitialView is {result['hasFramedFlag']})"
+        )
+        expected = EXPECTED_WORLDVIEW[viewport_name]
+        for key in ("x", "y", "width", "height"):
+            assert abs(result["worldView"][key] - expected[key]) < 0.01, (
+                f"{viewport_name}: boot worldView.{key} = {result['worldView'][key]}, "
+                f"expected {expected[key]} (full worldView: {result['worldView']})"
+            )
+
+
+@pytest.mark.slow
+def test_no_snap_on_first_input_after_boot():
+    """Starting-hub framing, "no snap" requirement: when the player's first
+    real input crosses the deadzone and the camera starts following for
+    the first time, the camera position must change smoothly (per
+    startFollow's lerp), not jump straight to the target in one frame.
+    Proven by sampling camera.scroll at real 150ms intervals during a real
+    held drag and confirming no single sample-to-sample step accounts for
+    an outsized share of the total distance traveled -- a genuine snap
+    would show almost the entire distance covered in one step; smooth
+    lerp-based follow shows a gradual, accelerating pattern instead
+    (verified empirically via a dry run before writing this test: deltas
+    grew 0 -> 3.5 -> 10 -> 25 -> 78 while covering a total of ~384 units,
+    no single step anywhere close to the total).
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        before = page.evaluate("() => { const c = window.__GAME__.scene.scenes[0].cameras.main; return { x: c.scrollX, y: c.scrollY }; }")
+
+        cx, cy = 195, 700
+        page.mouse.move(cx, cy)
+        page.mouse.down()
+        page.mouse.move(cx + 100, cy, steps=3)  # full-magnitude rightward push
+
+        samples = []
+        for _ in range(20):
+            page.wait_for_timeout(150)
+            samples.append(page.evaluate("() => { const c = window.__GAME__.scene.scenes[0].cameras.main; return { x: c.scrollX, y: c.scrollY }; }"))
+        page.mouse.up()
+        browser.close()
+
+        prev = before
+        max_delta = 0
+        for s in samples:
+            d = ((s["x"] - prev["x"]) ** 2 + (s["y"] - prev["y"]) ** 2) ** 0.5
+            max_delta = max(max_delta, d)
+            prev = s
+        total_distance = ((samples[-1]["x"] - before["x"]) ** 2 + (samples[-1]["y"] - before["y"]) ** 2) ** 0.5
+
+        assert total_distance > 50, (
+            f"camera didn't move enough during the held input to be a meaningful proof: "
+            f"total_distance={total_distance}"
+        )
+        assert max_delta < total_distance * 0.5, (
+            f"a single sample-to-sample step ({max_delta:.1f}) accounted for more than half "
+            f"the total camera movement ({total_distance:.1f}) on the first real input after "
+            f"boot -- looks like a snap, not a smooth follow"
         )
