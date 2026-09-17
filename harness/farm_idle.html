@@ -3469,26 +3469,26 @@ class PlayScene extends Phaser.Scene {
   }
 
   _createPlot(index, x, y) {
-      const plot = this.add.graphics();
-      plot.fillStyle(0x5d4037, 1);
-      plot.fillRoundedRect(x, y, PLOT_SIZE, PLOT_SIZE, 13);
-      plot.setDepth(0);  // ground layer, below gameplay objects
-      this._registerWorldObject(plot);
+    const plot = this.add.graphics();
+    plot.fillStyle(0x5d4037, 1);
+    plot.fillRoundedRect(x, y, PLOT_SIZE, PLOT_SIZE, 13);
+    plot.setDepth(0);  // ground layer, below gameplay objects
+    this._registerWorldObject(plot);
 
-      const crop = this.add.circle(x + PLOT_SIZE / 2, y + PLOT_SIZE / 2, 29, 0x8bc34a);
-      crop.setVisible(false);
-      crop.setDepth(0);  // ground layer, below gameplay objects
-      this._registerWorldObject(crop);
+    const crop = this.add.circle(x + PLOT_SIZE / 2, y + PLOT_SIZE / 2, 29, 0x8bc34a);
+    crop.setVisible(false);
+    crop.setDepth(0);  // ground layer, below gameplay objects
+    this._registerWorldObject(crop);
 
     // Progress bar for crop growth (on the plot itself)
-        const progressBarBg = this.add.rectangle(x + PLOT_SIZE / 2, y - 16, PLOT_SIZE - 8, 8, 0x000000, 0.5);
-        progressBarBg.setOrigin(0.5, 1);
-        progressBarBg.setDepth(0);  // ground layer, below gameplay objects
-        this._registerWorldObject(progressBarBg);
-        const progressBarFill = this.add.rectangle(x + 4, y - 16, 0, 6, 0x8bc34a, 1);
-        progressBarFill.setOrigin(0, 1);
-        progressBarFill.setDepth(0);  // ground layer, below gameplay objects
-        this._registerWorldObject(progressBarFill);
+    const progressBarBg = this.add.rectangle(x + PLOT_SIZE / 2, y - 16, PLOT_SIZE - 8, 8, 0x000000, 0.5);
+    progressBarBg.setOrigin(0.5, 1);
+    progressBarBg.setDepth(0);  // ground layer, below gameplay objects
+    this._registerWorldObject(progressBarBg);
+    const progressBarFill = this.add.rectangle(x + 4, y - 16, 0, 6, 0x8bc34a, 1);
+    progressBarFill.setOrigin(0, 1);
+    progressBarFill.setDepth(0);  // ground layer, below gameplay objects
+    this._registerWorldObject(progressBarFill);
     progressBarFill.setVisible(false);
 
     const plotObj = {
@@ -3975,10 +3975,10 @@ class PlayScene extends Phaser.Scene {
       const farmerMaxY = WORLD_H - FARMER_RADIUS;
       const farmerMinX = FARMER_RADIUS;
       const farmerMaxX = WORLD_W - FARMER_RADIUS;
-
+    
     this.farmer.x = Phaser.Math.Clamp(this.farmer.x, farmerMinX, farmerMaxX);
     this.farmer.y = Phaser.Math.Clamp(this.farmer.y, farmerMinY, farmerMaxY);
-
+    
     this._updateCarryStackPosition();
 
   }
@@ -4068,6 +4068,8 @@ class PlayScene extends Phaser.Scene {
             helper.state = 'seeking_plot';
           }
         } else if (helper.carryCount >= HELPER_MAX_CARRY) {
+          // Carry stack is full -- go deposit at the market instead of
+          // idling right next to a producer it can't collect from.
           helper.state = 'moving_to_stall';
           const stall = this._computeStallLayout();
           helper.target = { x: stall.centerX, y: stall.centerY };

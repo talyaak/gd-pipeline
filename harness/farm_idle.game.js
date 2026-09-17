@@ -1041,58 +1041,61 @@ class PlayScene extends Phaser.Scene {
     }
     return costs.length ? Math.min(...costs) : null;
   }
+
   _createPlot(index, x, y) {
-        const plot = this.add.graphics();
-        plot.fillStyle(0x5d4037, 1);
-        plot.fillRoundedRect(x, y, PLOT_SIZE, PLOT_SIZE, 13);
-        plot.setDepth(0);  // ground layer, below gameplay objects
-        this._registerWorldObject(plot);
+    const plot = this.add.graphics();
+    plot.fillStyle(0x5d4037, 1);
+    plot.fillRoundedRect(x, y, PLOT_SIZE, PLOT_SIZE, 13);
+    plot.setDepth(0);  // ground layer, below gameplay objects
+    this._registerWorldObject(plot);
 
-        const crop = this.add.circle(x + PLOT_SIZE / 2, y + PLOT_SIZE / 2, 29, 0x8bc34a);
-        crop.setVisible(false);
-        crop.setDepth(0);  // ground layer, below gameplay objects
-        this._registerWorldObject(crop);
+    const crop = this.add.circle(x + PLOT_SIZE / 2, y + PLOT_SIZE / 2, 29, 0x8bc34a);
+    crop.setVisible(false);
+    crop.setDepth(0);  // ground layer, below gameplay objects
+    this._registerWorldObject(crop);
 
-        // Progress bar for crop growth (on the plot itself)
-        const progressBarBg = this.add.rectangle(x + PLOT_SIZE / 2, y - 16, PLOT_SIZE - 8, 8, 0x000000, 0.5);
-        progressBarBg.setOrigin(0.5, 1);
-        progressBarBg.setDepth(0);  // ground layer, below gameplay objects
-        this._registerWorldObject(progressBarBg);
-        const progressBarFill = this.add.rectangle(x + 4, y - 16, 0, 6, 0x8bc34a, 1);
-        progressBarFill.setOrigin(0, 1);
-        progressBarFill.setDepth(0);  // ground layer, below gameplay objects
-        this._registerWorldObject(progressBarFill);
-        const plotObj = {
-          index,
-          x,
-          y,
-          readyAt: this.time.now + CROP_GROW_MS * this.growSpeedMult,
-          plotSprite: plot,
-          cropSprite: crop,
-          progressBarBg,
-          progressBarFill,
-          harvested: false,
-          pulseTween: null,
-          // Producer-abstraction fields (Round 2): generic code (readiness
-          // loop, magnet, helper targeting, _collectProducer) reads these.
-          // Plot-specific code (layout, upgrades, existing tests) keeps using
-          // the original field names above, unchanged -- both sets of field
-          // names live on the SAME object.
-          id: index,
-          producerTypeId: 'plot',
-          collectibleTypeId: 'crop',
-          worldSprite: plot,
-          productSprite: crop,
-          centerX: x + PLOT_SIZE / 2,
-          centerY: y + PLOT_SIZE / 2,
-        };
-        Object.defineProperty(plotObj, 'cycleMs', {
-          get: () => CROP_GROW_MS * this.growSpeedMult,
-          configurable: true
+    // Progress bar for crop growth (on the plot itself)
+    const progressBarBg = this.add.rectangle(x + PLOT_SIZE / 2, y - 16, PLOT_SIZE - 8, 8, 0x000000, 0.5);
+    progressBarBg.setOrigin(0.5, 1);
+    progressBarBg.setDepth(0);  // ground layer, below gameplay objects
+    this._registerWorldObject(progressBarBg);
+    const progressBarFill = this.add.rectangle(x + 4, y - 16, 0, 6, 0x8bc34a, 1);
+    progressBarFill.setOrigin(0, 1);
+    progressBarFill.setDepth(0);  // ground layer, below gameplay objects
+    this._registerWorldObject(progressBarFill);
+    progressBarFill.setVisible(false);
+
+    const plotObj = {
+      index,
+      x,
+      y,
+      readyAt: this.time.now + CROP_GROW_MS * this.growSpeedMult,
+      plotSprite: plot,
+      cropSprite: crop,
+      progressBarBg,
+      progressBarFill,
+      harvested: false,
+      pulseTween: null,
+      // Producer-abstraction fields (Round 2): generic code (readiness
+      // loop, magnet, helper targeting, _collectProducer) reads these.
+      // Plot-specific code (layout, upgrades, existing tests) keeps using
+      // the original field names above, unchanged -- both sets of field
+      // names live on the SAME object.
+      id: index,
+      producerTypeId: 'plot',
+      collectibleTypeId: 'crop',
+      worldSprite: plot,
+      productSprite: crop,
+      centerX: x + PLOT_SIZE / 2,
+      centerY: y + PLOT_SIZE / 2,
+    };
+    Object.defineProperty(plotObj, 'cycleMs', {
+      get: () => CROP_GROW_MS * this.growSpeedMult,
+      configurable: true
     });
-        this.plots.push(plotObj);
-        this.producers.push(plotObj);
-      }
+    this.plots.push(plotObj);
+    this.producers.push(plotObj);
+  }
 
   _plotPosition(index) {
     const col = index % PLOTS_PER_ROW;
@@ -1623,6 +1626,7 @@ class PlayScene extends Phaser.Scene {
         helper.state = 'idle';
       }
     }
+
     if (helper.state === 'moving_to_plot') {
       this._moveHelperTowards(helper, helper.target.x, helper.target.y, dt, speed);
       const dist = Phaser.Math.Distance.Between(helper.x, helper.y, helper.target.x, helper.target.y);
@@ -1648,6 +1652,7 @@ class PlayScene extends Phaser.Scene {
         }
       }
     }
+
     if (helper.state === 'moving_to_stall') {
       this._moveHelperTowards(helper, helper.target.x, helper.target.y, dt, speed);
       const dist = Phaser.Math.Distance.Between(helper.x, helper.y, helper.target.x, helper.target.y);
@@ -1736,6 +1741,7 @@ class PlayScene extends Phaser.Scene {
         producer.harvested = false;
       }
     });
+
     // Update top-center progress bar: coins toward the next affordable
     // upgrade (real-device defect #4 -- see _cheapestUpgradeCost()).
     if (this.progressBarFill && this.progressBarBg && this.progressText) {
