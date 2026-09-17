@@ -145,6 +145,21 @@ fi
       echo "SETUP FAIL: target file is not tracked by git (not restorable via checkout): $t" >&2
       exit 2
     fi
+    # Being tracked is not enough -- `git checkout --` restores HEAD's
+    # version, which DESTROYS any pre-existing uncommitted edits (staged
+    # or unstaged) on a discard. The guard protects pristine files; a
+    # dirty target means a human is mid-edit, and the guard must never
+    # touch it. `git status --porcelain` on a single path reports nothing
+    # for a clean tracked file, and something for staged changes,
+    # unstaged changes, OR an untracked file -- one check covers all of
+    # it (the ls-files check above still runs first for a clearer error
+    # message on the untracked case specifically).
+    dirty_status="$(git status --porcelain -- "$t")"
+    if [ -n "$dirty_status" ]; then
+      echo "SETUP FAIL: target file has pre-existing uncommitted changes, refusing to risk destroying them on a discard: $t" >&2
+      echo "  git status --porcelain: $dirty_status" >&2
+      exit 2
+    fi
   done
 ) || exit 2
 
@@ -159,7 +174,10 @@ LOG_FILE="/tmp/${RUN_ID}_log.txt"
 cleanup() { rm -f "$COMBINED_PROMPT" 2>/dev/null; }
 trap cleanup EXIT INT TERM
 
-cat "$PREAMBLE_FILE" "$PROMPT_FILE" > "$COMBINED_PROMPT"
+if ! cat "$PREAMBLE_FILE" "$PROMPT_FILE" > "$COMBINED_PROMPT"; then
+  echo "SETUP FAIL: could not build the combined prompt file (cat of preamble/prompt failed)" >&2
+  exit 2
+fi
 
 echo "== dispatch_guard: run $RUN_ID, mode=$MODE =="
 echo "== host worktree: $HOST_WORKTREE =="
