@@ -895,14 +895,18 @@ def test_helper_harvest_sell_does_not_touch_player_inventory(viewport_width, vie
             scene.coins = 999999;
             scene._buyUpgrade('helper');
 
-            // Player carries 3 crops (simulate by directly setting carrySprites)
+            // Player carries 3 crops (simulate by directly seeding carryItems --
+            // scene.carrySprites is now a read-only derived getter over
+            // carryItems (Round 1 of the collectible/producer refactor), so
+            // assigning/pushing to it silently no-ops; carryItems is the real
+            // source of truth to seed directly)
             // and position farmer FAR from the stall
             scene.coins = 100;
-            scene.carrySprites = [];
+            scene.carryItems = [];
             for (let i = 0; i < 3; i++) {
                 const s = scene.add.circle(0, 0, 16, 0x8bc34a);
                 s.setStrokeStyle(2, 0x4caf50, 1);
-                scene.carrySprites.push(s);
+                scene.carryItems.push({ typeId: 'crop', sprite: s });
             }
             scene.carryCountText && scene.carryCountText.setText('3/8');
             scene.carrying = 'crop';
@@ -1582,3 +1586,1312 @@ def test_startHint_stays_within_screen_when_farmer_at_far_right_plot(viewport_wi
         )
 
 
+
+
+# ──────────────────────────────────────────────────────────────────────
+@pytest.mark.slow
+def test_carrySprites_is_derived_from_carryItems():
+    """Assert carrySprites is a live-derived getter over carryItems (Round 1).
+
+    Proves:
+      - carrySprites.length === carryItems.length always
+      - carrySprites[i] is the same object as carryItems[i].sprite (ref equality)
+      - carryItems[0].typeId === 'crop'
+      - Directly reassigning carryItems = [] instantly updates carrySprites (not cached)
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": 390, "height": 650}, has_touch=True, is_mobile=True
+        )
+        _boot(page, "iPhone_effective_short")
+
+        result = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+
+            // Harvest a plot so carryItems gets populated
+            const plot = scene.plots[0];
+            plot.readyAt = scene.time.now - 1;
+            scene._harvestPlot(0);
+
+            // 1) length equality
+            const lengthOk = scene.carrySprites.length === scene.carryItems.length;
+
+            // 2) reference equality: every carrySprites[i] is the exact same
+            //    object as carryItems[i].sprite
+            const refsOk = scene.carryItems.length > 0 &&
+                scene.carryItems.every((item, i) => scene.carrySprites[i] === item.sprite);
+
+            // 3) typeId
+            const typeOk = scene.carryItems[0] && scene.carryItems[0].typeId === 'crop';
+
+            // 4) live-derived proof: reassign carryItems and verify carrySprites updates
+            const backup = scene.carryItems.slice();
+            scene.carryItems = [];
+            const afterReassign = scene.carrySprites.length === 0;
+            // restore
+            scene.carryItems = backup;
+
+            return {
+                lengthOk, refsOk, typeOk, afterReassign,
+            };
+        }""")
+
+        browser.close()
+
+        assert result["lengthOk"], (
+            f"carrySprites.length ({result['lengthOk']}) !== carryItems.length"
+        )
+        assert result["refsOk"], (
+            f"carrySprites sprites are not exact same refs as carryItems[i].sprite"
+        )
+        assert result["typeOk"], (
+            f"carryItems[0].typeId should be 'crop', got {result['typeOk']}"
+        )
+        assert result["afterReassign"], (
+            f"carrySprites should immediately reflect carryItems reassignment (live getter), "
+            f"got afterReassign={result['afterReassign']}"
+        )
+
+
+@pytest.mark.slow
+def test_player_harvest_sell_cycle_matches_pre_refactor_numbers():
+    """Assert the refactor produced numerically identical behavior to before Round 1.
+
+    Before refactor: each harvest added exactly HARVEST_BURST_SIZE (3) items to carry stack,
+    and selling 8 items gave 8 * CROP_SELL_VALUE (10) = 80 coins.
+
+    After refactor (Round 1): same burst size and same sell value — this test proves
+    the numbers match the pre-refactor expectations.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": 390, "height": 650}, has_touch=True, is_mobile=True
+        )
+        _boot(page, "iPhone_effective_short")
+
+        result = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+
+            // Give the player coins
+            scene.coins = 999999;
+
+            // Harvest one plot
+            const plot = scene.plots[0];
+            plot.readyAt = scene.time.now - 1;
+            scene._harvestPlot(0);
+
+            // Assert burst size of 3 right after harvest
+            const afterFirstHarvestItems = scene.carryItems.length;
+            const afterFirstHarvestSprites = scene.carrySprites.length;
+            if (afterFirstHarvestItems !== 3 || afterFirstHarvestSprites !== 3) {
+                return { error: `Expected 3 items after first harvest, got items=${afterFirstHarvestItems}, sprites=${afterFirstHarvestSprites}` };
+            }
+
+            // Fill carry stack to exactly 8 by harvesting DISTINCT plots (a
+            // single plot can't be re-harvested until it regrows -- plot 0
+            // was already harvested above, so continue with plot 1, 2, ...).
+            // Buy more plots if the default 5 aren't enough, with a hard
+            // iteration cap so a real bug here fails loudly instead of
+            // hanging forever.
+            let nextPlotIndex = 1;
+            let safetyIterations = 0;
+            while (scene.carryItems.length < 8 && safetyIterations < 20) {
+                safetyIterations++;
+                if (nextPlotIndex >= scene.plots.length) {
+                    scene.coins = 999999;
+                    const before = scene.plots.length;
+                    scene._buyUpgrade('plot');
+                    if (scene.plots.length === before) break;  // stalled -- avoid an infinite loop
+                }
+                if (nextPlotIndex >= scene.plots.length) break;
+                const morePlot = scene.plots[nextPlotIndex];
+                morePlot.readyAt = scene.time.now - 1;
+                scene._harvestPlot(nextPlotIndex);
+                nextPlotIndex++;
+            }
+
+            // Verify carry stack is full (8 items)
+            if (scene.carryItems.length !== 8 || scene.carrySprites.length !== 8) {
+                return { error: `Expected 8 items in carry stack, got items=${scene.carryItems.length}, sprites=${scene.carrySprites.length}` };
+            }
+
+            // Sell via _sellAtStall()
+            scene._sellAtStall();
+
+            // Assert coins increased by exactly 8 * (CROP_SELL_VALUE + sellValueBonus)
+            // CROP_SELL_VALUE = 10 (from game.js), sellValueBonus is from any plot upgrades
+            const expectedCoinIncrease = 8 * (10 + (scene.sellValueBonus || 0));
+            const coinsIncreasedBy = scene.coins - 999999;  // was 999999 before
+
+            return {
+                carryAfterSell: scene.carryItems.length,
+                coinsIncrease: scene.coins - 999999,
+                expectedIncrease: expectedCoinIncrease,
+                match: scene.coins - 999999 === expectedCoinIncrease,
+            };
+        }""")
+
+        browser.close()
+
+        assert result["carryAfterSell"] == 0, (
+            f"Carry stack should be empty after sell, got {result['carryAfterSell']}"
+        )
+        assert result["match"] == True, (
+            f"Coin increase {result['coinsIncrease']} should match expected "
+            f"{result['expectedIncrease']} (8 * (CROP_SELL_VALUE + sellValueBonus))"
+        )
+
+
+@pytest.mark.slow
+def test_helper_carryCount_is_derived_from_inventory():
+    """Assert helper.carryCount is a live getter over helper.inventory (Round 1).
+
+    Proves:
+      - Directly mutating helper.inventory.push(...) instantly updates helper.carryCount
+      - A real harvest via _updateHelper() pushes into helper.inventory
+      - helper.carryCount reflects the new length automatically
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": 390, "height": 650}, has_touch=True, is_mobile=True
+        )
+        _boot(page, "iPhone_effective_short")
+
+        result = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+
+            // Give the player coins and buy a helper
+            scene.coins = 999999;
+            scene._buyUpgrade('helper');
+
+            const helper = scene.helpers[0];
+
+            // Mutate inventory directly (bypassing normal harvest path)
+            helper.inventory.push('crop');
+            helper.inventory.push('egg');
+
+            // Assert carryCount reflects the new inventory length
+            const carryCountAfterMutate = helper.carryCount;
+            if (carryCountAfterMutate !== 2) {
+                return { error: `Expected carryCount===2 after mutating inventory with 2 items, got ${carryCountAfterMutate}` };
+            }
+
+            // Now trigger a real harvest via _updateHelper()
+            // Teleport the helper onto a ready plot and tick
+            scene.plots[0].readyAt = scene.time.now - 1;
+            scene.farmer.x = scene.plots[0].x + 48;
+            scene.farmer.y = scene.plots[0].y + 48;
+            scene.update(scene.time.now, 16);
+            scene._updateHelper(helper, 16);
+
+            // Assert carryCount reflects the updated inventory length after _updateHelper
+            const carryCountAfterUpdate = helper.carryCount;
+            if (carryCountAfterUpdate < 2) {
+                return { error: `Expected carryCount>=2 after _updateHelper, got ${carryCountAfterUpdate}` };
+            }
+
+            return {
+                carryCountAfterMutate,
+                carryCountAfterUpdate,
+                inventoryLengthAfterUpdate: helper.inventory.length,
+            };
+        }""")
+
+        browser.close()
+
+        assert "error" not in result, result["error"]
+        assert result["carryCountAfterMutate"] == 2, (
+            f"helper.carryCount should be 2 after direct inventory mutation, "
+            f"got {result['carryCountAfterMutate']}"
+        )
+        assert result["carryCountAfterUpdate"] >= 2, (
+            f"helper.carryCount should be >=2 after _updateHelper, "
+            f"got {result['carryCountAfterUpdate']}"
+        )
+
+@pytest.mark.slow
+def test_producers_array_mirrors_plots_and_readiness_generalized():
+    """Assert producers array mirrors plots array with same object references,
+    and that collecting a ready producer yields the same carry count as pre-refactor
+    plot harvest (3 items)."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=['--no-sandbox'])
+        page = browser.new_page(
+            viewport={'width': 390, 'height': 650}, has_touch=True, is_mobile=True
+        )
+        _boot(page, 'iPhone_effective_short')
+
+        result = page.evaluate("""(() => {
+            const scene = window.__GAME__.scene.scenes[0];
+
+            // 1) producers.length must equal plots.length
+            const lengthOk = scene.producers.length === scene.plots.length;
+
+            // 2) every producers[i] must be the same object reference as plots[i]
+            const refsOk = scene.plots.length > 0 &&
+                scene.plots.every((p, i) => scene.producers[i] === p);
+
+            // 3) first producer has the expected type IDs
+            const typeOk = scene.producers[0].collectibleTypeId === 'crop'
+                && scene.producers[0].producerTypeId === 'plot';
+
+            // 4) collect the first producer via the generic path
+            scene.producers[0].readyAt = scene.time.now - 1;
+            const collected = scene._collectProducer(scene.producers[0], 'player');
+
+            // 5) collect returns true and carry count is 3 (same as pre-refactor plot harvest)
+            const carryOk = scene.carryItems.length === 3;
+
+            return {
+                lengthOk, refsOk, typeOk, collected, carryOk,
+            };
+        })""");
+
+        browser.close();
+
+        assert result['lengthOk'], (
+            f'producers.length ({result["lengthOk"]}) !== plots.length'
+        );
+        assert result['refsOk'], (
+            f'producers are not same refs as plots'
+        );
+        assert result['typeOk'], (
+            f'producers[0].collectibleTypeId or producerTypeId mismatch: {result["typeOk"]}'
+        );
+        assert result['collected'] is True, (
+            f'_collectProducer did not return true, got {result["collected"]}'
+        );
+        assert result['carryOk'], (
+            f'scene.carryItems.length should be 3 after collect, got {result["carryOk"]}'
+        )
+
+def test_plot_regrow_speed_buff_applies_to_existing_plots_after_cap():
+    """Buying past the plot grid cap speeds up regrowth for plots created
+    before the buff was purchased -- proves producer.cycleMs stays live,
+    not a frozen snapshot from plot-creation time."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=['--no-sandbox'])
+        page = browser.new_page(
+            viewport={'width': 390, 'height': 650}, has_touch=True, is_mobile=True
+        )
+        _boot(page, 'iPhone_effective_short')
+
+        result = page.evaluate("""(() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            scene.coins = 999999;
+
+            let safety = 0;
+            while (!scene.plotGridCapped && safety < 30) {
+                scene._buyUpgrade('plot');
+                safety++;
+            }
+            const cappedReached = scene.plotGridCapped === true;
+
+            const plot = scene.plots[0];
+            plot.readyAt = scene.time.now - 1;
+            plot.harvested = false;
+            const collected = scene._collectProducer(plot, 'player');
+
+            const expectedReadyAt = scene.time.now + CROP_GROW_MS * scene.growSpeedMult;
+            const actualReadyAt = scene.plots[0].readyAt;
+            const withinTolerance = Math.abs(actualReadyAt - expectedReadyAt) <= 50;
+
+            return { cappedReached, collected, expectedReadyAt, actualReadyAt, withinTolerance };
+        })""");
+
+        browser.close();
+
+        assert result['cappedReached'], (
+            f"plotGridCapped never became true within 30 buy attempts"
+        )
+        assert result['collected'] is True, (
+            f"_collectProducer did not return true, got {result['collected']}"
+        )
+        assert result['withinTolerance'], (
+            f"plot.readyAt ({result['actualReadyAt']}) not within tolerance of "
+            f"expected ({result['expectedReadyAt']}) -- cycleMs is not reflecting "
+            f"the live growSpeedMult buff"
+        )
+
+
+def test_camera_bounds_are_fixed_world_size_independent_of_viewport():
+    """Section D: camera world bounds must be the fixed WORLD_W x WORLD_H
+    (1440x2000) at every viewport, never derived from the viewport itself --
+    proves the bounds stopped being viewport-height-derived."""
+    for viewport_width, viewport_height, viewport_name in [
+        (390, 650, "iPhone_effective_short"),
+        (390, 844, "iPhone_12_tall_contrast"),
+    ]:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(args=['--no-sandbox'])
+            page = browser.new_page(
+                viewport={'width': viewport_width, 'height': viewport_height},
+                has_touch=True, is_mobile=True
+            )
+            _boot(page, viewport_name)
+
+            bounds = page.evaluate("""(() => {
+                const scene = window.__GAME__.scene.scenes[0];
+                const b = scene.cameras.main.getBounds();
+                return { width: b.width, height: b.height };
+            })""")
+
+            browser.close()
+
+            assert bounds['width'] == 1440, (
+                f"[{viewport_name}] camera bounds width {bounds['width']} != 1440 "
+                f"(WORLD_W) -- bounds must be fixed, not viewport-derived"
+            )
+            assert bounds['height'] == 2000, (
+                f"[{viewport_name}] camera bounds height {bounds['height']} != 2000 "
+                f"(WORLD_H) -- bounds must be fixed, not viewport-derived"
+            )
+
+
+def test_coin_flight_starts_at_visible_source_under_world_scroll():
+    """Behavioral/pixel proof (per Instinct gate review on the two-camera
+    split) that _flyCoinsToCounter's world-to-HUD coordinate conversion is
+    correct: a coin's FIRST rendered pixel must be at the farmer's actual
+    on-screen position, not at some offset, once the world camera has
+    scrolled both horizontally and vertically away from its boot position.
+    Object-coordinate assertions (checking .x/.y properties) would pass
+    even with the exact bug this catches -- only a real rendered pixel,
+    at the real physical position a player would see, proves the fix.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
+        )
+        _boot(page, "iPhone_12_tall_contrast")
+
+        # Force nonzero horizontal AND vertical world scroll (real frames,
+        # not scene.update() -- camera follow easing runs on Phaser's own
+        # render loop).
+        page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            scene.farmer.x = 1100;
+            scene.farmer.y = 1700;
+        }""")
+        page.wait_for_timeout(600)
+
+        setup = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+            const zoom = cam.zoom;
+            // Farmer's actual physical (screen) position -- what a player
+            // sees. Phaser cameras default to a CENTERED origin (0.5, 0.5),
+            // and the world camera (unlike uiCamera) is never centerOn'd --
+            // it just follows the farmer -- so plain (worldX - scrollX)*zoom
+            // is NOT the true screen position; the origin term must be
+            // included (verified against camera.getWorldPoint-sampled
+            // ground truth).
+            const farmerScreenX = (scene.farmer.x - cam.scrollX) * zoom +
+                cam.originX * cam.width * (1 - zoom);
+            const farmerScreenY = (scene.farmer.y - cam.scrollY) * zoom +
+                cam.originY * cam.height * (1 - zoom);
+            // Trigger exactly one coin, sourced at the farmer's current
+            // world position -- same call shape _sellAtStall() uses.
+            scene._flyCoinsToCounter(1, scene.farmer.x, scene.farmer.y);
+            // Freeze the scatter-burst tween immediately, in this same
+            // synchronous turn, before any time has elapsed. page.evaluate()
+            // and page.screenshot() are separate round-trips (unlike this
+            // single synchronous call), so without pausing, real wall-clock
+            // time could elapse before the screenshot is taken and the
+            // 150ms tween would have already moved the coin measurably away
+            // from its start position -- this decouples the pixel assertion
+            // from that round-trip timing entirely.
+            scene.tweens.pauseAll();
+            return {
+                farmerScreenX, farmerScreenY,
+                worldScrollX: cam.scrollX, worldScrollY: cam.scrollY,
+            };
+        }""")
+
+        assert setup["worldScrollX"] > 50 and setup["worldScrollY"] > 50, (
+            f"world camera didn't scroll enough to be a meaningful proof: "
+            f"scrollX={setup['worldScrollX']}, scrollY={setup['worldScrollY']}"
+        )
+
+        # No wait: read the very next composited frame, before the coin's
+        # scatter-burst tween (150ms) has had time to move it away from its
+        # start position.
+        region_size = 24
+        rows = _read_pixel_region_via_screenshot(
+            page,
+            round(setup["farmerScreenX"] - region_size / 2),
+            round(setup["farmerScreenY"] - region_size / 2),
+            region_size, region_size,
+        )
+        browser.close()
+
+        pixels = [p for row in rows for p in row]
+        has_gold_pixel = any(r > 200 and 150 < g < 230 and b < 60 for r, g, b in pixels)
+
+        assert has_gold_pixel, (
+            f"no gold (0xffd700-ish) coin pixel found in a {region_size}x{region_size}px "
+            f"region centered on the farmer's actual screen position "
+            f"({setup['farmerScreenX']:.1f}, {setup['farmerScreenY']:.1f}) after world scroll "
+            f"({setup['worldScrollX']:.1f}, {setup['worldScrollY']:.1f}) -- the coin rendered "
+            f"somewhere else, meaning the world-to-HUD conversion is wrong"
+        )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("viewport_width,viewport_height,viewport_name", SHORT_VIEWPORTS + [TALL_VIEWPORT])
+def test_upgrade_pad_real_tap_opens_sheet_after_world_scroll(viewport_width, viewport_height, viewport_name):
+    """Section D sub-dispatch 3 required proof: the upgrade pad is now a fixed
+    WORLD entity (_computePadLayout()), not HUD-relative. A real tap at the
+    pad's actual on-screen position must still open the upgrade sheet after
+    the world camera has scrolled both horizontally and vertically away from
+    its boot position -- proving input hit-testing tracks the pad's real
+    rendered position under camera pan, not a stale/precomputed one.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": viewport_width, "height": viewport_height}, has_touch=True, is_mobile=True
+        )
+        _boot(page, viewport_name)
+
+        # Force nonzero horizontal AND vertical world scroll by moving the
+        # farmer to a position offset from (but near) the pad's own fixed
+        # world position -- this guarantees the pad stays reachable on
+        # screen after the camera follows (moving the farmer to an
+        # arbitrary far-away point, e.g. deep into the world, can legitimately
+        # scroll the pad itself off screen at smaller viewports, which would
+        # make "tap the pad" meaningless -- nothing can tap what isn't
+        # rendered anywhere on screen).
+        page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const pad = scene._computePadLayout();
+            scene.farmer.x = pad.centerX + 120;
+            scene.farmer.y = pad.centerY - 80;
+        }""")
+        page.wait_for_timeout(600)
+
+        tap_point = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+
+            // True world->screen conversion, sampled from the camera's own
+            // screen->world transform (camera.getWorldPoint) and inverted --
+            // NOT the naive (worldX - scrollX) * zoom shortcut, which is
+            // wrong whenever the camera's default centered origin (0.5, 0.5)
+            // isn't separately accounted for (true for this game's main
+            // camera, which is never centerOn'd -- it just follows the
+            // farmer). Verified technique, reused from the coin-flight fix.
+            function worldToScreen(camera, wx, wy) {
+                const p0 = camera.getWorldPoint(0, 0);
+                const p1 = camera.getWorldPoint(100, 0);
+                const p2 = camera.getWorldPoint(0, 100);
+                const sx = (wx - p0.x) / (p1.x - p0.x) * 100;
+                const sy = (wy - p0.y) / (p2.y - p0.y) * 100;
+                return { x: sx, y: sy };
+            }
+
+            const pad = scene._computePadLayout();
+            const screen = worldToScreen(cam, pad.centerX, pad.centerY);
+            return {
+                screenX: screen.x, screenY: screen.y,
+                worldScrollX: cam.scrollX, worldScrollY: cam.scrollY,
+                sheetVisibleBefore: scene.sheetVisible,
+            };
+        }""")
+
+        assert tap_point["worldScrollX"] > 50 and tap_point["worldScrollY"] > 50, (
+            f"{viewport_name}: world camera didn't scroll enough to be a meaningful proof: "
+            f"scrollX={tap_point['worldScrollX']}, scrollY={tap_point['worldScrollY']}"
+        )
+        assert not tap_point["sheetVisibleBefore"], "sheet should start closed"
+
+        page.touchscreen.tap(tap_point["screenX"], tap_point["screenY"])
+        page.wait_for_timeout(100)
+
+        sheet_visible = page.evaluate("() => window.__GAME__.scene.scenes[0].sheetVisible")
+        browser.close()
+
+        assert sheet_visible, (
+            f"{viewport_name} ({viewport_width}x{viewport_height}): real tap at the pad's actual "
+            f"screen position ({tap_point['screenX']:.1f}, {tap_point['screenY']:.1f}) after world "
+            f"scroll ({tap_point['worldScrollX']:.1f}, {tap_point['worldScrollY']:.1f}) did not open "
+            f"the upgrade sheet -- the pad's real hit area isn't tracking its rendered position "
+            f"under camera pan"
+        )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("viewport_width,viewport_height,viewport_name", SHORT_VIEWPORTS + [TALL_VIEWPORT])
+def test_market_real_interaction_after_world_scroll(viewport_width, viewport_height, viewport_name):
+    """Section D sub-dispatch 3 required proof: the market/stall is now a
+    fixed WORLD entity (_computeStallLayout()), not HUD-relative. A real
+    harvest-carry-sell cycle -- farmer walked into magnet range of a ready
+    plot via REAL held joystick input (harvest triggers through the actual
+    per-frame magnet-proximity path, _updateMagnet(), not a direct
+    _harvestPlot() call), then walked into magnet range of the market's
+    ACTUAL rendered position the same way (sale triggers through the same
+    real per-frame path, not a manual scene.update() call) -- must still
+    work after the world camera has scrolled both horizontally and
+    vertically away from boot.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": viewport_width, "height": viewport_height}, has_touch=True, is_mobile=True
+        )
+        _boot(page, viewport_name)
+
+        # Force nonzero horizontal AND vertical world scroll away from boot,
+        # then place the farmer just outside a ready plot's magnet radius
+        # (arrange -- the interaction under test starts from here, driven
+        # entirely by real input from this point on).
+        #
+        # Pin every OTHER plot's readyAt far into the future: this test's
+        # own real-time budget (two ~600ms settle waits plus up to two
+        # 1500ms drag holds) sits close enough to CROP_GROW_MS (4000ms)
+        # that, without this, another plot can naturally finish regrowing
+        # mid-test and get auto-harvested via magnet proximity as the
+        # farmer's drag path walks near it -- filling the carry stack
+        # before it ever reaches the SPECIFIC plot this test means to
+        # harvest, and making plot[0].harvested falsely read false. Found
+        # via a reproducible (3/3) failure at 390x844 during this branch's
+        # boot-framing change (which itself turned out unrelated -- the
+        # test was already this fragile, the change's timing just tipped
+        # it over) and isolated by re-running against the pre-change commit.
+        setup = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            scene.plots.forEach((p, i) => { if (i !== 0) p.readyAt = scene.time.now + 999999; });
+            const plot = scene.plots[0];
+            plot.readyAt = scene.time.now - 1;
+            const plotCenterX = plot.x + 48, plotCenterY = plot.y + 48;
+            scene.farmer.x = plotCenterX - 100;
+            scene.farmer.y = plotCenterY;
+            return { plotCenterX, plotCenterY };
+        }""")
+        page.wait_for_timeout(600)
+
+        candidates = [
+            (viewport_width * 0.5, viewport_height * 0.5),
+            (viewport_width * 0.5, viewport_height * 0.15),
+            (viewport_width * 0.15, viewport_height * 0.5),
+        ]
+
+        def real_drag(ddx, ddy, hold_ms):
+            active = False
+            cx = cy = None
+            for cx, cy in candidates:
+                page.mouse.move(cx, cy)
+                page.mouse.down()
+                # Small settle wait: checking joystickActive immediately
+                # after mouse.down() can occasionally race the browser's
+                # own event dispatch (rare, intermittent -- caught via
+                # repeated local + CI runs, not reproducible on demand).
+                # This closes that race without slowing the common case
+                # much.
+                page.wait_for_timeout(50)
+                active = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
+                if active:
+                    break
+                page.mouse.up()
+            assert active, (
+                f"{viewport_name}: joystick did not activate at any candidate screen point "
+                f"{candidates}"
+            )
+            page.mouse.move(cx + ddx, cy + ddy, steps=5)
+            page.wait_for_timeout(hold_ms)
+            page.mouse.up()
+            page.wait_for_timeout(50)
+
+        # Real held drag: walk right (+x) into the plot's magnet radius (100
+        # units to cover, well within a 1500ms hold at MOVE_SPEED).
+        real_drag(150, 0, 1500)
+
+        harvest_state = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            return {
+                harvested: scene.plots[0].harvested,
+                carryCount: scene.carrySprites.length,
+                farmerX: scene.farmer.x, farmerY: scene.farmer.y,
+            };
+        }""")
+        assert harvest_state["harvested"] and harvest_state["carryCount"] > 0, (
+            f"{viewport_name}: real joystick-driven approach into plot magnet range did not "
+            f"trigger a harvest via _updateMagnet(): {harvest_state}"
+        )
+
+        # Now place the farmer just outside the stall's magnet radius
+        # (arrange for phase 2), confirming world scroll is still
+        # meaningfully nonzero, then real-drag into range to sell.
+        setup2 = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+            const stall = scene._computeStallLayout();
+            scene.farmer.x = stall.centerX - 100;
+            scene.farmer.y = stall.centerY;
+            return { stall, coinsBefore: scene.coins };
+        }""")
+        page.wait_for_timeout(600)
+
+        world_scroll_before_sell = page.evaluate("() => { const c = window.__GAME__.scene.scenes[0].cameras.main; return { x: c.scrollX, y: c.scrollY }; }")
+
+        real_drag(150, 0, 1500)
+
+        result = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            return { coinsAfter: scene.coins, carryAfter: scene.carrySprites.length };
+        }""")
+        browser.close()
+
+        assert world_scroll_before_sell["x"] > 50 and world_scroll_before_sell["y"] > 50, (
+            f"{viewport_name}: world camera didn't scroll enough to be a meaningful proof: "
+            f"{world_scroll_before_sell}"
+        )
+        assert result["coinsAfter"] > setup2["coinsBefore"], (
+            f"{viewport_name} ({viewport_width}x{viewport_height}): real joystick-driven approach "
+            f"into the market's magnet range (world scroll={world_scroll_before_sell}) did not "
+            f"trigger a sale via _updateMagnet() ({setup2['coinsBefore']} -> {result['coinsAfter']})"
+        )
+        assert result["carryAfter"] == 0, "Carry stack should be empty after a successful sale"
+
+
+@pytest.mark.slow
+def test_stall_and_pad_hold_fixed_world_position_under_pan():
+    """Section D sub-dispatch 3 required proof: the market/stall and upgrade
+    pad's own WORLD coordinates (scene.stallG.x/y, scene.padG.x/y) must be
+    genuinely constant across a camera pan -- as fixed world entities they
+    should only ever move on-screen by the camera's own pan delta, never in
+    their own coordinate space. This is a direct object-property assertion,
+    appropriate here because "does this world object's world position stay
+    constant" IS the property under test (unlike a cross-camera rendering
+    check, where an object's own coordinate can be correct while it still
+    renders in the wrong camera).
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        before = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            return {
+                stallX: scene.stallG.x, stallY: scene.stallG.y,
+                padX: scene.padG.x, padY: scene.padG.y,
+            };
+        }""")
+
+        page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            scene.farmer.x = 1300;
+            scene.farmer.y = 1800;
+        }""")
+        page.wait_for_timeout(600)
+
+        after = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+            return {
+                stallX: scene.stallG.x, stallY: scene.stallG.y,
+                padX: scene.padG.x, padY: scene.padG.y,
+                worldScrollX: cam.scrollX, worldScrollY: cam.scrollY,
+            };
+        }""")
+        browser.close()
+
+        assert after["worldScrollX"] > 50 and after["worldScrollY"] > 50, (
+            f"world camera didn't pan enough to be a meaningful proof: "
+            f"scrollX={after['worldScrollX']}, scrollY={after['worldScrollY']}"
+        )
+        assert before["stallX"] == after["stallX"] and before["stallY"] == after["stallY"], (
+            f"stall world position changed under camera pan: "
+            f"before=({before['stallX']}, {before['stallY']}) after=({after['stallX']}, {after['stallY']})"
+        )
+        assert before["padX"] == after["padX"] and before["padY"] == after["padY"], (
+            f"pad world position changed under camera pan: "
+            f"before=({before['padX']}, {before['padY']}) after=({after['padX']}, {after['padY']})"
+        )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("viewport_width,viewport_height,viewport_name", SHORT_VIEWPORTS + [TALL_VIEWPORT])
+def test_farmer_clamps_at_full_world_bounds(viewport_width, viewport_height, viewport_name):
+    """Section D sub-dispatch 3 required proof: the farmer's movement clamp
+    widened from viewport-relative bounds to the full fixed world bounds
+    (WORLD_W x WORLD_H). Driven through the REAL on-screen joystick input
+    path -- actual held pointer down/move/up at real screen coordinates,
+    exercising this.input's pointerdown/pointermove/pointerup listeners,
+    _activateJoystick/_updateJoystick, and _moveFarmerByJoystick's own
+    per-frame clamp exactly as a real player's drag would -- not a direct
+    call to _moveFarmerByJoystick with a hand-set joystickVector. Only the
+    STARTING farmer position (arrange step, not the thing under test) is set
+    directly; the movement and clamp are driven entirely through touch.
+
+    Assert clamps to exactly FARMER_RADIUS / WORLD_W - FARMER_RADIUS /
+    PLOT_AREA_TOP + FARMER_RADIUS / WORLD_H - FARMER_RADIUS -- not the old
+    viewport-relative bounds (LOGICAL_W / layout.visibleWorldHeight), which
+    would be smaller than the real world bounds at every one of these
+    viewports.
+    """
+    FARMER_RADIUS = 32
+    WORLD_W = 1440
+    WORLD_H = 2000
+    PLOT_AREA_TOP = 192
+
+    # (start world position near the edge, drag direction in screen space,
+    # axis being clamped, expected clamped value)
+    # Drag delta: must clear the joystick's full-magnitude threshold
+    # (JOYSTICK_RADIUS=80 logical * worldZoom, i.e. ~40-46px screen at
+    # these 4 viewports). 50px clears that with margin. Reduced from an
+    # original 150px, which could push the drag target off-screen from
+    # the (*, 0.15)/(0.15, *) fallback candidates at some viewport sizes
+    # -- investigated as a candidate explanation for an intermittent CI
+    # (and, on retry, occasionally local) failure at the "top" case, but
+    # the actual cause turned out to be a separate race (see the settle
+    # wait added after mouse.down() below) -- keeping this reduction
+    # anyway since it removes a real, if apparently harmless in practice,
+    # off-screen-target risk.
+    DRAG = 50
+    cases = [
+        ((WORLD_W - 200, 1000), (DRAG, 0), "x", WORLD_W - FARMER_RADIUS, "right"),
+        ((200, 1000), (-DRAG, 0), "x", FARMER_RADIUS, "left"),
+        ((700, WORLD_H - 200), (0, DRAG), "y", WORLD_H - FARMER_RADIUS, "bottom"),
+        ((700, PLOT_AREA_TOP + 200), (0, -DRAG), "y", PLOT_AREA_TOP + FARMER_RADIUS, "top"),
+    ]
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": viewport_width, "height": viewport_height}, has_touch=True, is_mobile=True
+        )
+        _boot(page, viewport_name)
+
+        # Candidate touch-start points to try, in order -- the camera's
+        # visible world span can be tall enough at some edge/viewport
+        # combos to put the (world-fixed) upgrade pad under screen center,
+        # which would swallow the pointerdown as a pad tap instead of
+        # activating the joystick (see _activateJoystick's hitTestPointer
+        # guard). Falling back to alternates keeps the test testing the
+        # clamp, not "which exact pixel is safe this viewport."
+        candidates = [
+            (viewport_width * 0.5, viewport_height * 0.5),
+            (viewport_width * 0.5, viewport_height * 0.15),
+            (viewport_width * 0.15, viewport_height * 0.5),
+        ]
+
+        for (start_x, start_y), (ddx, ddy), axis, expected, label in cases:
+            page.evaluate(
+                """([x, y]) => {
+                    const scene = window.__GAME__.scene.scenes[0];
+                    scene.farmer.x = x;
+                    scene.farmer.y = y;
+                }""",
+                [start_x, start_y],
+            )
+            page.wait_for_timeout(50)  # let the camera settle near the new start position
+
+            # Real held touch/pointer drag: down at a safe screen point,
+            # move outward past JOYSTICK_RADIUS in the target direction
+            # (150px screen delta always exceeds the ~40-46px needed at
+            # these viewports' worldZoom), hold for real frames so
+            # _moveFarmerByJoystick's per-frame clamp actually runs and
+            # settles, then release.
+            active = False
+            for cx, cy in candidates:
+                page.mouse.move(cx, cy)
+                page.mouse.down()
+                # Small settle wait: checking joystickActive immediately
+                # after mouse.down() can occasionally race the browser's
+                # own event dispatch (rare, intermittent -- caught via
+                # repeated local + CI runs, not reproducible on demand).
+                # This closes that race without slowing the common case
+                # much.
+                page.wait_for_timeout(50)
+                active = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
+                if active:
+                    break
+                page.mouse.up()
+            assert active, (
+                f"{viewport_name} ({label}): joystick did not activate at any candidate screen "
+                f"point {candidates} -- all landed on an interactive element"
+            )
+            page.mouse.move(cx + ddx, cy + ddy, steps=5)
+
+            # Poll for the clamp to actually settle instead of one fixed
+            # wait -- CI runners can be measurably slower than a local dev
+            # machine (observed: a 2500ms fixed wait was enough locally,
+            # multiple runs, but left the farmer short of the clamp on a
+            # real CI run). Polling in 400ms increments up to 6s total
+            # makes this robust to that variance either way.
+            final = None
+            for _ in range(15):
+                page.wait_for_timeout(400)
+                final = page.evaluate("() => ({ x: window.__GAME__.scene.scenes[0].farmer.x, y: window.__GAME__.scene.scenes[0].farmer.y })")
+                if final[axis] == expected:
+                    break
+            page.mouse.up()
+            page.wait_for_timeout(50)
+
+            assert final[axis] == expected, (
+                f"{viewport_name} ({label}): real joystick drag clamped farmer.{axis} to "
+                f"{final[axis]}, expected {expected}"
+            )
+
+        browser.close()
+
+
+@pytest.mark.slow
+def test_market_sell_works_while_offscreen():
+    """Section D sub-dispatch 3 required proof: selling at the market must
+    work even when the market's fixed world position is scrolled entirely
+    off screen -- proving sell detection is a pure world-space proximity
+    check (via _computeStallLayout()), independent of whether the camera
+    currently happens to be rendering that part of the world. A
+    viewport-relative implementation would have silently broken this case;
+    a fixed-world one handles it for free.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        # Scroll the world camera far from the stall's fixed world position
+        # (opposite corner of the world) and let real frames settle there.
+        page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            scene.farmer.x = 1350;
+            scene.farmer.y = 1900;
+        }""")
+        page.wait_for_timeout(600)
+
+        result = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+            const stall = scene._computeStallLayout();
+
+            // Confirm the stall is genuinely NOT in the currently-rendered
+            // world view before doing anything else. 160/112 are STALL_W/
+            // STALL_H (the stall's own fixed pixel dimensions).
+            const view = cam.worldView;
+            const stallOnScreen = (
+                stall.x + 160 > view.x && stall.x < view.x + view.width &&
+                stall.y + 112 > view.y && stall.y < view.y + view.height
+            );
+
+            // Harvest, then teleport the farmer directly to the stall's real
+            // world position and trigger the sale synchronously -- no
+            // further real frame renders happen between here and reading
+            // the result, so cam.scrollX/Y (and therefore worldView) below
+            // still reflect the far-away, stall-offscreen view captured
+            // just above.
+            const plot = scene.plots[0];
+            plot.readyAt = scene.time.now - 1;
+            scene._harvestPlot(0);
+
+            scene.farmer.x = stall.centerX;
+            scene.farmer.y = stall.centerY;
+            const coinsBefore = scene.coins;
+            scene.update(scene.time.now, 16);
+
+            return {
+                stallOnScreenBeforeSale: stallOnScreen,
+                coinsBefore, coinsAfter: scene.coins,
+                carryAfter: scene.carrySprites.length,
+                worldViewAfterSale: cam.worldView,
+                stall,
+            };
+        }""")
+        browser.close()
+
+        assert not result["stallOnScreenBeforeSale"], (
+            f"stall was already on-screen before the sale -- not a meaningful offscreen proof. "
+            f"stall={result['stall']}, worldView={result['worldViewAfterSale']}"
+        )
+        assert result["coinsAfter"] > result["coinsBefore"], (
+            f"selling at the offscreen market did not increase coins "
+            f"({result['coinsBefore']} -> {result['coinsAfter']})"
+        )
+        assert result["carryAfter"] == 0, "Carry stack should be empty after a successful offscreen sale"
+
+
+@pytest.mark.slow
+def test_helper_completes_harvest_and_sale_while_offscreen():
+    """Section D acceptance criterion 14 (Offscreen AI): with the camera and
+    farmer positioned far from the helper, the helper must still
+    autonomously complete a harvest at a ready plot and a sale at the
+    market -- driven purely by real elapsed time (Phaser's own per-frame
+    _updateHelper()/update loop), not by manually invoking any private
+    collection/sale method. Coins increase (the shared currency the helper's
+    sale credits); the PLAYER's own carrySprites are untouched (proving the
+    helper's autonomous action never touches player inventory); the
+    helper's own inventory clears right after its first sale. This sale
+    also doubles as criterion 13's "helper target resolves the same fixed
+    market coordinate" proof, since it only succeeds if _updateHelper()'s
+    own _computeStallLayout() call is correct.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        setup = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+
+            // Ready plot for the helper to harvest.
+            scene.plots[0].readyAt = scene.time.now - 1;
+
+            // Spawn a helper and put it straight into its real AI loop
+            // (bypassing only the idle-timer cadence before the FIRST
+            // search, which is unrelated to this proof -- the helper's
+            // actual movement/collection/sale from here on all runs
+            // through the real per-frame _updateHelper() path).
+            scene._spawnHelper(500);
+            const helper = scene.helpers[scene.helpers.length - 1];
+            helper.state = 'seeking_plot';
+
+            // Move the FARMER (and therefore the camera, which follows it)
+            // far from both the plot and the helper, so the camera is
+            // rendering a totally different part of the world while the
+            // helper does its own thing.
+            scene.farmer.x = 1300;
+            scene.farmer.y = 1800;
+
+            return {
+                coinsBefore: scene.coins,
+                playerCarryBefore: scene.carrySprites.length,
+            };
+        }""")
+        page.wait_for_timeout(600)  # let the camera settle far from the helper
+
+        scroll_after_settle = page.evaluate("() => { const c = window.__GAME__.scene.scenes[0].cameras.main; return { x: c.scrollX, y: c.scrollY }; }")
+
+        # Poll in real 300ms increments (real elapsed time, letting
+        # Phaser's own per-frame update loop run the helper's walk-harvest-
+        # walk-sell cycle) and stop as soon as the FIRST sale registers.
+        # IMPORTANT: do not just wait one long fixed duration and check once
+        # -- the helper immediately starts a second harvest cycle after
+        # selling (crops regrow), so a long wait can catch it mid-way
+        # through cycle 2, making helper.inventory.length nonzero again even
+        # though the required proof (one autonomous offscreen sale
+        # happened) is already satisfied. Polling and stopping at the first
+        # sale avoids that race -- verified empirically (dry-run) before
+        # writing this test.
+        sold = False
+        result = None
+        for _ in range(20):
+            page.wait_for_timeout(300)
+            result = page.evaluate("""() => {
+                const scene = window.__GAME__.scene.scenes[0];
+                const helper = scene.helpers[scene.helpers.length - 1];
+                return {
+                    coinsAfter: scene.coins,
+                    playerCarryAfter: scene.carrySprites.length,
+                    helperInventoryLength: helper.inventory.length,
+                    helperState: helper.state,
+                };
+            }""")
+            if result["coinsAfter"] > setup["coinsBefore"]:
+                sold = True
+                break
+        browser.close()
+
+        assert scroll_after_settle["x"] > 50 or scroll_after_settle["y"] > 50, (
+            f"world camera didn't scroll away meaningfully: {scroll_after_settle}"
+        )
+        assert sold, (
+            f"helper did not complete an autonomous sale while offscreen within the poll window: "
+            f"{result}"
+        )
+        assert result["playerCarryAfter"] == setup["playerCarryBefore"], (
+            f"player's own carrySprites changed from the helper's autonomous action "
+            f"({setup['playerCarryBefore']} -> {result['playerCarryAfter']}) -- helper activity "
+            f"must never touch player inventory"
+        )
+        assert result["helperInventoryLength"] == 0, (
+            f"helper inventory should be empty right after its first sale, got "
+            f"{result['helperInventoryLength']}"
+        )
+
+
+@pytest.mark.slow
+def test_joystick_tracks_finger_direction_after_large_pan():
+    """Section D acceptance criterion 11 (input under scroll), first half:
+    with the world camera panned far from its boot position, a real held
+    pointer drag must still produce a joystickVector whose sign/direction
+    matches the actual screen-space drag, and a visible thumb offset in the
+    same direction -- proving joystick input stays purely screen-space
+    (only ever divided by worldZoom, per _activateJoystick/_updateJoystick)
+    and is never contaminated by camera scroll.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            scene.farmer.x = 1200;
+            scene.farmer.y = 1700;
+        }""")
+        page.wait_for_timeout(600)
+
+        scroll = page.evaluate("() => { const c = window.__GAME__.scene.scenes[0].cameras.main; return { x: c.scrollX, y: c.scrollY }; }")
+        assert scroll["x"] > 50 and scroll["y"] > 50, (
+            f"world camera didn't pan enough to be a meaningful proof: {scroll}"
+        )
+
+        cx, cy = 195, 422  # roughly screen center at 390x844
+        ddx, ddy = 60, -100  # drag right and up
+        page.mouse.move(cx, cy)
+        page.mouse.down()
+        page.wait_for_timeout(50)  # settle wait -- see other joystick tests for why
+        active = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
+        assert active, "joystick did not activate on pointerdown at screen center"
+
+        page.mouse.move(cx + ddx, cy + ddy, steps=5)
+        state = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            return {
+                vector: scene.joystickVector,
+                center: scene.joystickCenter,
+                thumbX: scene.joystickThumb ? scene.joystickThumb.x : null,
+                thumbY: scene.joystickThumb ? scene.joystickThumb.y : null,
+            };
+        }""")
+        page.mouse.up()
+        browser.close()
+
+        assert state["vector"]["x"] > 0 and state["vector"]["y"] < 0, (
+            f"joystick vector direction doesn't match the drag (right+up expected, got "
+            f"{state['vector']}) after a large camera pan"
+        )
+        assert (state["thumbX"] - state["center"]["x"]) > 0 and (state["thumbY"] - state["center"]["y"]) < 0, (
+            f"joystick thumb visual offset doesn't match the drag direction: "
+            f"thumb=({state['thumbX']}, {state['thumbY']}) center={state['center']}"
+        )
+
+
+@pytest.mark.slow
+def test_pad_tap_after_scroll_does_not_spawn_joystick():
+    """Section D acceptance criterion 11 (input under scroll), second half:
+    a real tap on the in-world upgrade pad after the camera has scrolled
+    must open the sheet WITHOUT also activating the floating joystick --
+    the global pointerdown handler's hitTestPointer guard should return
+    early on any interactive hit (the pad) before ever calling
+    _activateJoystick, so a pad tap and a joystick spawn should never
+    happen together.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const pad = scene._computePadLayout();
+            scene.farmer.x = pad.centerX + 120;
+            scene.farmer.y = pad.centerY - 80;
+        }""")
+        page.wait_for_timeout(600)
+
+        tap_point = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+            function worldToScreen(camera, wx, wy) {
+                const p0 = camera.getWorldPoint(0, 0);
+                const p1 = camera.getWorldPoint(100, 0);
+                const p2 = camera.getWorldPoint(0, 100);
+                const sx = (wx - p0.x) / (p1.x - p0.x) * 100;
+                const sy = (wy - p0.y) / (p2.y - p0.y) * 100;
+                return { x: sx, y: sy };
+            }
+            const pad = scene._computePadLayout();
+            const screen = worldToScreen(cam, pad.centerX, pad.centerY);
+            return {
+                screenX: screen.x, screenY: screen.y,
+                worldScrollX: cam.scrollX, worldScrollY: cam.scrollY,
+            };
+        }""")
+
+        assert tap_point["worldScrollX"] > 50 and tap_point["worldScrollY"] > 50, (
+            f"world camera didn't scroll enough to be a meaningful proof: {tap_point}"
+        )
+
+        page.touchscreen.tap(tap_point["screenX"], tap_point["screenY"])
+        page.wait_for_timeout(150)
+
+        after = page.evaluate("() => { const s = window.__GAME__.scene.scenes[0]; return { sheetVisible: s.sheetVisible, joystickActive: s.joystickActive }; }")
+        browser.close()
+
+        assert after["sheetVisible"], (
+            f"pad tap after scroll did not open the sheet: {after}"
+        )
+        assert not after["joystickActive"], (
+            f"pad tap after scroll incorrectly also activated the joystick: {after}"
+        )
+
+
+@pytest.mark.slow
+def test_hud_pixels_identical_before_and_after_large_pan():
+    """Section D acceptance criterion 12 (HUD pixels): a direct pixel proof,
+    not just implicit coverage via the two-camera architecture's own
+    invariants -- the coins-counter text must render at the EXACT SAME
+    screen pixels before and after a large world-camera pan, since it's a
+    HUD object owned by uiCamera (fixed, only changes on resize) and
+    should be completely unaffected by the world camera's own scroll.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        def hud_region():
+            return page.evaluate("""() => {
+                const scene = window.__GAME__.scene.scenes[0];
+                const ui = scene.uiCamera;
+                function worldToScreen(camera, wx, wy) {
+                    const p0 = camera.getWorldPoint(0, 0);
+                    const p1 = camera.getWorldPoint(100, 0);
+                    const p2 = camera.getWorldPoint(0, 100);
+                    const sx = (wx - p0.x) / (p1.x - p0.x) * 100;
+                    const sy = (wy - p0.y) / (p2.y - p0.y) * 100;
+                    return { x: sx, y: sy };
+                }
+                const b = scene.coinsText.getBounds();
+                const topLeft = worldToScreen(ui, b.x, b.y);
+                return { x: topLeft.x, y: topLeft.y, width: b.width * ui.zoom, height: b.height * ui.zoom };
+            }""")
+
+        region_before = hud_region()
+        rows_before = _read_pixel_region_via_screenshot(
+            page, round(region_before["x"]), round(region_before["y"]),
+            round(region_before["width"]), round(region_before["height"]),
+        )
+
+        page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            scene.farmer.x = 1300;
+            scene.farmer.y = 1800;
+        }""")
+        page.wait_for_timeout(600)
+
+        world_scroll = page.evaluate("() => { const c = window.__GAME__.scene.scenes[0].cameras.main; return { x: c.scrollX, y: c.scrollY }; }")
+        region_after = hud_region()
+        rows_after = _read_pixel_region_via_screenshot(
+            page, round(region_after["x"]), round(region_after["y"]),
+            round(region_after["width"]), round(region_after["height"]),
+        )
+        browser.close()
+
+        assert world_scroll["x"] > 50 and world_scroll["y"] > 50, (
+            f"world camera didn't pan enough to be a meaningful proof: {world_scroll}"
+        )
+        assert region_before == region_after, (
+            f"HUD screen-region coordinates changed under world-camera pan: "
+            f"{region_before} -> {region_after}"
+        )
+        assert rows_before == rows_after, (
+            f"HUD pixel content at the coins-counter region changed under world-camera pan "
+            f"(region {region_after}), even though the region coordinates stayed identical"
+        )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("viewport_width,viewport_height,viewport_name", SHORT_VIEWPORTS + [TALL_VIEWPORT])
+def test_boot_camera_worldview_pinned(viewport_width, viewport_height, viewport_name):
+    """Starting-hub framing (Section D acceptance round): pins the exact
+    camera.worldView produced by the new explicit one-time _onResize
+    framing step (this._hasFramedInitialView) at boot, at all 4 real-device
+    viewports. This is the "before/after-identical" regression proof --
+    the explicit step is an architectural change (making an already-correct
+    accidental clamp result into a deliberate, named one), not a visual
+    one, so this pins it to the exact same values measured before that
+    change existed.
+    """
+    EXPECTED_WORLDVIEW = {
+        "iPhone_effective_short": {"x": 0, "y": 0, "width": 720, "height": 1200},
+        "iPhone_11_short_chrome": {"x": 0, "y": 0, "width": 720, "height": 1217.3913043478262},
+        "Galaxy_short_chrome": {"x": 0, "y": 0, "width": 720, "height": 1230},
+        "iPhone_12_tall_contrast": {"x": 0, "y": 0, "width": 720, "height": 1558.1538461538462},
+    }
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(
+            viewport={"width": viewport_width, "height": viewport_height}, has_touch=True, is_mobile=True
+        )
+        _boot(page, viewport_name)
+
+        result = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+            return {
+                worldView: { x: cam.worldView.x, y: cam.worldView.y, width: cam.worldView.width, height: cam.worldView.height },
+                hasFramedFlag: scene._hasFramedInitialView,
+            };
+        }""")
+        browser.close()
+
+        assert result["hasFramedFlag"] is True, (
+            f"{viewport_name}: the explicit one-time initial-framing step did not run "
+            f"(_hasFramedInitialView is {result['hasFramedFlag']})"
+        )
+        expected = EXPECTED_WORLDVIEW[viewport_name]
+        for key in ("x", "y", "width", "height"):
+            assert abs(result["worldView"][key] - expected[key]) < 0.01, (
+                f"{viewport_name}: boot worldView.{key} = {result['worldView'][key]}, "
+                f"expected {expected[key]} (full worldView: {result['worldView']})"
+            )
+
+
+@pytest.mark.slow
+def test_no_snap_on_first_input_after_boot():
+    """Starting-hub framing, "no snap" requirement: when the player's first
+    real input crosses the deadzone and the camera starts following for
+    the first time, the camera position must change smoothly (per
+    startFollow's lerp), not jump straight to the target in one frame.
+    Proven by sampling camera.scroll at real 150ms intervals during a real
+    held drag and confirming no single sample-to-sample step accounts for
+    an outsized share of the total distance traveled -- a genuine snap
+    would show almost the entire distance covered in one step; smooth
+    lerp-based follow shows a gradual, accelerating pattern instead
+    (verified empirically via a dry run before writing this test: deltas
+    grew 0 -> 3.5 -> 10 -> 25 -> 78 while covering a total of ~384 units,
+    no single step anywhere close to the total).
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        before = page.evaluate("() => { const c = window.__GAME__.scene.scenes[0].cameras.main; return { x: c.scrollX, y: c.scrollY }; }")
+
+        cx, cy = 195, 700
+        page.mouse.move(cx, cy)
+        page.mouse.down()
+        page.mouse.move(cx + 100, cy, steps=3)  # full-magnitude rightward push
+
+        samples = []
+        for _ in range(20):
+            page.wait_for_timeout(150)
+            samples.append(page.evaluate("() => { const c = window.__GAME__.scene.scenes[0].cameras.main; return { x: c.scrollX, y: c.scrollY }; }"))
+        page.mouse.up()
+        browser.close()
+
+        prev = before
+        max_delta = 0
+        for s in samples:
+            d = ((s["x"] - prev["x"]) ** 2 + (s["y"] - prev["y"]) ** 2) ** 0.5
+            max_delta = max(max_delta, d)
+            prev = s
+        total_distance = ((samples[-1]["x"] - before["x"]) ** 2 + (samples[-1]["y"] - before["y"]) ** 2) ** 0.5
+
+        assert total_distance > 50, (
+            f"camera didn't move enough during the held input to be a meaningful proof: "
+            f"total_distance={total_distance}"
+        )
+        assert max_delta < total_distance * 0.5, (
+            f"a single sample-to-sample step ({max_delta:.1f}) accounted for more than half "
+            f"the total camera movement ({total_distance:.1f}) on the first real input after "
+            f"boot -- looks like a snap, not a smooth follow"
+        )
