@@ -2128,11 +2128,14 @@ def test_upgrade_pad_real_tap_opens_sheet_after_world_scroll(viewport_width, vie
 def test_market_real_interaction_after_world_scroll(viewport_width, viewport_height, viewport_name):
     """Section D sub-dispatch 3 required proof: the market/stall is now a
     fixed WORLD entity (_computeStallLayout()), not HUD-relative. A real
-    harvest-carry-sell cycle, with the farmer positioned at the market's
-    ACTUAL rendered position, must still register a sale after the world
-    camera has scrolled both horizontally and vertically -- same functional
-    proof pattern as test_visible_market_sells_at_every_real_viewport, with
-    the addition of a forced world scroll first.
+    harvest-carry-sell cycle -- farmer walked into magnet range of a ready
+    plot via REAL held joystick input (harvest triggers through the actual
+    per-frame magnet-proximity path, _updateMagnet(), not a direct
+    _harvestPlot() call), then walked into magnet range of the market's
+    ACTUAL rendered position the same way (sale triggers through the same
+    real per-frame path, not a manual scene.update() call) -- must still
+    work after the world camera has scrolled both horizontally and
+    vertically away from boot.
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
@@ -2141,56 +2144,96 @@ def test_market_real_interaction_after_world_scroll(viewport_width, viewport_hei
         )
         _boot(page, viewport_name)
 
-        result = page.evaluate("""() => {
+        # Force nonzero horizontal AND vertical world scroll away from boot,
+        # then place the farmer just outside a ready plot's magnet radius
+        # (arrange -- the interaction under test starts from here, driven
+        # entirely by real input from this point on).
+        setup = page.evaluate("""() => {
             const scene = window.__GAME__.scene.scenes[0];
-            const cam = scene.cameras.main;
-
-            // Force nonzero horizontal AND vertical world scroll by moving
-            // the farmer near (but offset from) the stall's own fixed world
-            // position first, then let it settle there for the sale.
-            const stall = scene._computeStallLayout();
-            scene.farmer.x = stall.centerX + 150;
-            scene.farmer.y = stall.centerY - 90;
-            return { stall, scrollXBeforeSettle: cam.scrollX };
-        }""")
-        page.wait_for_timeout(600);
-
-        result2 = page.evaluate("""() => {
-            const scene = window.__GAME__.scene.scenes[0];
-            const cam = scene.cameras.main;
-
             const plot = scene.plots[0];
             plot.readyAt = scene.time.now - 1;
-            scene._harvestPlot(0);  // guaranteed to succeed: fresh carry stack
+            const plotCenterX = plot.x + 48, plotCenterY = plot.y + 48;
+            scene.farmer.x = plotCenterX - 100;
+            scene.farmer.y = plotCenterY;
+            return { plotCenterX, plotCenterY };
+        }""")
+        page.wait_for_timeout(600)
 
-            const stall = scene._computeStallLayout();
-            scene.farmer.x = stall.centerX;
-            scene.farmer.y = stall.centerY;
+        candidates = [
+            (viewport_width * 0.5, viewport_height * 0.5),
+            (viewport_width * 0.5, viewport_height * 0.15),
+            (viewport_width * 0.15, viewport_height * 0.5),
+        ]
 
-            const coinsBefore = scene.coins;
-            scene.update(scene.time.now, 16);
+        def real_drag(ddx, ddy, hold_ms):
+            active = False
+            cx = cy = None
+            for cx, cy in candidates:
+                page.mouse.move(cx, cy)
+                page.mouse.down()
+                active = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
+                if active:
+                    break
+                page.mouse.up()
+            assert active, (
+                f"{viewport_name}: joystick did not activate at any candidate screen point "
+                f"{candidates}"
+            )
+            page.mouse.move(cx + ddx, cy + ddy, steps=5)
+            page.wait_for_timeout(hold_ms)
+            page.mouse.up()
+            page.wait_for_timeout(50)
 
+        # Real held drag: walk right (+x) into the plot's magnet radius (100
+        # units to cover, well within a 1500ms hold at MOVE_SPEED).
+        real_drag(150, 0, 1500)
+
+        harvest_state = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
             return {
-                stall,
-                coinsBefore,
-                coinsAfter: scene.coins,
-                carryAfter: scene.carrySprites.length,
-                worldScrollX: cam.scrollX, worldScrollY: cam.scrollY,
+                harvested: scene.plots[0].harvested,
+                carryCount: scene.carrySprites.length,
+                farmerX: scene.farmer.x, farmerY: scene.farmer.y,
             };
+        }""")
+        assert harvest_state["harvested"] and harvest_state["carryCount"] > 0, (
+            f"{viewport_name}: real joystick-driven approach into plot magnet range did not "
+            f"trigger a harvest via _updateMagnet(): {harvest_state}"
+        )
+
+        # Now place the farmer just outside the stall's magnet radius
+        # (arrange for phase 2), confirming world scroll is still
+        # meaningfully nonzero, then real-drag into range to sell.
+        setup2 = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+            const stall = scene._computeStallLayout();
+            scene.farmer.x = stall.centerX - 100;
+            scene.farmer.y = stall.centerY;
+            return { stall, coinsBefore: scene.coins };
+        }""")
+        page.wait_for_timeout(600)
+
+        world_scroll_before_sell = page.evaluate("() => { const c = window.__GAME__.scene.scenes[0].cameras.main; return { x: c.scrollX, y: c.scrollY }; }")
+
+        real_drag(150, 0, 1500)
+
+        result = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            return { coinsAfter: scene.coins, carryAfter: scene.carrySprites.length };
         }""")
         browser.close()
 
-        assert result2["worldScrollX"] > 50 and result2["worldScrollY"] > 50, (
+        assert world_scroll_before_sell["x"] > 50 and world_scroll_before_sell["y"] > 50, (
             f"{viewport_name}: world camera didn't scroll enough to be a meaningful proof: "
-            f"scrollX={result2['worldScrollX']}, scrollY={result2['worldScrollY']}"
+            f"{world_scroll_before_sell}"
         )
-        assert result2["coinsAfter"] > result2["coinsBefore"], (
-            f"{viewport_name} ({viewport_width}x{viewport_height}): selling at the LIVE rendered "
-            f"market position after world scroll (scrollX={result2['worldScrollX']:.1f}, "
-            f"scrollY={result2['worldScrollY']:.1f}) did not increase coins "
-            f"({result2['coinsBefore']} -> {result2['coinsAfter']})"
+        assert result["coinsAfter"] > setup2["coinsBefore"], (
+            f"{viewport_name} ({viewport_width}x{viewport_height}): real joystick-driven approach "
+            f"into the market's magnet range (world scroll={world_scroll_before_sell}) did not "
+            f"trigger a sale via _updateMagnet() ({setup2['coinsBefore']} -> {result['coinsAfter']})"
         )
-        assert result2["carryAfter"] == 0, "Carry stack should be empty after a successful sale"
+        assert result["carryAfter"] == 0, "Carry stack should be empty after a successful sale"
 
 
 @pytest.mark.slow
@@ -2255,14 +2298,35 @@ def test_stall_and_pad_hold_fixed_world_position_under_pan():
 def test_farmer_clamps_at_full_world_bounds(viewport_width, viewport_height, viewport_name):
     """Section D sub-dispatch 3 required proof: the farmer's movement clamp
     widened from viewport-relative bounds to the full fixed world bounds
-    (WORLD_W x WORLD_H). Drive the farmer via the real joystick movement path
-    toward all four world edges from a position already near each edge, and
-    assert it clamps to exactly FARMER_RADIUS / WORLD_W - FARMER_RADIUS /
+    (WORLD_W x WORLD_H). Driven through the REAL on-screen joystick input
+    path -- actual held pointer down/move/up at real screen coordinates,
+    exercising this.input's pointerdown/pointermove/pointerup listeners,
+    _activateJoystick/_updateJoystick, and _moveFarmerByJoystick's own
+    per-frame clamp exactly as a real player's drag would -- not a direct
+    call to _moveFarmerByJoystick with a hand-set joystickVector. Only the
+    STARTING farmer position (arrange step, not the thing under test) is set
+    directly; the movement and clamp are driven entirely through touch.
+
+    Assert clamps to exactly FARMER_RADIUS / WORLD_W - FARMER_RADIUS /
     PLOT_AREA_TOP + FARMER_RADIUS / WORLD_H - FARMER_RADIUS -- not the old
     viewport-relative bounds (LOGICAL_W / layout.visibleWorldHeight), which
     would be smaller than the real world bounds at every one of these
     viewports.
     """
+    FARMER_RADIUS = 32
+    WORLD_W = 1440
+    WORLD_H = 2000
+    PLOT_AREA_TOP = 192
+
+    # (start world position near the edge, drag direction in screen space,
+    # axis being clamped, expected clamped value)
+    cases = [
+        ((WORLD_W - 200, 1000), (150, 0), "x", WORLD_W - FARMER_RADIUS, "right"),
+        ((200, 1000), (-150, 0), "x", FARMER_RADIUS, "left"),
+        ((700, WORLD_H - 200), (0, 150), "y", WORLD_H - FARMER_RADIUS, "bottom"),
+        ((700, PLOT_AREA_TOP + 200), (0, -150), "y", PLOT_AREA_TOP + FARMER_RADIUS, "top"),
+    ]
+
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox"])
         page = browser.new_page(
@@ -2270,50 +2334,60 @@ def test_farmer_clamps_at_full_world_bounds(viewport_width, viewport_height, vie
         )
         _boot(page, viewport_name)
 
-        result = page.evaluate("""() => {
-            const scene = window.__GAME__.scene.scenes[0];
+        # Candidate touch-start points to try, in order -- the camera's
+        # visible world span can be tall enough at some edge/viewport
+        # combos to put the (world-fixed) upgrade pad under screen center,
+        # which would swallow the pointerdown as a pad tap instead of
+        # activating the joystick (see _activateJoystick's hitTestPointer
+        # guard). Falling back to alternates keeps the test testing the
+        # clamp, not "which exact pixel is safe this viewport."
+        candidates = [
+            (viewport_width * 0.5, viewport_height * 0.5),
+            (viewport_width * 0.5, viewport_height * 0.15),
+            (viewport_width * 0.15, viewport_height * 0.5),
+        ]
 
-            function pushToward(x, y, vx, vy, steps) {
-                scene.farmer.x = x;
-                scene.farmer.y = y;
-                scene.joystickActive = true;
-                scene.joystickVector = { x: vx, y: vy };
-                for (let i = 0; i < steps; i++) {
-                    scene._moveFarmerByJoystick(16);
-                }
-                return { x: scene.farmer.x, y: scene.farmer.y };
-            }
+        for (start_x, start_y), (ddx, ddy), axis, expected, label in cases:
+            page.evaluate(
+                """([x, y]) => {
+                    const scene = window.__GAME__.scene.scenes[0];
+                    scene.farmer.x = x;
+                    scene.farmer.y = y;
+                }""",
+                [start_x, start_y],
+            )
+            page.wait_for_timeout(50)  # let the camera settle near the new start position
 
-            const right = pushToward(1300, 1000, 1, 0, 60);
-            const left = pushToward(200, 1000, -1, 0, 60);
-            const bottom = pushToward(700, 1800, 0, 1, 60);
-            const top = pushToward(700, 300, 0, -1, 60);
+            # Real held touch/pointer drag: down at a safe screen point,
+            # move outward past JOYSTICK_RADIUS in the target direction
+            # (150px screen delta always exceeds the ~40-46px needed at
+            # these viewports' worldZoom), hold for real frames so
+            # _moveFarmerByJoystick's per-frame clamp actually runs and
+            # settles, then release.
+            active = False
+            for cx, cy in candidates:
+                page.mouse.move(cx, cy)
+                page.mouse.down()
+                active = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
+                if active:
+                    break
+                page.mouse.up()
+            assert active, (
+                f"{viewport_name} ({label}): joystick did not activate at any candidate screen "
+                f"point {candidates} -- all landed on an interactive element"
+            )
+            page.mouse.move(cx + ddx, cy + ddy, steps=5)
+            page.wait_for_timeout(2500)
+            page.mouse.up()
+            page.wait_for_timeout(50)
 
-            return { right, left, bottom, top };
-        }""")
+            final = page.evaluate("() => ({ x: window.__GAME__.scene.scenes[0].farmer.x, y: window.__GAME__.scene.scenes[0].farmer.y })")
+            assert final[axis] == expected, (
+                f"{viewport_name} ({label}): real joystick drag clamped farmer.{axis} to "
+                f"{final[axis]}, expected {expected}"
+            )
+
         browser.close()
-
-        FARMER_RADIUS = 32
-        WORLD_W = 1440
-        WORLD_H = 2000
-        PLOT_AREA_TOP = 192
-
-        assert result["right"]["x"] == WORLD_W - FARMER_RADIUS, (
-            f"{viewport_name}: farmer pushed right clamped to x={result['right']['x']}, "
-            f"expected WORLD_W - FARMER_RADIUS = {WORLD_W - FARMER_RADIUS}"
-        )
-        assert result["left"]["x"] == FARMER_RADIUS, (
-            f"{viewport_name}: farmer pushed left clamped to x={result['left']['x']}, "
-            f"expected FARMER_RADIUS = {FARMER_RADIUS}"
-        )
-        assert result["bottom"]["y"] == WORLD_H - FARMER_RADIUS, (
-            f"{viewport_name}: farmer pushed down clamped to y={result['bottom']['y']}, "
-            f"expected WORLD_H - FARMER_RADIUS = {WORLD_H - FARMER_RADIUS}"
-        )
-        assert result["top"]["y"] == PLOT_AREA_TOP + FARMER_RADIUS, (
-            f"{viewport_name}: farmer pushed up clamped to y={result['top']['y']}, "
-            f"expected PLOT_AREA_TOP + FARMER_RADIUS = {PLOT_AREA_TOP + FARMER_RADIUS}"
-        )
 
 
 @pytest.mark.slow
