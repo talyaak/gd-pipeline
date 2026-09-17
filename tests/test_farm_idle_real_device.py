@@ -2185,6 +2185,13 @@ def test_market_real_interaction_after_world_scroll(viewport_width, viewport_hei
             for cx, cy in candidates:
                 page.mouse.move(cx, cy)
                 page.mouse.down()
+                # Small settle wait: checking joystickActive immediately
+                # after mouse.down() can occasionally race the browser's
+                # own event dispatch (rare, intermittent -- caught via
+                # repeated local + CI runs, not reproducible on demand).
+                # This closes that race without slowing the common case
+                # much.
+                page.wait_for_timeout(50)
                 active = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
                 if active:
                     break
@@ -2334,11 +2341,23 @@ def test_farmer_clamps_at_full_world_bounds(viewport_width, viewport_height, vie
 
     # (start world position near the edge, drag direction in screen space,
     # axis being clamped, expected clamped value)
+    # Drag delta: must clear the joystick's full-magnitude threshold
+    # (JOYSTICK_RADIUS=80 logical * worldZoom, i.e. ~40-46px screen at
+    # these 4 viewports). 50px clears that with margin. Reduced from an
+    # original 150px, which could push the drag target off-screen from
+    # the (*, 0.15)/(0.15, *) fallback candidates at some viewport sizes
+    # -- investigated as a candidate explanation for an intermittent CI
+    # (and, on retry, occasionally local) failure at the "top" case, but
+    # the actual cause turned out to be a separate race (see the settle
+    # wait added after mouse.down() below) -- keeping this reduction
+    # anyway since it removes a real, if apparently harmless in practice,
+    # off-screen-target risk.
+    DRAG = 50
     cases = [
-        ((WORLD_W - 200, 1000), (150, 0), "x", WORLD_W - FARMER_RADIUS, "right"),
-        ((200, 1000), (-150, 0), "x", FARMER_RADIUS, "left"),
-        ((700, WORLD_H - 200), (0, 150), "y", WORLD_H - FARMER_RADIUS, "bottom"),
-        ((700, PLOT_AREA_TOP + 200), (0, -150), "y", PLOT_AREA_TOP + FARMER_RADIUS, "top"),
+        ((WORLD_W - 200, 1000), (DRAG, 0), "x", WORLD_W - FARMER_RADIUS, "right"),
+        ((200, 1000), (-DRAG, 0), "x", FARMER_RADIUS, "left"),
+        ((700, WORLD_H - 200), (0, DRAG), "y", WORLD_H - FARMER_RADIUS, "bottom"),
+        ((700, PLOT_AREA_TOP + 200), (0, -DRAG), "y", PLOT_AREA_TOP + FARMER_RADIUS, "top"),
     ]
 
     with sync_playwright() as p:
@@ -2382,6 +2401,13 @@ def test_farmer_clamps_at_full_world_bounds(viewport_width, viewport_height, vie
             for cx, cy in candidates:
                 page.mouse.move(cx, cy)
                 page.mouse.down()
+                # Small settle wait: checking joystickActive immediately
+                # after mouse.down() can occasionally race the browser's
+                # own event dispatch (rare, intermittent -- caught via
+                # repeated local + CI runs, not reproducible on demand).
+                # This closes that race without slowing the common case
+                # much.
+                page.wait_for_timeout(50)
                 active = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
                 if active:
                     break
@@ -2619,6 +2645,7 @@ def test_joystick_tracks_finger_direction_after_large_pan():
         ddx, ddy = 60, -100  # drag right and up
         page.mouse.move(cx, cy)
         page.mouse.down()
+        page.wait_for_timeout(50)  # settle wait -- see other joystick tests for why
         active = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
         assert active, "joystick did not activate on pointerdown at screen center"
 
