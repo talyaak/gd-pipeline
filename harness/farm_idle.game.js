@@ -899,9 +899,25 @@ class PlayScene extends Phaser.Scene {
     this.startHint.y = hintY;
     this.startHintText.x = hintX;
     this.startHintText.y = hintY;
-    // Draw arrow pointing down to farmer
+    // Draw arrow pointing down to farmer. Two bugs fixed here, found while
+    // hunting a real-device report of a stray triangle+circle hovering
+    // over the upgrade pad (Instinct Wire issue #2): (1) fillTriangle's
+    // coordinates are LOCAL to this Graphics object, but this object is
+    // ALSO positioned via .x/.y above -- the original code passed hintX/
+    // hintY as the local coordinates too, double-applying the offset and
+    // rendering the triangle near world (2*hintX, hintY+hintY+30) instead
+    // of just below the hint text. At boot (hintX=360, hintY=424) that
+    // landed at world (~720, ~878) -- almost exactly the upgrade pad's
+    // top-right corner, which is what was actually being seen, not a pad
+    // feature at all. Fixed by using coordinates relative to the object's
+    // own origin (0, not hintX). (2) there was no clear() before redrawing
+    // -- harmless when this only ran once (the original bug, before this
+    // fix), but this method now runs every frame while the hint is
+    // visible, so every frame was stacking a new triangle on top of every
+    // previous one, forever, with no clear() ever removing the old ones.
+    this.startHint.clear();
     this.startHint.fillStyle(0x2e7d32, 0.9);
-    this.startHint.fillTriangle(hintX, hintY + 30, hintX - 20, hintY + 10, hintX + 20, hintY + 10);
+    this.startHint.fillTriangle(0, 30, -20, 10, 20, 10);
   }
 
   _hideStartHint() {
