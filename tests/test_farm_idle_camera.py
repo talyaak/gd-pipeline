@@ -587,8 +587,28 @@ def test_joystick_drag_through_upgrade_pad_keeps_moving_and_does_not_open_sheet(
         )
 
         # Regression guard: a plain tap (no preceding drag) starting on the
-        # pad must still open the sheet.
-        page.mouse.click(pad_screen["x"], pad_screen["y"])
+        # pad must still open the sheet. Recompute pad_screen FRESH here
+        # rather than reusing the value from the top of the test: the
+        # camera follows the farmer with a lerp, so the pad's real on-screen
+        # position drifts during the drag sequence above -- the stale
+        # initial pad_screen was a confirmed pre-existing flake (3/5
+        # failures reproduced on unmodified code), root-caused to this
+        # exact drift making the tap miss the pad's live position.
+        pad_screen_fresh = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+            function worldToScreen(camera, wx, wy) {
+                const p0 = camera.getWorldPoint(0, 0);
+                const p1 = camera.getWorldPoint(100, 0);
+                const p2 = camera.getWorldPoint(0, 100);
+                const sx = (wx - p0.x) / (p1.x - p0.x) * 100;
+                const sy = (wy - p0.y) / (p2.y - p0.y) * 100;
+                return { x: sx, y: sy };
+            }
+            const pad = scene._computePadLayout();
+            return worldToScreen(cam, pad.centerX, pad.centerY);
+        }""")
+        page.mouse.click(pad_screen_fresh["x"], pad_screen_fresh["y"])
         page.wait_for_timeout(100)
         after_tap = page.evaluate("() => window.__GAME__.scene.scenes[0].sheetVisible")
         browser.close()
