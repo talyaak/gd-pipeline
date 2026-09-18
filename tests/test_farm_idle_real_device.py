@@ -2895,3 +2895,115 @@ def test_no_snap_on_first_input_after_boot():
             f"the total camera movement ({total_distance:.1f}) on the first real input after "
             f"boot -- looks like a snap, not a smooth follow"
         )
+
+
+@pytest.mark.slow
+def test_joystick_drag_through_upgrade_pad_keeps_moving_and_does_not_open_sheet():
+    """Hotfix regression test (Instinct Wire issue #2, priority interrupt
+    5725435315): a joystick drag that crosses the upgrade pad's hit area must
+    keep moving the farmer the whole time, releasing over the pad afterward
+    must NOT open the upgrade sheet, and -- unchanged by this fix, verified
+    here as a regression guard -- a plain tap starting on the pad must still
+    open it.
+
+    Root cause of the original bug: the scene-level 'pointerout' handler
+    (meant for "pointer left the canvas") also fires whenever Phaser's
+    per-frame processOverOutEvents() sees the pointer move off ANY
+    interactive game object underneath it, including the pad (padG,
+    setInteractive()) -- not just on canvas-leave. The fix listens on
+    'gameout' instead, Phaser's actual InputManager-level canvas-leave
+    event. See farm_idle.game.js's 'gameout' handler comment for the full
+    root-cause writeup.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        pad_screen = page.evaluate("""() => {
+            const scene = window.__GAME__.scene.scenes[0];
+            const cam = scene.cameras.main;
+            function worldToScreen(camera, wx, wy) {
+                const p0 = camera.getWorldPoint(0, 0);
+                const p1 = camera.getWorldPoint(100, 0);
+                const p2 = camera.getWorldPoint(0, 100);
+                const sx = (wx - p0.x) / (p1.x - p0.x) * 100;
+                const sy = (wy - p0.y) / (p2.y - p0.y) * 100;
+                return { x: sx, y: sy };
+            }
+            const pad = scene._computePadLayout();
+            return worldToScreen(cam, pad.centerX, pad.centerY);
+        }""")
+
+        # Start the joystick drag well away from the pad, then drag THROUGH
+        # the pad's on-screen position, sampling farmer position along the
+        # way to prove movement never stops.
+        start_x, start_y = 195, 300
+        page.mouse.move(start_x, start_y)
+        page.mouse.down()
+        page.wait_for_timeout(50)
+        active_after_down = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
+        assert active_after_down, "joystick did not activate at the drag start point"
+
+        farmer_before = page.evaluate("() => { const s = window.__GAME__.scene.scenes[0]; return {x: s.farmer.x, y: s.farmer.y}; }")
+
+        # Drag THROUGH the pad's center and continue PAST it -- the bug this
+        # regression-guards only manifests when the pointer actually LEAVES
+        # the pad's interactive hit area while still held down (Phaser's
+        # object-level 'out' transition, which the old 'pointerout' handler
+        # mistook for canvas-leave); stopping exactly at the pad's center and
+        # releasing there never triggers that transition and would make this
+        # assertion pass even against the unfixed code.
+        steps = 20
+        end_x = pad_screen["x"] + (pad_screen["x"] - start_x) * 0.3
+        end_y = pad_screen["y"] + (pad_screen["y"] - start_y) * 0.3
+        farmer_positions = [farmer_before]
+        for i in range(1, steps + 1):
+            t = i / steps
+            x = start_x + (end_x - start_x) * t
+            y = start_y + (end_y - start_y) * t
+            page.mouse.move(x, y)
+            page.wait_for_timeout(30)
+            if i in (steps // 2, steps):
+                pos = page.evaluate("() => { const s = window.__GAME__.scene.scenes[0]; return { x: s.farmer.x, y: s.farmer.y, joystickActive: s.joystickActive }; }")
+                assert pos["joystickActive"], (
+                    f"joystickActive went false mid-drag while crossing/passing the upgrade pad "
+                    f"(step {i}/{steps}): {pos}"
+                )
+                farmer_positions.append(pos)
+
+        moved_total = ((farmer_positions[-1]["x"] - farmer_before["x"]) ** 2 + (farmer_positions[-1]["y"] - farmer_before["y"]) ** 2) ** 0.5
+        assert moved_total > 50, (
+            f"farmer did not keep moving through the drag across and past the upgrade pad: "
+            f"before={farmer_before}, samples={farmer_positions}"
+        )
+
+        sheet_visible_mid_drag = page.evaluate("() => window.__GAME__.scene.scenes[0].sheetVisible")
+        assert not sheet_visible_mid_drag, "upgrade sheet opened mid-drag, before any release"
+
+        # Move back onto the pad's center, still holding, then release there
+        # -- the "release over the pad" half of the acceptance criterion.
+        page.mouse.move(pad_screen["x"], pad_screen["y"])
+        page.wait_for_timeout(50)
+        page.mouse.up()
+        page.wait_for_timeout(50)
+        after_release = page.evaluate("() => { const s = window.__GAME__.scene.scenes[0]; return { sheetVisible: s.sheetVisible, joystickActive: s.joystickActive }; }")
+        assert not after_release["sheetVisible"], (
+            f"releasing over the upgrade pad after a joystick-started drag incorrectly opened "
+            f"the sheet: {after_release}"
+        )
+        assert not after_release["joystickActive"], (
+            f"joystick should be deactivated after a normal pointerup release: {after_release}"
+        )
+
+        # Regression guard: a plain tap (no preceding drag) starting on the
+        # pad must still open the sheet.
+        page.mouse.click(pad_screen["x"], pad_screen["y"])
+        page.wait_for_timeout(100)
+        after_tap = page.evaluate("() => window.__GAME__.scene.scenes[0].sheetVisible")
+        browser.close()
+
+        assert after_tap, (
+            f"a plain tap starting on the upgrade pad (no drag) did not open the sheet: "
+            f"sheetVisible={after_tap}"
+        )
