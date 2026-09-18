@@ -37,6 +37,13 @@
 #     -- a trailing-newline-only change can make `wc -l` under-count in a
 #     way that lets a real change slip past a line-based check; byte
 #     comparison has no such edge case.
+#   - requires a NON-EMPTY diff for append-only mode: a target whose byte
+#     count is unchanged (post_bytes == pre_bytes) currently satisfies both
+#     "byte count did not decrease" and "prefix matches" trivially, since
+#     the whole file is untouched -- and would PASS with zero new content.
+#     This is a real failure mode observed in practice (Hermes reporting
+#     DISPATCH_EXIT=0 while silently writing nothing), distinct from a
+#     corrupted append. It is now treated as a VIOLATION, not a silent PASS.
 #
 # IMPORTANT: all snapshot/verify/discard file operations run on the HOST
 # (this script itself, in git-bash), directly against the worktree's
@@ -53,11 +60,14 @@
 #
 #   mode: "append-only" -- the only mode implemented so far. Requires,
 #         for EVERY target file, that after a SUCCESSFUL dispatch:
-#           (a) byte count did not decrease
+#           (a) byte count strictly increased (some new content was
+#               actually appended -- a no-op dispatch is a violation, not
+#               a silent pass)
 #           (b) the first N bytes (N = pre-dispatch byte count) are
 #               byte-for-byte identical to the entire pre-dispatch file
 #         i.e. the file must be provably unchanged for all of its
-#         original content, with only new bytes appended at the end.
+#         original content, with new, non-empty content appended at the
+#         end.
 #
 #   host_worktree_path: git-bash-style path on THIS machine, e.g.
 #         /c/Dev/gd-gpt/.claude/worktrees/farm-idle-collectible-world
@@ -249,13 +259,18 @@ for t in "${TARGETS[@]}"; do
     VIOLATION=1
     continue
   fi
+  if [ "$post_bytes" -eq "$pre_bytes" ]; then
+    echo "  VIOLATION: $t -- no-op dispatch, zero bytes appended (pre=$pre_bytes, post=$post_bytes). A successful dispatch that changes nothing is not a pass."
+    VIOLATION=1
+    continue
+  fi
   prefix_hash=$(head -c "$pre_bytes" "$f" | sha256sum | cut -d' ' -f1)
   if [ "$prefix_hash" != "$pre_hash" ]; then
     echo "  VIOLATION: $t -- first $pre_bytes bytes no longer match the pre-dispatch file (prefix_hash=$prefix_hash, expected=$pre_hash)"
     VIOLATION=1
     continue
   fi
-  echo "  post $t: bytes=$post_bytes OK (append-only invariant held)"
+  echo "  post $t: bytes=$post_bytes OK (append-only invariant held, $((post_bytes - pre_bytes)) bytes appended)"
 done
 
 # --- Step 4: decide PASS/FAIL. A dispatch failure fails the run even if
