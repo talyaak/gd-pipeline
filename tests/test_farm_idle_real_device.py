@@ -3007,3 +3007,85 @@ def test_joystick_drag_through_upgrade_pad_keeps_moving_and_does_not_open_sheet(
             f"a plain tap starting on the upgrade pad (no drag) did not open the sheet: "
             f"sheetVisible={after_tap}"
         )
+
+
+@pytest.mark.slow
+def test_start_hint_follows_farmer_and_dismisses_on_real_movement():
+    """Hotfix regression test (Instinct Wire issue #2, priority interrupt
+    5727866173): Tal's playtest finding -- "the start tween for the
+    character does not stick to it if player moves" -- the start hint used
+    to be positioned once at boot and never moved again, so it went stale
+    at the farmer's spawn point as soon as he walked away.
+
+    Drives a real held joystick drag (not a programmatic position
+    assignment) to move the farmer a small amount and confirms the hint's
+    on-screen position tracks him, then continues the drag further and
+    confirms the hint auto-dismisses once he's moved far enough away.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        initial = page.evaluate("""() => {
+            const s = window.__GAME__.scene.scenes[0];
+            return {
+                farmerX: s.farmer.x, farmerY: s.farmer.y,
+                hintX: s.startHint.x, hintY: s.startHint.y,
+                hintVisible: s.startHint.visible,
+            };
+        }""")
+        assert initial["hintVisible"], "start hint should be visible right after boot"
+
+        # Real held joystick drag: start on the joystick, move a modest
+        # amount (well below the dismiss threshold), and read the hint's
+        # position while still holding -- this exercises the actual
+        # per-frame update() path, not a one-shot position assignment.
+        start_x, start_y = 195, 400
+        page.mouse.move(start_x, start_y)
+        page.mouse.down()
+        page.wait_for_timeout(50)
+        active = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
+        assert active, "joystick did not activate at the drag start point"
+
+        page.mouse.move(start_x + 60, start_y, steps=5)
+        page.wait_for_timeout(150)
+
+        mid_drag = page.evaluate("""() => {
+            const s = window.__GAME__.scene.scenes[0];
+            return {
+                farmerX: s.farmer.x, farmerY: s.farmer.y,
+                hintX: s.startHint.x, hintY: s.startHint.y,
+                hintVisible: s.startHint.visible,
+            };
+        }""")
+        assert mid_drag["hintVisible"], (
+            f"hint disappeared after only a small real move -- dismiss threshold firing too early: {mid_drag}"
+        )
+        moved_so_far = ((mid_drag["farmerX"] - initial["farmerX"]) ** 2 + (mid_drag["farmerY"] - initial["farmerY"]) ** 2) ** 0.5
+        assert moved_so_far > 20, (
+            f"real joystick drag did not move the farmer meaningfully: {initial} -> {mid_drag}"
+        )
+        hint_moved = ((mid_drag["hintX"] - initial["hintX"]) ** 2 + (mid_drag["hintY"] - initial["hintY"]) ** 2) ** 0.5
+        assert hint_moved > 20, (
+            f"start hint did not follow the farmer's real movement: before={initial}, after={mid_drag}"
+        )
+
+        # Continue the same held drag well past the dismiss threshold.
+        page.mouse.move(start_x + 260, start_y, steps=8)
+        page.wait_for_timeout(400)
+        page.mouse.up()
+        page.wait_for_timeout(50)
+
+        after_dismiss = page.evaluate("""() => {
+            const s = window.__GAME__.scene.scenes[0];
+            return { hintVisible: s.startHint.visible, textVisible: s.startHintText.visible };
+        }""")
+        browser.close()
+
+        assert not after_dismiss["hintVisible"], (
+            f"start hint did not auto-dismiss after a real move well past the threshold: {after_dismiss}"
+        )
+        assert not after_dismiss["textVisible"], (
+            f"start hint text did not auto-dismiss after a real move well past the threshold: {after_dismiss}"
+        )
