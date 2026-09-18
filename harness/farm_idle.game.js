@@ -125,7 +125,6 @@ const WORLD_BACKGROUND_COLOR = '#8fbc8f';  // named so it/textures can be swappe
 const STALL_FIXED_Y = 700;
 const PAD_FIXED_Y = 900;
 const UPGRADE_PANEL_TOP = 672;        // 420 * 1.6
-const UPGRADE_PANEL_H = 448;          // 280 * 1.6
 
 // Safe-area insets (CSS pixels, updated on resize)
 let safeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -188,6 +187,8 @@ class PlayScene extends Phaser.Scene {
     this.sellValueBonus = 0;
     this.growSpeedMult = 1;
     this.plotGridCapped = false;
+    this.chickenTier = 0;
+    this.coop = null;
 
     this.cameras.main.setBackgroundColor(WORLD_BACKGROUND_COLOR);
 
@@ -998,11 +999,28 @@ class PlayScene extends Phaser.Scene {
     const rowTypes = [
       { type: 'plot', name: 'More Plots', desc: '+1 Crop Plot', cost: PLOT_UPGRADE_BASE_COST },
       { type: 'boots', name: 'Speed Boots', desc: 'Faster Movement', cost: BOOTS_UPGRADE_COST_T1 },
-      { type: 'helper', name: 'Helper', desc: 'Auto-Harvest', cost: HELPER_UPGRADE_COST_T1 }
+      { type: 'helper', name: 'Helper', desc: 'Auto-Harvest', cost: HELPER_UPGRADE_COST_T1 },
+      { type: 'chicken', name: 'Chicken Coop', desc: 'Produces Eggs', cost: CHICKEN_UPGRADE_COST_T1 }
     ];
 
-    const rowHeight = 140;
     const startY = 80;
+    // Responsive row spacing (Round 2c, 4-row sheet overflow fix -- see
+    // Instinct Wire issue #2): at 140px/row (the original, tall-viewport
+    // design), 4 rows can overflow the sheet's real, dynamic height
+    // (sheetMaxHeight, computed above) on short viewports -- confirmed
+    // empirically at 3 of 4 real test viewports before this fix. rowHeight
+    // now shrinks to fit exactly rowTypes.length rows within the actual
+    // available space, never growing past the original 140px design on
+    // tall viewports (Math.min keeps tall-viewport behavior pixel-identical
+    // to before this change). `scale` uniformly shrinks every row's
+    // content (icon radius, button size, font sizes, internal Y-offsets)
+    // by the same factor rowHeight itself shrank by, so the content block
+    // -- which exactly fit its original 140px row by design -- is
+    // guaranteed to keep fitting inside a smaller row, centered the same
+    // way it always was, just scaled down.
+    const bottomMargin = 24;
+    const rowHeight = Math.min(140, (sheetMaxHeight - startY - bottomMargin) / rowTypes.length);
+    const scale = rowHeight / 140;
 
     rowTypes.forEach((rowData, i) => {
       const y = startY + i * rowHeight;
@@ -1010,43 +1028,43 @@ class PlayScene extends Phaser.Scene {
       content.add(row);
       this._registerHudObject(row);
 
-      const icon = this.add.circle(-sheetWidth / 2 + 80, 0, 40,
-        rowData.type === 'plot' ? 0x8bc34a : rowData.type === 'boots' ? 0xffb300 : 0xff7043);
+      const icon = this.add.circle(-sheetWidth / 2 + 80, 0, 40 * scale,
+        rowData.type === 'plot' ? 0x8bc34a : rowData.type === 'boots' ? 0xffb300 : rowData.type === 'helper' ? 0xff7043 : 0xfff3c4);
       icon.setStrokeStyle(3, 0x000, 0.5);
       row.add(icon);
       this._registerHudObject(icon);
 
-      const nameText = this.add.text(-sheetWidth / 2 + 140, -25, rowData.name, {
-        fontFamily: 'monospace', fontSize: '24px', color: '#fff'
+      const nameText = this.add.text(-sheetWidth / 2 + 140, -25 * scale, rowData.name, {
+        fontFamily: 'monospace', fontSize: Math.round(24 * scale) + 'px', color: '#fff'
       }).setOrigin(0, 0);
       row.add(nameText);
       this._registerHudObject(nameText);
 
-      const descText = this.add.text(-sheetWidth / 2 + 140, 10, rowData.desc, {
-        fontFamily: 'monospace', fontSize: '18px', color: '#c8e6c9'
+      const descText = this.add.text(-sheetWidth / 2 + 140, 10 * scale, rowData.desc, {
+        fontFamily: 'monospace', fontSize: Math.round(18 * scale) + 'px', color: '#c8e6c9'
       }).setOrigin(0, 0);
       row.add(descText);
       this._registerHudObject(descText);
 
       // Cost and owned from game state
       const owned = this._getOwnedCount(rowData.type);
-      const costText = this.add.text(sheetWidth / 2 - 80, -25, 'Cost: ' + rowData.cost, {
-        fontFamily: 'monospace', fontSize: '22px', color: '#fff'
+      const costText = this.add.text(sheetWidth / 2 - 80, -25 * scale, 'Cost: ' + rowData.cost, {
+        fontFamily: 'monospace', fontSize: Math.round(22 * scale) + 'px', color: '#fff'
       }).setOrigin(1, 0);
       row.add(costText);
       this._registerHudObject(costText);
 
-      const ownedText = this.add.text(sheetWidth / 2 - 80, 10, 'Owned: ' + owned, {
-        fontFamily: 'monospace', fontSize: '18px', color: '#c8e6c9'
+      const ownedText = this.add.text(sheetWidth / 2 - 80, 10 * scale, 'Owned: ' + owned, {
+        fontFamily: 'monospace', fontSize: Math.round(18 * scale) + 'px', color: '#c8e6c9'
       }).setOrigin(1, 0);
       row.add(ownedText);
       this._registerHudObject(ownedText);
 
-      const btn = this.add.rectangle(0, 68, 280, 56, 0xffb300, 1).setStrokeStyle(3, 0xf57f17, 1);
+      const btn = this.add.rectangle(0, 68 * scale, 280 * scale, 56 * scale, 0xffb300, 1).setStrokeStyle(3, 0xf57f17, 1);
       btn.setInteractive({ useHandCursor: true });
       btn.on('pointerdown', () => this._buyUpgrade(rowData.type));
-      const btnText = this.add.text(0, 68, 'BUY', {
-        fontFamily: 'monospace', fontSize: '24px', color: '#000'
+      const btnText = this.add.text(0, 68 * scale, 'BUY', {
+        fontFamily: 'monospace', fontSize: Math.round(24 * scale) + 'px', color: '#000'
       }).setOrigin(0.5);
       row.add([btn, btnText]);
       this._registerHudObject(btn);
@@ -1085,6 +1103,7 @@ class PlayScene extends Phaser.Scene {
     if (type === 'plot') return this.plots.length - 5; // base 5 plots
     if (type === 'boots') return this.bootsTier; // already 0-indexed owned count
     if (type === 'helper') return this.helperTier; // already 0-indexed owned count
+    if (type === 'chicken') return this.chickenTier; // already 0-indexed owned count
     return 0;
   }
 
@@ -1106,6 +1125,9 @@ class PlayScene extends Phaser.Scene {
     }
     if (this.helperTier < 2) {
       costs.push([HELPER_UPGRADE_COST_T1, HELPER_UPGRADE_COST_T2][this.helperTier]);
+    }
+    if (this.chickenTier < 2) {
+      costs.push([CHICKEN_UPGRADE_COST_T1, CHICKEN_UPGRADE_COST_T2][this.chickenTier]);
     }
     return costs.length ? Math.min(...costs) : null;
   }
@@ -1485,6 +1507,23 @@ class PlayScene extends Phaser.Scene {
       this.helperTier++;
       const interval = [HELPER_INTERVAL_T1, HELPER_INTERVAL_T2][this.helperTier - 1];
       this._spawnHelper(interval);
+    } else if (type === 'chicken') {
+      if (this.chickenTier >= 2) return;
+      cost = [CHICKEN_UPGRADE_COST_T1, CHICKEN_UPGRADE_COST_T2][this.chickenTier];
+      if (this.coins < cost) return;
+      this.coins -= cost;
+      this.chickenTier++;
+      if (this.chickenTier === 1) {
+        this._createCoop();
+      } else {
+        // Tier 2: a ready egg is never destroyed -- only restart the cycle
+        // (at the new, faster speed, via coop.cycleMs's live getter) if the
+        // coop is NOT currently ready. If it's already ready, leave it
+        // exactly as-is; the player still gets to collect it.
+        if (this.time.now < this.coop.readyAt) {
+          this.coop.readyAt = this.time.now + this.coop.cycleMs;
+        }
+      }
     }
     this.coinsText.setText('Coins: ' + this.coins);
     this.game.registry.set('score', this.coins);
@@ -1519,6 +1558,9 @@ class PlayScene extends Phaser.Scene {
         } else if (row.type === 'helper') {
           if (this.helperTier >= 2) { cost = 'MAX'; owned = 2; }
           else { cost = [HELPER_UPGRADE_COST_T1, HELPER_UPGRADE_COST_T2][this.helperTier]; owned = this.helperTier; }
+        } else if (row.type === 'chicken') {
+          if (this.chickenTier >= 2) { cost = 'MAX'; owned = 2; }
+          else { cost = [CHICKEN_UPGRADE_COST_T1, CHICKEN_UPGRADE_COST_T2][this.chickenTier]; owned = this.chickenTier; }
         }
         if (row.costText) row.costText.setText('Cost: ' + cost);
         if (row.ownedText) row.ownedText.setText('Owned: ' + owned);
@@ -1862,3 +1904,91 @@ const config = {
 };
 
 window.addEventListener('load', () => { new Phaser.Game(config); });
+// Upgrade: Chicken Coop (fixed chain, 2 tiers) -- Round 2c
+const CHICKEN_UPGRADE_COST_T1 = 150;
+const CHICKEN_UPGRADE_COST_T2 = 350;
+const CHICKEN_CYCLE_T1 = 5000;
+const CHICKEN_CYCLE_T2 = 2500;
+
+// Coop placement (Round 2c): fixed world position, single source of truth,
+// same pattern as _computeStallLayout()/_computePadLayout(). x=720 sits
+// just past the plot grid's permanent maximum x-extent (688, since
+// PLOTS_PER_ROW=6 never changes and rows only grow downward as more plots
+// are bought) -- clear of the 5 initial plots AND every possible future
+// plot, by construction, not by coincidence. y=288 keeps it level with
+// plot row 0.
+const COOP_X = 720;
+const COOP_FIXED_Y = 288;
+const COOP_W = 96;
+const COOP_H = 96;
+
+// Round 2c (chicken/egg vertical slice): coop layout + creation, added via
+// prototype assignment rather than in-class method syntax so this addition
+// lands as a pure end-of-file append (see Instinct Wire issue #2, repo
+// talyaak/gd-pipeline, for why). Behaves identically to an in-class method
+// when called as this._computeCoopLayout() / this._createCoop() from
+// elsewhere in PlayScene -- `this` binds the same way either way.
+PlayScene.prototype._computeCoopLayout = function () {
+  // Fixed world position, independent of viewport size or safe-area
+  // insets -- the coop is a genuine world entity, not HUD-relative. Single
+  // source of truth for every runtime consumer (rendering, magnet
+  // collection, helper targeting), same pattern as _computeStallLayout()/
+  // _computePadLayout().
+  return {
+    x: COOP_X,
+    y: COOP_FIXED_Y,
+    centerX: COOP_X + COOP_W / 2,
+    centerY: COOP_FIXED_Y + COOP_H / 2
+  };
+};
+
+PlayScene.prototype._createCoop = function () {
+  const coop = this._computeCoopLayout();
+
+  const body = this.add.graphics();
+  body.fillStyle(0xffffff, 1);
+  body.fillRoundedRect(coop.x, coop.y, COOP_W, COOP_H, 13);
+  body.setDepth(0);
+  this._registerWorldObject(body);
+
+  const egg = this.add.circle(coop.centerX, coop.centerY, 29, COLLECTIBLE_TYPES.egg.worldColor);
+  egg.setVisible(false);
+  egg.setDepth(0);
+  this._registerWorldObject(egg);
+
+  const progressBarBg = this.add.rectangle(coop.centerX, coop.y - 16, COOP_W - 8, 8, 0x000000, 0.5);
+  progressBarBg.setOrigin(0.5, 1);
+  progressBarBg.setDepth(0);
+  this._registerWorldObject(progressBarBg);
+  progressBarBg.setVisible(false);
+
+  const progressBarFill = this.add.rectangle(coop.x + 4, coop.y - 16, 0, 6, COLLECTIBLE_TYPES.egg.worldColor, 1);
+  progressBarFill.setOrigin(0, 1);
+  progressBarFill.setDepth(0);
+  this._registerWorldObject(progressBarFill);
+  progressBarFill.setVisible(false);
+
+  const coopObj = {
+    id: 'coop',
+    x: coop.x,
+    y: coop.y,
+    readyAt: this.time.now + CHICKEN_CYCLE_T1,
+    worldSprite: body,
+    productSprite: egg,
+    progressBarBg,
+    progressBarFill,
+    harvested: false,
+    pulseTween: null,
+    producerTypeId: 'coop',
+    collectibleTypeId: 'egg',
+    centerX: coop.centerX,
+    centerY: coop.centerY,
+  };
+  Object.defineProperty(coopObj, 'cycleMs', {
+    get: () => (this.chickenTier >= 2 ? CHICKEN_CYCLE_T2 : CHICKEN_CYCLE_T1),
+    configurable: true
+  });
+
+  this.coop = coopObj;
+  this.producers.push(coopObj);
+};
