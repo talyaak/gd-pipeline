@@ -116,6 +116,7 @@ const PAD_Y = 1252;                   // 1412 - 112 - 48 = 1252 (legacy, unused)
 const PAD_W = 256;                    // 160 * 1.6
 const PAD_H = 112;                    // 70 * 1.6
 const COINS_Y = 64;                   // 40 * 1.6
+const WORLD_BACKGROUND_COLOR = '#8fbc8f';  // named so it/textures can be swapped without hunting magic values
 // Fixed world Y coordinates for the stall and upgrade pad (this sub-dispatch).
 // The plot grid's maximum extent is PLOT_AREA_TOP(192) + 96 + (MAX_PLOT_ROWS-1)*(PLOT_SIZE+PLOT_GAP) + PLOT_SIZE
 // = 192 + 96 + 2*112 + 96 = 608. WORLD_H is 2000, so 700/900 leave a comfortable
@@ -187,7 +188,7 @@ class PlayScene extends Phaser.Scene {
     this.growSpeedMult = 1;
     this.plotGridCapped = false;
 
-    this.cameras.main.setBackgroundColor('#8fbc8f');
+    this.cameras.main.setBackgroundColor(WORLD_BACKGROUND_COLOR);
 
     // Section D: two-camera split (world camera follows/zooms/scrolls; a
     // second, non-following UI camera renders HUD, its own scroll fixed by
@@ -455,8 +456,20 @@ class PlayScene extends Phaser.Scene {
       }
     });
 
-    // Also handle pointerout (mouse leaves canvas) - deactivate joystick
-    this.input.on('pointerout', () => {
+    // Also handle gameout (pointer leaves the game canvas) - deactivate
+    // joystick. Deliberately NOT 'pointerout': Phaser's scene-level input
+    // plugin also emits 'pointerout' whenever the pointer moves off ANY
+    // interactive game object underneath it (processOverOutEvents, called
+    // every frame from updateInputPlugins) -- not just when it leaves the
+    // canvas. With 'pointerout' here, dragging the joystick across the
+    // upgrade pad's hit area (padG, setInteractive()) fired this handler
+    // and killed the joystick mid-drag, well within canvas bounds. Root-
+    // caused via live instrumentation (wrapped _deactivateJoystick,
+    // captured the call stack: onMouseMove -> updateInputPlugins -> update
+    // -> processOverOutEvents -> emit('pointerout')). 'gameout' is Phaser's
+    // actual InputManager-level canvas-leave event, unaffected by what's
+    // underneath the pointer.
+    this.input.on('gameout', () => {
       if (this.joystickActive) {
         this._deactivateJoystick();
       }
@@ -1793,7 +1806,7 @@ const config = {
     width: '100%',
     height: '100%'
   },
-  backgroundColor: '#8fbc8f',
+  backgroundColor: WORLD_BACKGROUND_COLOR,
   scene: [PlayScene],
   audio: { noAudio: true },
   resolution: 2,  // Cap effective DPR at 2x for performance
