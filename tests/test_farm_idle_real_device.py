@@ -3007,3 +3007,192 @@ def test_joystick_drag_through_upgrade_pad_keeps_moving_and_does_not_open_sheet(
             f"a plain tap starting on the upgrade pad (no drag) did not open the sheet: "
             f"sheetVisible={after_tap}"
         )
+
+
+@pytest.mark.slow
+def test_start_hint_follows_farmer_and_dismisses_on_real_movement():
+    """Hotfix regression test (Instinct Wire issue #2, priority interrupt
+    5727866173): Tal's playtest finding -- "the start tween for the
+    character does not stick to it if player moves" -- the start hint used
+    to be positioned once at boot and never moved again, so it went stale
+    at the farmer's spawn point as soon as he walked away.
+
+    Drives a real held joystick drag (not a programmatic position
+    assignment) to move the farmer a small amount and confirms the hint's
+    on-screen position tracks him, then continues the drag further and
+    confirms the hint auto-dismisses once he's moved far enough away.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        initial = page.evaluate("""() => {
+            const s = window.__GAME__.scene.scenes[0];
+            return {
+                farmerX: s.farmer.x, farmerY: s.farmer.y,
+                hintX: s.startHint.x, hintY: s.startHint.y,
+                hintVisible: s.startHint.visible,
+            };
+        }""")
+        assert initial["hintVisible"], "start hint should be visible right after boot"
+
+        # Real held joystick drag: start on the joystick, move a modest
+        # amount (well below the dismiss threshold), and read the hint's
+        # position while still holding -- this exercises the actual
+        # per-frame update() path, not a one-shot position assignment.
+        start_x, start_y = 195, 400
+        page.mouse.move(start_x, start_y)
+        page.mouse.down()
+        page.wait_for_timeout(50)
+        active = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
+        assert active, "joystick did not activate at the drag start point"
+
+        page.mouse.move(start_x + 60, start_y, steps=5)
+        page.wait_for_timeout(150)
+
+        mid_drag = page.evaluate("""() => {
+            const s = window.__GAME__.scene.scenes[0];
+            return {
+                farmerX: s.farmer.x, farmerY: s.farmer.y,
+                hintX: s.startHint.x, hintY: s.startHint.y,
+                hintVisible: s.startHint.visible,
+            };
+        }""")
+        assert mid_drag["hintVisible"], (
+            f"hint disappeared after only a small real move -- dismiss threshold firing too early: {mid_drag}"
+        )
+        moved_so_far = ((mid_drag["farmerX"] - initial["farmerX"]) ** 2 + (mid_drag["farmerY"] - initial["farmerY"]) ** 2) ** 0.5
+        assert moved_so_far > 20, (
+            f"real joystick drag did not move the farmer meaningfully: {initial} -> {mid_drag}"
+        )
+        hint_moved = ((mid_drag["hintX"] - initial["hintX"]) ** 2 + (mid_drag["hintY"] - initial["hintY"]) ** 2) ** 0.5
+        assert hint_moved > 20, (
+            f"start hint did not follow the farmer's real movement: before={initial}, after={mid_drag}"
+        )
+
+        # Continue the same held drag well past the dismiss threshold.
+        page.mouse.move(start_x + 260, start_y, steps=8)
+        page.wait_for_timeout(400)
+        page.mouse.up()
+        page.wait_for_timeout(50)
+
+        after_dismiss = page.evaluate("""() => {
+            const s = window.__GAME__.scene.scenes[0];
+            return { hintVisible: s.startHint.visible, textVisible: s.startHintText.visible };
+        }""")
+        browser.close()
+
+        assert not after_dismiss["hintVisible"], (
+            f"start hint did not auto-dismiss after a real move well past the threshold: {after_dismiss}"
+        )
+        assert not after_dismiss["textVisible"], (
+            f"start hint text did not auto-dismiss after a real move well past the threshold: {after_dismiss}"
+        )
+
+
+@pytest.mark.slow
+def test_start_hint_triangle_draws_local_coordinates_with_bounded_command_buffer():
+    """Gate review 13 (Instinct Wire issue #2) required this in addition to
+    test_start_hint_follows_farmer_and_dismisses_on_real_movement: that
+    test only asserted startHint.x/y properties, which can look correct
+    while the visibly-rendered triangle is wrong -- exactly what happened
+    in the original bug. _repositionStartHint() draws the pointer triangle
+    with fillTriangle(hintX, hintY + 30, hintX - 20, hintY + 10, hintX +
+    20, hintY + 10), but those are LOCAL coordinates on the Graphics
+    object, and the object itself is ALSO moved to (hintX, hintY) via
+    this.startHint.x/.y on the lines just above -- double-applying the
+    offset. The object's own .x/.y properties were always "correct" by
+    definition; only the actual draw commands reveal the bug.
+
+    Rather than screenshot-sampling pixels (fragile here: startHintText's
+    own same-colored background box overlaps the triangle's area, and the
+    pulse tween's animated alpha makes any fixed color-distance threshold
+    inconsistent), this reads Phaser's own Graphics.commandBuffer -- the
+    literal numeric arguments passed to fillStyle/fillTriangle -- which is
+    exact and has no rendering/timing ambiguity. A correct implementation
+    always ends the buffer with the LOCAL triangle coordinates [0, 30,
+    -20, 10, 20, 10], regardless of where the object itself has moved to;
+    the original bug instead recorded the CURRENT hintX/hintY baked into
+    those same 6 numbers (e.g. [360, 454, 340, 434, 380, 434] at boot),
+    proving the double-offset directly from the draw call itself. The same
+    read also proves the second bug fixed in the same review: no clear()
+    before redrawing meant the buffer accumulated a full copy of every
+    historical draw, growing without bound (documented in review as
+    47 -> 317 -> 557 within seconds) -- a correct implementation's buffer
+    stays a small, constant size every frame.
+    """
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        _boot(page, "iPhone_12_tall_contrast")
+
+        def read_triangle_command():
+            return page.evaluate("""() => {
+                const s = window.__GAME__.scene.scenes[0];
+                const buf = s.startHint.commandBuffer;
+                // The last 6 numbers in the buffer are always the most
+                // recent fillTriangle's (x0,y0,x1,y1,x2,y2) arguments,
+                // whatever coordinate space the code happens to use.
+                const lastTriangleArgs = buf.slice(-6);
+                return {
+                    hintX: s.startHint.x, hintY: s.startHint.y,
+                    commandBufferLen: buf.length,
+                    lastTriangleArgs,
+                };
+            }""")
+
+        initial = read_triangle_command()
+        assert initial["commandBufferLen"] <= 15, (
+            f"startHint's Graphics commandBuffer is already unexpectedly large right after boot -- "
+            f"expected a small, constant-size buffer (a single fillStyle+fillTriangle call), got "
+            f"length={initial['commandBufferLen']}: {initial}"
+        )
+        assert initial["lastTriangleArgs"] == [0, 30, -20, 10, 20, 10], (
+            f"the triangle is drawn with the WRONG local coordinates -- expected exactly "
+            f"[0, 30, -20, 10, 20, 10] (correct, relative to the object's own already-applied "
+            f"position), got {initial['lastTriangleArgs']}. This is the exact double-offset bug: "
+            f"the object is at (hintX, hintY)={initial['hintX']},{initial['hintY']} AND the local "
+            f"draw coordinates also encode hintX/hintY, so the visible triangle renders near world "
+            f"(2*hintX, hintY+hintY+30) instead of just below the hint text."
+        )
+
+        # Real held joystick drag, sampling the command buffer across
+        # several real frames while the hint stays visible and tracking a
+        # real farmer move, to prove BOTH properties hold after real
+        # movement too -- not just once at boot.
+        start_x, start_y = 195, 400
+        page.mouse.move(start_x, start_y)
+        page.mouse.down()
+        page.wait_for_timeout(50)
+        active = page.evaluate("() => window.__GAME__.scene.scenes[0].joystickActive")
+        assert active, "joystick did not activate at the drag start point"
+
+        samples = []
+        for _ in range(6):
+            page.mouse.move(start_x + 10, start_y, steps=1)
+            page.wait_for_timeout(80)
+            samples.append(read_triangle_command())
+
+        lengths = [s["commandBufferLen"] for s in samples]
+        assert max(lengths) <= 15, (
+            f"startHint's Graphics commandBuffer grew well beyond a single frame's draw calls across "
+            f"real movement frames -- clear() is not bounding it: lengths={lengths}"
+        )
+        assert lengths[-1] <= lengths[0] + 4, (
+            f"commandBuffer length trended upward across frames instead of staying flat -- looks like "
+            f"accumulation, not a bounded per-frame redraw: lengths={lengths}"
+        )
+        for s in samples:
+            assert s["lastTriangleArgs"] == [0, 30, -20, 10, 20, 10], (
+                f"after a real farmer move, the triangle's local draw coordinates are no longer "
+                f"[0, 30, -20, 10, 20, 10] -- got {s['lastTriangleArgs']} while hint was at "
+                f"({s['hintX']}, {s['hintY']}). Combined with "
+                f"test_start_hint_follows_farmer_and_dismisses_on_real_movement's proof that the "
+                f"object's own position tracks the farmer, this proves the visible triangle renders "
+                f"at the correct farmer-relative screen point, not the old fixed double-offset "
+                f"position near the upgrade pad."
+            )
+
+        page.mouse.up()
+        browser.close()
