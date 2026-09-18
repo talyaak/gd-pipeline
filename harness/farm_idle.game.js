@@ -28,6 +28,7 @@ const JOYSTICK_RADIUS = 80;   // visual/logical radius of the joystick base
 
 // Auto-collect magnet
 const MAGNET_RADIUS = 60;     // coins/crops within this radius fly to farmer automatically
+const START_HINT_DISMISS_DIST = 100;  // farmer must move this far from spawn to auto-dismiss the start hint
 
 // Carry stack (real-device defect #1 fix): the carried-crop stack has an
 // explicit, enforced upper bound. Without this, _addToCarryStack() grew the
@@ -845,36 +846,14 @@ class PlayScene extends Phaser.Scene {
       _showStartHint() {
         // Position hint near farmer, above them with pulse animation
         if (!this.startHint || !this.startHintText) return;
-        const fx = this.farmer.x;
-        const fy = this.farmer.y;
-        // Ensure hint doesn't overlap the plot row. _plotPosition() places row 0
-        // at PLOT_AREA_TOP + 96 (not PLOT_AREA_TOP itself -- that extra offset
-        // is header/progress-bar space above the plots), so the row's actual
-        // bottom edge is _plotPosition(0).y + PLOT_SIZE. startHintText has
-        // origin(0.5), so hintY is its vertical CENTER -- the floor must also
-        // clear the text's own half-height above that center, not just add a
-        // flat margin to the plot's bottom edge (an earlier version of this
-        // fix used PLOT_AREA_TOP + PLOT_SIZE + 20, which landed inside the
-        // plot row's own vertical span; a later version fixed the plot-row
-        // offset but still only added a flat +20, leaving the text's top edge
-        // a few px inside the plot row on short viewports).
-        const plotRowBottom = this._plotPosition(0).y + PLOT_SIZE;
-        const hintHalfHeight = this.startHintText.height / 2;
-        const minHintY = plotRowBottom + hintHalfHeight + 20;
-        // Same origin(0.5) reasoning as the vertical clamp above, but
-        // horizontal: hintX is the text's center, so when the farmer is near
-        // the left/right edge (e.g. the far-right plot column) the label can
-        // extend past the screen edge unless clamped by its own half-width.
-        const hintHalfWidth = this.startHintText.width / 2;
-        const hintX = Math.min(Math.max(fx, hintHalfWidth + 8), W - hintHalfWidth - 8);
-        const hintY = Math.max(fy - 120, minHintY);
-        this.startHint.x = hintX;
-        this.startHint.y = hintY;
-        this.startHintText.x = hintX;
-        this.startHintText.y = hintY;
-    // Draw arrow pointing down to farmer
-    this.startHint.fillStyle(0x2e7d32, 0.9);
-    this.startHint.fillTriangle(hintX, hintY + 30, hintX - 20, hintY + 10, hintX + 20, hintY + 10);
+        // Remember where the farmer was when the hint appeared, so update()
+        // can tell when he's moved far enough to dismiss it (real-device
+        // playtest bug: this hint used to be positioned once here and never
+        // moved again, so it went stale/stranded as soon as the farmer
+        // walked away -- see _repositionStartHint()).
+        this._startHintOriginX = this.farmer.x;
+        this._startHintOriginY = this.farmer.y;
+        this._repositionStartHint();
     // Pulse animation
     if (this.startHintPulse) this.startHintPulse.stop();
     this.startHintPulse = this.tweens.add({
@@ -884,6 +863,45 @@ class PlayScene extends Phaser.Scene {
       yoyo: true,
       repeat: -1
     });
+  }
+
+  _repositionStartHint() {
+    // Recompute the hint's position from the farmer's CURRENT position and
+    // redraw the pointer arrow. Called once from _showStartHint() and again
+    // every frame from update() while the hint is visible, so it tracks the
+    // farmer as he moves instead of staying pinned to his spawn point.
+    // Split out from _showStartHint() specifically so the per-frame call
+    // doesn't also restart the pulse tween every frame.
+    const fx = this.farmer.x;
+    const fy = this.farmer.y;
+    // Ensure hint doesn't overlap the plot row. _plotPosition() places row 0
+    // at PLOT_AREA_TOP + 96 (not PLOT_AREA_TOP itself -- that extra offset
+    // is header/progress-bar space above the plots), so the row's actual
+    // bottom edge is _plotPosition(0).y + PLOT_SIZE. startHintText has
+    // origin(0.5), so hintY is its vertical CENTER -- the floor must also
+    // clear the text's own half-height above that center, not just add a
+    // flat margin to the plot's bottom edge (an earlier version of this
+    // fix used PLOT_AREA_TOP + PLOT_SIZE + 20, which landed inside the
+    // plot row's own vertical span; a later version fixed the plot-row
+    // offset but still only added a flat +20, leaving the text's top edge
+    // a few px inside the plot row on short viewports).
+    const plotRowBottom = this._plotPosition(0).y + PLOT_SIZE;
+    const hintHalfHeight = this.startHintText.height / 2;
+    const minHintY = plotRowBottom + hintHalfHeight + 20;
+    // Same origin(0.5) reasoning as the vertical clamp above, but
+    // horizontal: hintX is the text's center, so when the farmer is near
+    // the left/right edge (e.g. the far-right plot column) the label can
+    // extend past the screen edge unless clamped by its own half-width.
+    const hintHalfWidth = this.startHintText.width / 2;
+    const hintX = Math.min(Math.max(fx, hintHalfWidth + 8), W - hintHalfWidth - 8);
+    const hintY = Math.max(fy - 120, minHintY);
+    this.startHint.x = hintX;
+    this.startHint.y = hintY;
+    this.startHintText.x = hintX;
+    this.startHintText.y = hintY;
+    // Draw arrow pointing down to farmer
+    this.startHint.fillStyle(0x2e7d32, 0.9);
+    this.startHint.fillTriangle(hintX, hintY + 30, hintX - 20, hintY + 10, hintX + 20, hintY + 10);
   }
 
   _hideStartHint() {
@@ -1791,6 +1809,21 @@ class PlayScene extends Phaser.Scene {
     }
 
     if (this.state !== STATE.PLAYING) return;
+
+    // Start hint: track the farmer's live position every frame while
+    // visible (real-device playtest bug -- it used to be positioned once
+    // and never moved again), and auto-dismiss once he's clearly moved
+    // away from where it first appeared. _hideStartHint() existed before
+    // this fix but was never actually called from anywhere.
+    if (this.startHint && this.startHint.visible) {
+      this._repositionStartHint();
+      const movedDist = Phaser.Math.Distance.Between(
+        this.farmer.x, this.farmer.y, this._startHintOriginX, this._startHintOriginY
+      );
+      if (movedDist > START_HINT_DISMISS_DIST) {
+        this._hideStartHint();
+      }
+    }
 
     // Magnet already handles stall selling in _updateAutoAssist
     this._updateAutoAssist(dt);
