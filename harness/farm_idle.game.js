@@ -456,8 +456,20 @@ class PlayScene extends Phaser.Scene {
       }
     });
 
-    // Also handle pointerout (mouse leaves canvas) - deactivate joystick
-    this.input.on('pointerout', () => {
+    // Also handle gameout (pointer leaves the game canvas) - deactivate
+    // joystick. Deliberately NOT 'pointerout': Phaser's scene-level input
+    // plugin also emits 'pointerout' whenever the pointer moves off ANY
+    // interactive game object underneath it (processOverOutEvents, called
+    // every frame from updateInputPlugins) -- not just when it leaves the
+    // canvas. With 'pointerout' here, dragging the joystick across the
+    // upgrade pad's hit area (padG, setInteractive()) fired this handler
+    // and killed the joystick mid-drag, well within canvas bounds. Root-
+    // caused via live instrumentation (wrapped _deactivateJoystick,
+    // captured the call stack: onMouseMove -> updateInputPlugins -> update
+    // -> processOverOutEvents -> emit('pointerout')). 'gameout' is Phaser's
+    // actual InputManager-level canvas-leave event, unaffected by what's
+    // underneath the pointer.
+    this.input.on('gameout', () => {
       if (this.joystickActive) {
         this._deactivateJoystick();
       }
