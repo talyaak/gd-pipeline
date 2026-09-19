@@ -415,14 +415,14 @@ class PlayScene extends Phaser.Scene {
         const introBanner = Juice.IntroBanner.create(this, { label: 'HARVEST \u2022 SELL \u2022 UPGRADE', y: bannerY, color: '#e65100' });
     this._introBannerText = this.children.list[this.children.list.length - 1];
     this._registerHudObject(this._introBannerText);
-    // TapHint is positioned at the farmer's world coordinates -- world object.
-    const introHint = this._withNewChildrenRegistered(
-      this._registerWorldObject,
-      () => Juice.TapHint.create(this, this.farmer.x, this.farmer.y, { color: 0xe65100, radius: 64 })
-    );
+    // Custom intro hint (not Juice.TapHint) -- see _createIntroHint() for
+    // the root cause this replaces. Tracks the farmer every frame
+    // (update()) and dismisses on first real input (_activateJoystick());
+    // this delayedCall is now only a backstop.
+    this._createIntroHint();
     this.time.delayedCall(2500, () => {
       introBanner.destroy();
-      introHint.destroy();
+      this._hideIntroHint();
       this._introBannerText = null;
     });
 
@@ -495,6 +495,11 @@ class PlayScene extends Phaser.Scene {
   }
 
   _activateJoystick(x, y) {
+    // First real player input (single choke point: every pointerdown that
+    // reaches here -- mouse or touch, tap-to-move or joystick-drag-start --
+    // routes through this call) dismisses the intro hint immediately,
+    // rather than waiting on the unreliable delayedCall backstop.
+    this._hideIntroHint();
     // Clamp joystick center to playable area (above upgrade sheet, in logical coords)
     const layout = this.computeLayout();
     const maxY = layout.visibleWorldHeight - JOYSTICK_RADIUS;
@@ -1883,6 +1888,10 @@ class PlayScene extends Phaser.Scene {
       }
     }
 
+    // Intro hint: track the farmer every frame while visible (see
+    // _createIntroHint()/_repositionIntroHint()).
+    this._repositionIntroHint();
+
     // Magnet already handles stall selling in _updateAutoAssist
     this._updateAutoAssist(dt);
   }
@@ -1991,4 +2000,42 @@ PlayScene.prototype._createCoop = function () {
 
   this.coop = coopObj;
   this.producers.push(coopObj);
+};// Intro hint fix (Wire issue #2): custom implementation, not Juice.TapHint,
+// so it can track the farmer's live position every frame and dismiss on
+// first real player input, instead of relying solely on a fixed-duration
+// timer. Root cause of the bug this replaces: this.time.delayedCall was
+// found to run roughly 2.7x slower than real wall-clock time in this
+// environment (Phaser's Clock update/preUpdate hooks confirmed, via direct
+// instrumentation, not to be invoked on the scene's normal per-frame step
+// path) -- stranding the old fixed-position Juice.TapHint ring+dot at the
+// farmer's boot spawn point for several real seconds while he moved away.
+// The 2500ms delayedCall at the original call site now stays only as a
+// backstop cleanup.
+PlayScene.prototype._createIntroHint = function () {
+  this._introHintOriginX = this.farmer.x;
+  this._introHintOriginY = this.farmer.y;
+  const ring = this.add.circle(this.farmer.x, this.farmer.y, 64, 0xe65100, 0).setStrokeStyle(3, 0xe65100, 0.9);
+  const dot = this.add.circle(this.farmer.x, this.farmer.y, 6, 0xe65100, 0.9);
+  this._registerWorldObject(ring);
+  this._registerWorldObject(dot);
+  this._introHintRing = ring;
+  this._introHintDot = dot;
+  this._introHintRingTween = this.tweens.add({
+    targets: ring, radius: 64 + 20, alpha: 0, duration: 700, repeat: -1, ease: 'Cubic.easeOut',
+    onRepeat: () => { ring.radius = 64; ring.alpha = 0.9; }
+  });
+  this._introHintDotTween = this.tweens.add({ targets: dot, scale: 0.7, duration: 350, yoyo: true, repeat: -1 });
+};
+
+PlayScene.prototype._repositionIntroHint = function () {
+  if (!this._introHintRing || !this._introHintDot) return;
+  this._introHintRing.setPosition(this.farmer.x, this.farmer.y);
+  this._introHintDot.setPosition(this.farmer.x, this.farmer.y);
+};
+
+PlayScene.prototype._hideIntroHint = function () {
+  if (this._introHintRingTween) { this._introHintRingTween.stop(); this._introHintRingTween = null; }
+  if (this._introHintDotTween) { this._introHintDotTween.stop(); this._introHintDotTween = null; }
+  if (this._introHintRing) { this._introHintRing.destroy(); this._introHintRing = null; }
+  if (this._introHintDot) { this._introHintDot.destroy(); this._introHintDot = null; }
 };
