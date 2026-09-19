@@ -477,7 +477,7 @@ class PlayScene extends Phaser.Scene {
       }
     });
 
-    this.input.keyboard.on('keydown-SPACE', () => { if (!isLandscape) this._begin(); });
+    this.input.keyboard.on('keydown-SPACE', () => { if (!isLandscape) { this._begin(); this._hideIntroHint(); } });
 
     // Scale Manager resize handler - re-anchor HUD elements
     this.scale.on('resize', this._onResize, this);
