@@ -19,6 +19,7 @@ from typing import TypedDict
 # Load .env for OpenRouter API key
 load_dotenv()
 
+from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt
@@ -89,7 +90,7 @@ MAX_GDD_ATTEMPTS       = 3
 MAX_IMPL_SPEC_ATTEMPTS = 2
 MAX_CODE_ATTEMPTS      = 3
 MAX_VISION_ATTEMPTS    = 2
-MAX_PLAYTEST_ATTEMPTS  = 1
+MAX_PLAYTEST_ATTEMPTS  = 2
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +116,7 @@ class PipelineState(TypedDict):
     vision_screenshot_path: str | None
     # New: Playtest agent
     playtest_results: dict | None
+    playtest_review: CodeReview | None
     playtest_attempt: int
 
 
@@ -1369,21 +1371,36 @@ def verify_vision(state: PipelineState) -> PipelineState:
         juice_list="; ".join(gdd.juice_list[:5]),
     )
 
-    # Note: OpenRouter vision requires specific message format
-    # For now, we'll use a simpler approach - the vision model can't easily take
-    # image + structured output in one call via langchain. We'll do a two-step:
-    # 1. Vision model describes what it sees
-    # 2. Review model scores based on description
-    # TODO: Implement proper vision structured output when langchain supports it
-
-    # For now, create a basic review from automated checks
-    review = CodeReview(
-        passed=True,
-        score=7,
-        strengths=["Screenshot captured successfully"],
-        issues=[],  # Would be populated by vision analysis
-        suggestions=["Implement full vision model review when API supports structured output + images"]
+    # Multimodal call: checklist prompt + screenshot to the vision model
+    message = HumanMessage(
+        content=[
+            {"type": "text", "text": prompt},
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"},
+            },
+        ]
     )
+
+    try:
+        review = invoke_with_retry(structured_llm, [message])
+        if review is None:
+            review = CodeReview(
+                passed=False, score=4,
+                strengths=[],
+                issues=["Vision review returned no structured output"],
+                suggestions=["Check VISION_MODEL supports function calling"],
+            )
+    except Exception as e:
+        # Non-function-calling or vision-incapable model must not crash the run;
+        # score as a soft fail so the rework loop runs with a real diagnosis.
+        print(f"  [verify_vision] Vision review error: {e}")
+        review = CodeReview(
+            passed=False, score=5,
+            strengths=[],
+            issues=[f"Vision model review failed: {e}"],
+            suggestions=["Check VISION_MODEL supports image input + function calling"],
+        )
 
     path = output.save("05_vision", "review.json", review.model_dump(), attempt=attempt)
     print(f"  [verify_vision] Score {review.score}/10 -> {output.rel(path)}")
@@ -1505,6 +1522,11 @@ def run_playtest(state: PipelineState) -> PipelineState:
             test_duration = 30000  # ms
             start_time = asyncio.get_event_loop().time() * 1000
 
+            async def record_action():
+                await page.evaluate(
+                    "() => { window.__playtest_telemetry.actions++; }"
+                )
+
             while (asyncio.get_event_loop().time() * 1000 - start_time) < test_duration:
                 # Random inputs: tap/click for jump, swipe for lane change
                 action_type = random.choice(["tap", "swipe_left", "swipe_right", "hold"])
@@ -1526,10 +1548,41 @@ def run_playtest(state: PipelineState) -> PipelineState:
                     await asyncio.sleep(0.1)
                     await page.mouse.up()
 
+                await record_action()
                 await asyncio.sleep(random.uniform(0.1, 0.5))
 
             # Extract telemetry
             telemetry = await page.evaluate("() => window.__playtest_telemetry")
+
+            # Best-effort score extraction: the codegen prompts require the game
+            # to persist its score in localStorage and render it on the HUD.
+            # Keys like "highScore"/"best" are excluded so a stale record is
+            # never reported as the current playtest score.
+            score_info = await page.evaluate(
+                """() => {
+                const read = v => {
+                    if (v === null || v === undefined) return null;
+                    const m = String(v).match(/-?\\d+/);
+                    return m ? parseInt(m[0], 10) : null;
+                };
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (/high|best/i.test(k)) continue;
+                    if (/score/i.test(k)) {
+                        const n = read(localStorage.getItem(k));
+                        if (n !== null) return {score: n, source: 'localStorage:' + k};
+                    }
+                }
+                const el = document.querySelector('#score, .score, [class*="score"], [id*="score"]');
+                if (el) {
+                    const n = read(el.textContent);
+                    if (n !== null) return {score: n, source: 'dom'};
+                }
+                return {score: 0, source: 'none'};
+            }"""
+            )
+            telemetry["score"] = score_info["score"]
+            telemetry["scoreSource"] = score_info["source"]
             await browser.close()
             return telemetry
 
@@ -1543,6 +1596,7 @@ def run_playtest(state: PipelineState) -> PipelineState:
 
         playtest_data = {
             "score": telemetry.get("score", 0),
+            "score_source": telemetry.get("scoreSource", "none"),
             "actions": telemetry.get("actions", 0),
             "aps": telemetry.get("actions", 0) / 30,
             "survival_time": survival_time,
@@ -1555,7 +1609,7 @@ def run_playtest(state: PipelineState) -> PipelineState:
 
         # Save telemetry
         telemetry_path = run_dir / f"playtest_telemetry_attempt_{attempt}.json"
-        telemetry_path.write_text(json.dumps(playtest_data, indent=2))
+        telemetry_path.write_text(json.dumps(playtest_data, indent=2), encoding="utf-8")
         print(f"  [run_playtest] Telemetry saved -> {output.rel(telemetry_path)}")
 
     except Exception as e:
@@ -1576,10 +1630,18 @@ def run_playtest(state: PipelineState) -> PipelineState:
         genre=state["genre"],
         core_loop="; ".join(gdd.core_loop[:3]),
         playtest_json=json.dumps(playtest_data, indent=2),
-        **playtest_data
+        **playtest_data,
+        fps=playtest_data["fps_avg"],
     )
 
     review = invoke_with_retry(structured_llm, prompt)
+    if review is None:
+        review = CodeReview(
+            passed=False, score=4,
+            strengths=[],
+            issues=["Playtest review returned no structured output"],
+            suggestions=["Check REVIEW_MODEL supports function calling"],
+        )
 
     status = "passed" if review.passed and review.score >= 7 else "needs rework"
     path = output.save("06_playtest", "review.json", review.model_dump(), attempt=attempt)
@@ -1587,17 +1649,23 @@ def run_playtest(state: PipelineState) -> PipelineState:
 
     return {
         "playtest_results": playtest_data,
+        "playtest_review": review,
         "playtest_attempt": attempt,
     }
 
 
 def should_rework_playtest(state: PipelineState) -> str:
-    """Conditional edge: playtest pass -> END, fail -> rework code (if attempts remain)."""
-    review = state.get("playtest_review")  # Would need to be added to state
+    """Conditional edge: playtest pass or attempts exhausted -> END, fail -> rework code."""
+    review = state.get("playtest_review")
     attempt = state.get("playtest_attempt", 1)
 
-    # For now, always end after playtest (it's advisory)
-    return END
+    if review and review.passed and review.score >= 7:
+        return END
+
+    if attempt >= MAX_PLAYTEST_ATTEMPTS:
+        return END
+
+    return "generate_code"
 
 
 # ---------------------------------------------------------------------------
@@ -1625,14 +1693,18 @@ def build_graph(checkpointer=None):
         generate_code -> review_code ─┬─ (fail) -> generate_code
                                       └─ (pass) -> verify_vision
                                                          │
-                                          ┌─────────────┴─────────────┐
-                                          ↓                           ↓
-                                    (fail/max)                      (pass)
-                                          ↓                           ↓
-                                     generate_code              run_playtest
+                                          ┌─────────────┼──────────────┐
+                                          ↓             ↓              ↓
+                                   (fail, attempts  (max attempts)   (pass)
+                                    left)               ↓              ↓
+                                          ↓         run_playtest  run_playtest
+                                     generate_code
                                                                        │
-                                                                       ↓
-                                                                     END
+                                                ┌──────────────────────┴───┐
+                                                ↓                          ↓
+                                          (fail, attempts left)      (pass/max) -> END
+                                                ↓
+                                          generate_code
     """
     builder = StateGraph(PipelineState)
 
@@ -1669,11 +1741,12 @@ def build_graph(checkpointer=None):
     builder.add_edge("generate_code", "review_code")
     builder.add_conditional_edges("review_code", should_rework_code)
 
-    # Edges — Vision verification
-    builder.add_edge("verify_vision", "run_playtest")
+    # Edges — Vision verification: conditional only (fixed + conditional edges
+    # on the same node are ambiguous in LangGraph; should_rework_vision owns all
+    # routing: pass -> run_playtest, fail/max attempts -> generate_code/run_playtest).
     builder.add_conditional_edges("verify_vision", should_rework_vision)
 
-    # Edges — Playtest
-    builder.add_edge("run_playtest", END)
+    # Edges — Playtest: pass or attempts exhausted -> END, fail -> generate_code.
+    builder.add_conditional_edges("run_playtest", should_rework_playtest)
 
     return builder.compile(checkpointer=checkpointer)
