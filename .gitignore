@@ -32,3 +32,5 @@ generated_game_standalone.html
 .instinct-wire/inbox.md
 .instinct-wire/watcher.log
 .instinct-wire/watcher.pid
+# APK-input spike: downloaded videos are local-only (metadata committed instead)
+tools/apk_input/videos/

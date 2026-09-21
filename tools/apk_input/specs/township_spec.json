@@ -1,0 +1,53 @@
+{
+  "slug": "township",
+  "source": {
+    "video_id": "X016xxJSVx8",
+    "url": "https://www.youtube.com/watch?v=X016xxJSVx8",
+    "title": "TOWNSHIP Level 157 Gameplay # 3",
+    "channel": "TownshipDotCom",
+    "duration_s": 805
+  },
+  "model": "nex-agi/nex-n2.5-pro:free",
+  "frames_sampled": 8,
+  "spec": {
+    "core_loop": [
+      "Inferred: Grow or collect crop/animal ingredients on farm plots to stock the barn; fields and animal areas are visible, but the plant/harvest/collect gestures are not sampled.",
+      "Seen: Spend stored ingredients to start timed factory productions from recipe panels with empty slots, ingredient requirements, barn counts, and countdowns.",
+      "Seen: Collect finished goods when factory slots or full badges indicate completion.",
+      "Seen: Tap blue exclamation/question order markers above buildings to fulfill visible town/building orders.",
+      "Seen: Spend coins, cash, and expansion items on queue slots, building/land expansions, and town layout changes.",
+      "Seen: Check co-op/helper requests and collect reward chests between production and order cycles."
+    ],
+    "controls": [
+      "Seen: Tap recipe/product icons and empty factory slots to start production.",
+      "Seen: Tap completed/full production icons and the chest Collect button to claim goods or rewards.",
+      "Seen: Tap blue exclamation/question markers above buildings to open or fulfill orders.",
+      "Seen: Tap plus buttons near level, currency, and queue indicators to buy or expand capacity.",
+      "Seen: Tap side arrows in factory recipe carousels to browse products; a horizontal swipe is plausible but not shown.",
+      "Seen: Tap chat input, send, and help buttons in the Helpers and Winners panel to communicate or respond to requests.",
+      "Inferred: Drag buildings or decorations in Edit Mode to rearrange the town; the frames show edit controls such as erase, rotate, confirm, save, and cancel, but not the drag itself.",
+      "Seen: No hold gesture is visible in the sampled frames."
+    ],
+    "progression": [
+      "Seen: Player progression is represented by a level number and XP bar.",
+      "Seen: Economy progression uses at least two visible currencies: coins and green cash.",
+      "Seen: Production progression adds recipes, production slots, queue management, and queue expansion options.",
+      "Seen: Storage progression is visible through barn inventory counts and No room states.",
+      "Seen: Spatial progression appears as adjacent land/building plots with timed expansion options near mountains and roads.",
+      "Seen: Social progression/request flow appears through co-op chat, helper messages, and new request notifications.",
+      "Inferred: Long-term depth likely unlocks more crops, animals, factories, community buildings, decorations, and map areas; exact unlock order is not visible."
+    ],
+    "session_feel": "Seen: The screen is a dense isometric farm/town packed with buildings, crops, timers, badges, order markers, social panels, and modal overlays. Pacing is asynchronous, with sampled timers from about 10 minutes to multiple hours. Inferred: Sessions are short check-ins to start, collect, fulfill, and expand, interleaved with longer waiting periods, aimed at casual mobile players who like colorful town/farm builders. Actual animation and audio juice cannot be determined from still frames.",
+    "confidence_notes": [
+      "Seen: The visible mechanics come from UI states in the sampled frames: top level/currencies, factory recipe/timer panels, order markers, chat panel, edit mode controls, expansion timers, and a reward chest.",
+      "Inferred: The first core-loop step, growing or collecting crop/animal ingredients, is inferred from visible farm fields and animal areas; no planting, harvesting, feeding, or animal collection animation is shown.",
+      "Inferred: Order fulfillment rewards and currency/XP changes are inferred from visible order markers and counters; exact reward amounts and accepted goods are not shown.",
+      "Inferred: Dragging in Edit Mode and swipe browsing in recipe lists are inferred from affordances; only tap targets, buttons, and arrows are visible.",
+      "Cannot tell: Whether timers run in real time, continue offline, or are turn/mission based; frames only show static countdowns.",
+      "Cannot tell: Audio, animation timing, juice intensity, haptics, and transition effects.",
+      "Cannot tell: Exact costs, sell prices, XP values, production formulas, storage limits, expansion requirements, or unlock order beyond displayed icons and timers.",
+      "Cannot tell: Off-screen systems and unsampled interactions such as train or helicopter orders, regatta tasks, zoo mechanics, events, monetization, notifications, or network/co-op behavior.",
+      "Cannot tell: Long-term session length and retention; short check-in pacing is inferred from visible minute/hour timers."
+    ]
+  }
+}

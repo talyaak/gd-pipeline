@@ -1,0 +1,32 @@
+{
+  "hay_day": {
+    "slug": "hay_day",
+    "query": "Hay Day gameplay",
+    "video_id": "u66L5jIjWHs",
+    "url": "https://www.youtube.com/watch?v=u66L5jIjWHs",
+    "title": "Hay Day Gameplay | Level 224 💚",
+    "channel": "a lara",
+    "duration_s": 990,
+    "local_file": "hay_day.mkv"
+  },
+  "township": {
+    "slug": "township",
+    "query": "Township gameplay",
+    "video_id": "X016xxJSVx8",
+    "url": "https://www.youtube.com/watch?v=X016xxJSVx8",
+    "title": "TOWNSHIP Level 157 Gameplay # 3",
+    "channel": "TownshipDotCom",
+    "duration_s": 805,
+    "local_file": "township.mkv"
+  },
+  "family_farm_adventure": {
+    "slug": "family_farm_adventure",
+    "query": "Family Farm Adventure gameplay",
+    "video_id": "hcDpmWRQn8o",
+    "url": "https://www.youtube.com/watch?v=hcDpmWRQn8o",
+    "title": "Family Farm Adventure - Gameplay Walkthrough part 1 - Tutorial (iOS,Android)",
+    "channel": "RSTURBOGAMING",
+    "duration_s": 598,
+    "local_file": "family_farm_adventure.mkv"
+  }
+}
