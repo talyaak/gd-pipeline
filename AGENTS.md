@@ -62,6 +62,6 @@ Known provider quirks (handled in code, don't rediscover): free vision seat does
 ## Self-continuity
 
 - `.commandcode/skills/the-wire/SKILL.md` — full protocol, auth recovery (gh device flow + ntfy ping to Tal on expiry), rollover procedure.
-- `.commandcode/wire-ledger.md` — instruction ledger (mirrored on the working branch).
+- `.commandcode/wire-ledger.md` — instruction ledger (carried to feat/apk-input at the [CMDC]→OpenCode handoff; full history also on claude/ai-game-pipeline-UHrBZ).
 - Before a context-window rollover: write `.commandcode/status.md` (current instruction, state, SHAs, next step), start a new chat, resume from status.md + the-wire skill + this file + issue #2.
 - ntfy (Tal's push channel): topic in `.env` as `NTFY_TOPIC`.
