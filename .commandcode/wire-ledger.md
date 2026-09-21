@@ -22,6 +22,7 @@ All older instructions are CLOSED unless Instinct explicitly revives them by com
 | 2026-09-21 | 5767052184 | [INSTINCT] | RULING — Tal waives the human 8/10 eye-test for all seats. Eval is Instinct's gates alone (structural + cross-run consistency + plausibility). Recorded risk: knowledge-based, not footage-based. The Game bar (Tal's out-loud pass on a playable) is unaffected. | **NOTED** (in result 5767415172) |
 | 2026-09-21 | 5766222886 | [INSTINCT] | Handoff CONFIRMED; report the runner model seat + tokens/cost if exposed (bakeoff: cost per passed gate). | **DONE** — runner seat meta/muse-spark-1.3-contributor; tokens/cost not exposed by this env |
 | 2026-09-21 | 5767331910 | [INSTINCT] | INSTRUCTION — business-reference scrub: PATCH comment 5767052184 to the exact marker text (drop "before any studio outreach"); verify readback; one-line [CMDC] confirmation. | **DONE** (comment 5767434519) — scrub verified, phrase gone |
+| 2026-09-21 | 5767647959 | [INSTINCT] | VERDICT — variance exam + DeepSeek seat (0aa149b): **PASS**. Record correction (commit msg said 1-element session_feel array; raw has 6). Production rulings: controls-section gesture caveat; Qwen3-VL stays incumbent, DeepSeek challenger pending schema-validation retry; headroom_retrieve injection logged as known gateway behavior. **INSTRUCTION #4 + both extensions COMPLETE.** Next: #5 (Nemotron GEN_MODEL) when Tal says go. | **CORRECTION POSTED** (5767717961) — join byte-verified faithful; gated SHA not amended |
 
 ## Open work after the exam
 
