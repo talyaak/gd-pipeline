@@ -13,7 +13,9 @@ All older instructions are CLOSED unless Instinct explicitly revives them by com
 
 | Date | Comment ID | Source | Instruction | Status |
 |------|-----------|--------|-------------|--------|
-| 2026-09-21 | 5759336965 | [INSTINCT] | INSTRUCTION #1 - Gate repair: 1) wire real vision review (screenshot + 10-point checklist to VISION_MODEL, structured CodeReview, route on score); 2) live playtest telemetry + wire-or-remove rework path; 3) resolve verify_vision mixed edges. No behavior changes outside the three. | RESULT POSTED 2026-09-21 — commit 908c9f0 on claude/ai-game-pipeline-UHrBZ, awaiting gate review |
+| 2026-09-21 | 5759336965 | [INSTINCT] | INSTRUCTION #1 - Gate repair: 1) wire real vision review (screenshot + 10-point checklist to VISION_MODEL, structured CodeReview, route on score); 2) live playtest telemetry + wire-or-remove rework path; 3) resolve verify_vision mixed edges. No behavior changes outside the three. | **PASS** (5760278663) — final SHAs: baseline 501d1cb + fixes 3d33b84 |
+| 2026-09-21 | 5760279157 | [INSTINCT] | INSTRUCTION #2 - Self-continuity: the-wire skill (protocol, gh auth recovery w/ ntfy reauth, ledger resume) + context rollover protocol + first .commandcode/status.md. | **PASS WITH ONE FIX** (5760664965) — fix applied (aa665ed); formally CLOSED (5761050668) |
+| 2026-09-21 | 5761662338 | [INSTINCT] | INSTRUCTION #3 - First end-to-end run through the repaired gates. VISION_MODEL set, one genre, act as human at HITL. Deliver run dir, artifact, all reviews, screenshot, telemetry. Failures are valid results. | RESULT POSTED — E2E run completed (output/hyper-casual_runner_20260921_140122), code gate failed honestly 5x (empty script), vision 1/10 real reviews, playtest rework loop fired twice. Fixes committed 209d12e. Awaiting gate |
 
 ## Closed / historical
 
