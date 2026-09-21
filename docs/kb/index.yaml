@@ -1,0 +1,52 @@
+# Knowledge base index for gd-pipeline
+# Generated 2026-09-21 from repo state at branch claude/ai-game-pipeline-UHrBZ (HEAD aff76d2 + uncommitted changes).
+
+kb_files:
+  - docs/kb/index.yaml          # this file
+  - docs/kb/architecture.md     # system shape, pipeline stages, data flow
+  - docs/kb/modules.md          # per-module reference
+  - docs/kb/agents.md           # agent roles and contracts
+  - docs/kb/gates.md            # quality gates
+  - docs/kb/conventions.md      # code style, naming, commit conventions
+  - docs/kb/decisions.md        # decision log from git history
+  - docs/kb/state.md            # current repo state, unfinished work
+  - docs/kb/glossary.md         # project terms
+
+source_modules:
+  - path: pipeline/__init__.py
+    purpose: "Empty package marker."
+  - path: pipeline/__main__.py
+    purpose: "Entry point for `python -m pipeline <genre>`; calls cli.main() at import time."
+  - path: pipeline/cli.py
+    purpose: "CLI: run/resume pipeline, handle HITL interrupts, --inject-code, write summary artifacts."
+  - path: pipeline/graph.py
+    purpose: "LangGraph pipeline: all node functions, all prompts, model config, graph wiring. The core file (~1680 lines)."
+  - path: pipeline/schemas.py
+    purpose: "Pydantic models for every structured LLM output (GenreAnalysis, GDD, ImplSpec, reviews, gamification bundle)."
+  - path: pipeline/output.py
+    purpose: "Run-scoped output dir management under output/<genre>_<ts>/ with attempt_N subfolders."
+  - path: pipeline/retry.py
+    purpose: "invoke_with_retry: exponential backoff (3 tries, 2s base) for openai connection/timeout/rate-limit errors."
+  - path: pipeline/validate.py
+    purpose: "Token-free static checks on generated game HTML: structure, banned dt names, external assets, Canvas-2D-on-Graphics, node --check."
+
+entry_points:
+  - command: python -m pipeline "<genre>"
+    desc: "Full pipeline run from genre string. (pipeline/__main__.py -> pipeline/cli.py:main)"
+  - command: python -m pipeline --resume <output_dir>
+    desc: "Resume an interrupted run from its checkpoint sqlite. (pipeline/cli.py:main)"
+  - command: python -m pipeline --resume <output_dir> --inject-code <game.html>
+    desc: "Inject existing HTML as generated code, resume at review_code. (pipeline/cli.py:_inject_code)"
+
+external_interfaces:
+  llm: "OpenRouter via langchain_openai.ChatOpenAI (pipeline/graph.py:43-86); keys: OPENROUTER_API_KEY; model selection via GEN_MODEL / REVIEW_MODEL / VISION_MODEL env vars (default 'openrouter/free')."
+  browser: "Playwright headless Chromium for vision screenshot + playtest (uncommitted work, pipeline/graph.py:1314-1600)."
+  env: ".env loaded via python-dotenv. NOTE: .env.example still shows OPENAI_API_KEY, stale vs OPENROUTER_API_KEY in code."
+
+repo_layout:
+  "pipeline/": "all source (8 files)"
+  "output/": "run artifacts (gitignored), 39 run dirs to date"
+  "docs/kb/": "this knowledge base"
+  ".claude/": "settings.local.json (local Claude Code permissions)"
+  tests: "none — no test files exist; pytest/ruff only declared as dev deps (pyproject.toml:18-21)"
+  ci: "none — no CI/workflow config anywhere in repo"

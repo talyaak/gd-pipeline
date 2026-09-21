@@ -68,9 +68,9 @@ def _display_gdd_review(interrupt_value: dict) -> str:
             print(f"    ~ {s}")
 
     print("\n" + "-" * 60)
-    print("  'approve' / 'a'  → proceed to implementation spec")
-    print("  'fix' / 'f'      → rework using the reviewer's issues + suggestions")
-    print("  <anything>      → rework with your custom feedback")
+    print("  'approve' / 'a'  -> proceed to implementation spec")
+    print("  'fix' / 'f'      -> rework using the reviewer's issues + suggestions")
+    print("  <anything>      -> rework with your custom feedback")
     print("-" * 60)
 
     response = input("\n> ").strip()
@@ -118,9 +118,9 @@ def _display_impl_spec_review(interrupt_value: dict) -> str:
             print(f"    ~ {s}")
 
     print("\n" + "-" * 60)
-    print("  'approve' / 'a'  → proceed to code generation (spec is good enough)")
-    print("  'fix' / 'f'      → rework using the reviewer's issues + suggestions")
-    print("  <anything>      → rework with your custom feedback")
+    print("  'approve' / 'a'  -> proceed to code generation (spec is good enough)")
+    print("  'fix' / 'f'      -> rework using the reviewer's issues + suggestions")
+    print("  <anything>      -> rework with your custom feedback")
     print("-" * 60)
 
     response = input("\n> ").strip()
@@ -169,7 +169,7 @@ def _inject_code(graph, config: dict, run_dir: Path, html_path_str: str) -> None
         {"code": game, "code_attempt": 1},
         as_node="generate_code",
     )
-    print(f"[pipeline] Injected code from {html_path.name} → jumping to review_code")
+    print(f"[pipeline] Injected code from {html_path.name} -> jumping to review_code")
 
 
 def _genre_from_run_dir(run_path: Path) -> str:
@@ -188,12 +188,12 @@ def main():
     load_dotenv()
 
     args = sys.argv[1:]
-    if not args:
+    if not args or args[0] in ("-h", "--help"):
         print("Usage: python -m pipeline <genre>")
         print('       python -m pipeline --resume <output_dir>')
         print('       python -m pipeline --resume <output_dir> --inject-code <game.html>')
         print('Example: python -m pipeline "endless runner"')
-        sys.exit(1)
+        sys.exit(0)
 
     resume_path = None
     if args[0] == "--resume":
@@ -342,9 +342,9 @@ def main():
     if code:
         print(f"  Game file:  04_code/attempt_{code_attempt}/game.html")
     print("=" * 60)
-    print(f"\n  All artifacts → {output.rel(output.run_dir())}/")
-    print(f"  Full summary → {output.rel(summary_path)}")
-    print(f"  Pipeline summary → {output.rel(output.run_dir() / 'pipeline_summary.md')}")
+    print(f"\n  All artifacts -> {output.rel(output.run_dir())}/")
+    print(f"  Full summary -> {output.rel(summary_path)}")
+    print(f"  Pipeline summary -> {output.rel(output.run_dir() / 'pipeline_summary.md')}")
 
 
 if __name__ == "__main__":

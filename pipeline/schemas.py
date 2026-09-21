@@ -1,6 +1,161 @@
 """Structured output schemas for the game pipeline."""
 
 from pydantic import BaseModel, Field
+from typing import Optional, Literal
+
+
+# ============================================================
+# GAMIFICATION SCIENCE SCHEMAS (Octalysis, Hook Model, SDT)
+# ============================================================
+
+class OctalysisDriver(BaseModel):
+    """One of the 8 Octalysis core drives."""
+    driver: Literal[
+        "Epic Meaning & Calling",
+        "Development & Accomplishment",
+        "Empowerment of Creativity & Feedback",
+        "Ownership & Possession",
+        "Social Influence & Relatedness",
+        "Scarcity & Impatience",
+        "Unpredictability & Curiosity",
+        "Loss & Avoidance"
+    ]
+    weight: int = Field(ge=1, le=10, description="How central this drive is (1-10)")
+    implementation: str = Field(description="Specific mechanic implementing this drive")
+
+
+class HookModelLoop(BaseModel):
+    """Nir Eyal's Hook Model: Trigger -> Action -> Reward -> Investment"""
+    trigger_type: Literal["external", "internal"]
+    trigger_description: str
+    action: str = Field(description="Simplest behavior in anticipation of reward")
+    reward_type: Literal["tribe", "hunt", "self"]
+    reward_description: str
+    investment: str = Field(description="User puts something in to increase next trigger likelihood")
+
+
+class PlayerArchetype(BaseModel):
+    """Bartle/Richard Bartle types + modern extensions"""
+    archetype: Literal["Achiever", "Explorer", "Socializer", "Killer", "Customizer", "Competitor"]
+    percentage: int = Field(ge=0, le=100, description="Target audience %")
+    key_motivators: list[str]
+    retention_mechanics: list[str]
+
+
+class MotivationProfile(BaseModel):
+    """Self-Determination Theory: Autonomy, Competence, Relatedness"""
+    autonomy_features: list[str] = Field(description="Choices, customization, self-expression")
+    competence_features: list[str] = Field(description="Clear goals, feedback, optimal challenge")
+    relatedness_features: list[str] = Field(description="Social features, shared experiences")
+
+
+class DynamicDifficultyConfig(BaseModel):
+    """Dynamic Difficulty Adjustment (DDA) specification"""
+    enabled: bool = True
+    target_failure_rate: float = Field(default=0.3, ge=0.1, le=0.5, description="Target % of failed attempts")
+    measurement_window_sec: int = Field(default=60, description="Window to measure performance")
+    adjustment_factors: dict[str, float] = Field(
+        default_factory=lambda: {"spawn_rate": 0.1, "enemy_speed": 0.05, "player_power": 0.08},
+        description="How much each parameter can adjust per window"
+    )
+    min_max_bounds: dict[str, list[float]] = Field(
+        description="Min/max for each tunable: {'spawn_rate': [0.5, 2.0]}"
+    )
+    cooldown_sec: int = Field(default=30, description="Minimum time between adjustments")
+
+
+class DailyRewardSystem(BaseModel):
+    """Daily login / streak reward system"""
+    enabled: bool = True
+    streak_rewards: list[dict] = Field(description="Day N: {reward_type, amount, description}")
+    streak_break_penalty: str = Field(description="What happens when streak breaks")
+    comeback_bonus: Optional[str] = Field(default=None, description="Bonus for returning after absence")
+
+
+class BattlePassSpec(BaseModel):
+    """Battle pass / season pass specification"""
+    enabled: bool = False
+    duration_days: int = Field(default=30)
+    free_track: list[dict] = Field(description="Free tier rewards per level")
+    premium_track: list[dict] = Field(description="Premium tier rewards per level")
+    xp_sources: list[str] = Field(description="Activities that grant battle pass XP")
+
+
+class SocialSpec(BaseModel):
+    """Social features specification"""
+    leaderboards: bool = True
+    leaderboard_types: list[str] = Field(default_factory=lambda: ["global", "friends", "daily"])
+    share_mechanics: list[str] = Field(default_factory=lambda: ["score_screenshot", "replay_clip"])
+    guilds_clans: bool = False
+    co_op_modes: list[str] = Field(default_factory=list)
+    pvp_modes: list[str] = Field(default_factory=list)
+
+
+class AdaptiveAudioSpec(BaseModel):
+    """Adaptive / procedural audio specification"""
+    layers: list[dict] = Field(description="Audio layers: {name, trigger_condition, intensity_range}")
+    spatial_audio: bool = False
+    procedural_music: bool = True
+    dynamic_mixing: bool = True
+    haptic_sync: bool = False
+
+
+class HapticSpec(BaseModel):
+    """Haptic feedback specification (Gamepad Vibration API, iOS/Android)"""
+    enabled: bool = True
+    events: list[dict] = Field(description="Events: {event_name, pattern, intensity, duration_ms}")
+    gamepad_support: bool = True
+    mobile_vibration: bool = True
+
+
+class VisualPolishSpec(BaseModel):
+    """Advanced visual polish: shaders, post-processing, effects"""
+    post_processing: list[str] = Field(default_factory=lambda: ["bloom", "color_grading", "vignette"])
+    shaders: list[dict] = Field(default_factory=list, description="Custom shaders: {name, type, params}")
+    particle_systems: list[dict] = Field(default_factory=list)
+    screen_effects: list[str] = Field(default_factory=lambda: ["chromatic_aberration", "screen_shake", "hit_freeze", "flash"])
+    webgpu_target: bool = False
+
+
+class TelemetryEvent(BaseModel):
+    """Single telemetry event definition"""
+    event_name: str
+    properties: dict[str, str] = Field(description="Property name -> type (string, number, bool)")
+    trigger: str = Field(description="When this fires")
+
+
+class ABTestConfig(BaseModel):
+    """A/B test configuration for balance values"""
+    enabled: bool = False
+    variants: dict[str, dict] = Field(description="Variant name -> parameter overrides")
+    allocation: dict[str, float] = Field(description="Variant -> traffic %")
+    success_metric: str = Field(description="Metric to optimize: retention_d1, session_time, etc.")
+
+
+class LiveOpsConfig(BaseModel):
+    """Live operations / remote config specification"""
+    enabled: bool = False
+    remote_config_keys: list[str] = Field(description="Keys that can be updated remotely")
+    content_update_schedule: str = Field(description="e.g., 'weekly', 'biweekly'")
+    feature_flags: list[str] = Field(default_factory=list)
+
+
+class GamificationSpec(BaseModel):
+    """Complete gamification specification bundle"""
+    octalysis_drivers: list[OctalysisDriver] = Field(default_factory=list, min_length=1, max_length=8)
+    hook_loops: list[HookModelLoop] = Field(default_factory=list, min_length=1)
+    player_archetypes: list[PlayerArchetype] = Field(default_factory=list)
+    motivation_profile: Optional[MotivationProfile] = None
+    dda_config: Optional[DynamicDifficultyConfig] = None
+    daily_rewards: Optional[DailyRewardSystem] = None
+    battle_pass: Optional[BattlePassSpec] = None
+    social: Optional[SocialSpec] = None
+    adaptive_audio: Optional[AdaptiveAudioSpec] = None
+    haptic: Optional[HapticSpec] = None
+    visual_polish: Optional[VisualPolishSpec] = None
+    telemetry_events: list[TelemetryEvent] = Field(default_factory=list)
+    ab_test: Optional[ABTestConfig] = None
+    live_ops: Optional[LiveOpsConfig] = None
 
 
 class GenreAnalysis(BaseModel):
@@ -158,6 +313,11 @@ class GameDesignDocument(BaseModel):
             "Features to add after MVP is validated. "
             "Polish, meta-game, monetization hooks, additional content."
         )
+    )
+
+    gamification: Optional[GamificationSpec] = Field(
+        default=None,
+        description="Complete gamification science specification (Octalysis, Hook Model, SDT, DDA, retention systems)"
     )
 
 
@@ -339,6 +499,11 @@ class ImplementationSpec(BaseModel):
             "Required for endless runners, lane games, procedural levels. "
             "Empty list if game has no chunk system."
         ),
+    )
+
+    gamification_impl: Optional[GamificationSpec] = Field(
+        default=None,
+        description="Implementation-ready gamification spec with concrete telemetry events, A/B config, live ops"
     )
 
 

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(python -c \"import yaml; d=yaml.safe_load(open('docs/kb/index.yaml',encoding='utf-8')); print('valid yaml:', sorted(d.keys()))\")"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}
