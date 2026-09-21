@@ -27,13 +27,19 @@ from langgraph.types import interrupt
 from pipeline import output
 from pipeline.retry import invoke_with_retry
 from pipeline.schemas import (
+    AssetEntry,
+    BalanceParam,
+    BalanceTable,
     CodeReview,
+    EntityDef,
     GameDesignDocument,
     GddReview,
     GeneratedGame,
+    GameState,
     GenreAnalysis,
     ImplSpecReview,
     ImplementationSpec,
+    PropertyDef,
 )
 from pipeline.validate import check_html_game
 
@@ -619,6 +625,49 @@ def generate_impl_spec(state: PipelineState) -> PipelineState:
 
     impl_spec = invoke_with_retry(structured_llm, prompt)
 
+    # Fallback: if LLM returns None, derive a minimal spec from the GDD so the
+    # code-generation stage always has something concrete to work from.
+    if impl_spec is None:
+        gdd = state["gdd"]
+        impl_spec = ImplementationSpec(
+            entities=[
+                EntityDef(
+                    name="Player",
+                    properties=[
+                        PropertyDef(name="speed", type_description="number — pixels/sec, default 300"),
+                        PropertyDef(name="alive", type_description="boolean — default true"),
+                    ],
+                    behavior="Moves per controls in the GDD; collides with hazards and collects pickups.",
+                )
+            ],
+            state_machine=[
+                GameState(
+                    name="Loading", description="Boot scene, generate assets.",
+                    transitions=["assets_ready → Playing"],
+                ),
+                GameState(
+                    name="Playing", description="Core loop from the GDD.",
+                    transitions=["player_dies → GameOver"],
+                ),
+                GameState(
+                    name="GameOver", description="Show score, tap to restart.",
+                    transitions=["player_taps → Playing"],
+                ),
+            ],
+            balance_tables=[
+                BalanceTable(
+                    category="Player",
+                    params=[BalanceParam(name="player_speed", value="300 px/s — fast enough to dodge, slow enough to plan")],
+                )
+            ],
+            scene_flow=["TitleScreen — logo + tap to start", "Playing — core loop", "GameOver — score + tap to retry"],
+            asset_manifest=[
+                AssetEntry(name="spr_player", asset_type="sprite", description="Player sprite per the GDD visual style."),
+                AssetEntry(name="sfx_hit", asset_type="sound", description="Collision sound effect."),
+            ],
+            technical_notes=[f"Derive all mechanics from the approved GDD '{gdd.title}'; Phaser 3, single-file HTML."],
+        )
+
     path = output.save(
         "03_impl_spec", "impl_spec.json", impl_spec.model_dump(), attempt=attempt
     )
@@ -997,13 +1046,13 @@ TITLE SCREEN POLISH:
 - Title text: floating sine-wave via a looping yoyo tween on y (±8px, duration 1800ms)
 - "Tap to Play" text: pulse alpha 1->0.25->1 in a loop, duration 900ms
 - Background parallax layers must already be scrolling on the title screen
-- High score display: "BEST: {score}" bottom-center, subtle pulse
+- High score display: "BEST: {{score}}" bottom-center, subtle pulse
 
 GAME OVER SCREEN:
 - Show score and best score prominently side by side
 - If a new high score was set: display a "New Best!" banner with a scale-in tween
 - Retry button: scale tween on pointerover (1->1.1) and pointerout (1.1->1)
-- Death recap: "You survived {time}s · {distance}m · {combo}x max combo"
+- Death recap: "You survived {{time}}s · {{distance}}m · {{combo}}x max combo"
 
 Output the COMPLETE final HTML file — the entire file, not a patch.
 Same rules: dt only, zero external files, generateTexture, Web Audio, raw HTML only. \

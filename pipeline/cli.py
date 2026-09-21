@@ -247,7 +247,10 @@ def main():
             result = graph.invoke(None, config)
         else:
             try:
-                result = graph.invoke(initial_input, config)
+                # Resume must invoke with no new input; passing initial_input
+                # would restart the graph from START instead of resuming the
+                # checkpointed interrupt.
+                result = graph.invoke(None if resume_path else initial_input, config)
             except APIConnectionError:
                 print(f"\n[pipeline] Connection error. When your network is back, resume with:")
                 print(f"  python -m pipeline.cli --resume {output.rel(run_dir)}")
