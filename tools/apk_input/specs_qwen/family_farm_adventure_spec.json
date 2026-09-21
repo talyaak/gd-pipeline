@@ -1,0 +1,45 @@
+{
+  "slug": "family_farm_adventure",
+  "source": {
+    "video_id": "hcDpmWRQn8o",
+    "url": "https://www.youtube.com/watch?v=hcDpmWRQn8o",
+    "title": "Family Farm Adventure - Gameplay Walkthrough part 1 - Tutorial (iOS,Android)",
+    "channel": "RSTURBOGAMING",
+    "duration_s": 598
+  },
+  "model": "qwen/qwen3-vl-235b-a22b-instruct",
+  "frames_sampled": 8,
+  "spec": {
+    "core_loop": [
+      "[seen] tap to clear debris/rocks from land",
+      "[seen] plant crops (sunflowers visible)",
+      "[seen] harvest mature crops",
+      "[seen] collect coins and resources from harvested plots",
+      "[inferred] use coins to unlock new land or buy tools"
+    ],
+    "controls": [
+      "[seen] tap on debris or rocks to initiate clearing",
+      "[seen] tap on empty soil to plant crops",
+      "[seen] tap on mature crops to harvest",
+      "[seen] tap on UI buttons (e.g., 'Skip' button for timers)",
+      "[seen] tap on character portraits or dialogue boxes to advance story"
+    ],
+    "progression": [
+      "[seen] currency counters: coins (1,183), green gems (20), blue gems (3)",
+      "[seen] level indicator: '39/41' visible in top bar",
+      "[seen] land expansion: cleared areas vs. rocky/unusable terrain",
+      "[seen] crop unlocking: sunflowers are planted; other crops may be unlocked later",
+      "[seen] building progression: small hut → larger structures as land clears",
+      "[seen] quest/story progression: dialogue triggers events (Flower Festival cancellation)"
+    ],
+    "session_feel": "Paced with short-tap interactions and visual feedback; moderate screen density with animated characters and floating numbers; juice level medium (pop-up text, sparkle effects); estimated session length 5-15 min; target audience: casual mobile players seeking light narrative + farming loop.",
+    "confidence_notes": [
+      "[unseen] real-time vs turn-based timing — no clock or timer visible except skip option",
+      "[unseen] audio cues or sound design — frames silent by nature",
+      "[unseen] exact resource costs or yields — only totals shown, not per-action values",
+      "[unseen] off-screen systems: inventory, crafting, animal mechanics, multiplayer features",
+      "[unseen] tutorial completion state — unclear if these frames are pre/post tutorial",
+      "[unseen] cooldowns or waiting periods — only 'Skip' implies time delay"
+    ]
+  }
+}

@@ -7,39 +7,42 @@
     "channel": "RSTURBOGAMING",
     "duration_s": 598
   },
-  "model": "qwen/qwen3-vl-235b-a22b-instruct",
+  "model": "nex-agi/nex-n2.5-pro:free",
   "frames_sampled": 8,
   "spec": {
     "core_loop": [
-      "[seen] tap to clear debris/rocks from land",
-      "[seen] plant crops (sunflowers visible)",
-      "[seen] harvest mature crops",
-      "[seen] collect coins and resources from harvested plots",
-      "[inferred] use coins to unlock new land or buy tools"
+      "Seen: Read and advance NPC dialogue that sets the restoration goal.",
+      "Seen: Follow tutorial highlights by tapping blue speech-bubble markers on NPCs or objects.",
+      "Seen: Open and confirm a \"Land Clearing\" action to work on blocked island terrain.",
+      "Inferred: Interact with farm production objects, including an Eggs prompt with a speed-up option.",
+      "Inferred: Use visible currencies/resources to continue clearing, restoring, and building on the farm.",
+      "Inferred: Complete objective/book prompts to advance the Flower Festival story and unlock more farm content."
     ],
     "controls": [
-      "[seen] tap on debris or rocks to initiate clearing",
-      "[seen] tap on empty soil to plant crops",
-      "[seen] tap on mature crops to harvest",
-      "[seen] tap on UI buttons (e.g., 'Skip' button for timers)",
-      "[seen] tap on character portraits or dialogue boxes to advance story"
+      "Seen: Tap the dialogue box or orange down-chevron to advance story text.",
+      "Seen: Tap highlighted blue speech-bubble markers to interact with NPCs or tutorial targets.",
+      "Seen: Tap the orange \"Land Clearing\" action button in the modal.",
+      "Seen: Tap the highlighted speed-up or collection control to get Eggs instantly, per the tutorial text; the exact target and cost are unclear.",
+      "Seen: No drag, swipe, or hold affordance is visible in the sampled frames."
     ],
     "progression": [
-      "[seen] currency counters: coins (1,183), green gems (20), blue gems (3)",
-      "[seen] level indicator: '39/41' visible in top bar",
-      "[seen] land expansion: cleared areas vs. rocky/unusable terrain",
-      "[seen] crop unlocking: sunflowers are planted; other crops may be unlocked later",
-      "[seen] building progression: small hut → larger structures as land clears",
-      "[seen] quest/story progression: dialogue triggers events (Flower Festival cancellation)"
+      "Seen: The story premise is Felicia returning home for the Flower Festival, while Grandma explains the Flower Farm is damaged after an earthquake.",
+      "Seen: The sampled tutorial introduces dialogue, highlighted NPC/object interaction, land clearing, and an Eggs speed-up interaction.",
+      "Seen: UI exposes a top-center progress bar, top-right resource counters, a bottom-left book/objective icon, and a bottom-right crate icon.",
+      "Seen: Visible farm elements include sunflowers, farm buildings or stalls, docks, blocked or ruined terrain, and an Eggs production prompt.",
+      "Inferred: Expansion axes are land clearing, building restoration or construction, flower/crop production, animal or egg production, and story/festival progress.",
+      "Inferred: Currencies/resources are earned or spent during these actions, but their names, costs, and rates are not visible."
     ],
-    "session_feel": "Paced with short-tap interactions and visual feedback; moderate screen density with animated characters and floating numbers; juice level medium (pop-up text, sparkle effects); estimated session length 5-15 min; target audience: casual mobile players seeking light narrative + farming loop.",
+    "session_feel": "Seen: The sampled tutorial uses bright isometric island art, character portraits, dimmed spotlight prompts, modal popups, and bottom dialogue, creating a guided cozy farm-restoration feel. Inferred: Pacing is casual and tap-driven with short objective chunks; animation/juice appears moderate but stills cannot show motion; session length is likely measured in short tutorial/objective segments, but exact session length is not knowable from these frames.",
     "confidence_notes": [
-      "[unseen] real-time vs turn-based timing — no clock or timer visible except skip option",
-      "[unseen] audio cues or sound design — frames silent by nature",
-      "[unseen] exact resource costs or yields — only totals shown, not per-action values",
-      "[unseen] off-screen systems: inventory, crafting, animal mechanics, multiplayer features",
-      "[unseen] tutorial completion state — unclear if these frames are pre/post tutorial",
-      "[unseen] cooldowns or waiting periods — only 'Skip' implies time delay"
+      "All claims in the other arrays are marked Seen or Inferred.",
+      "The frame sample cannot tell real-time versus turn-based timing, exact production timers, cooldowns, action durations, or whether most actions complete instantly.",
+      "The frame sample cannot tell audio, music, voiceover, haptics, or sound effects.",
+      "The frame sample cannot tell exact currency names, economy rates, upgrade costs, inventory contents, recipes, or monetization; visible counters and the purple \"1,613\" prompt are not enough to define the economy.",
+      "The frame sample cannot tell the full unlock order beyond the sampled tutorial, later buildings, later animals, later crops, later areas, energy constraints, or failure states.",
+      "The frame sample cannot tell camera controls; no drag, swipe, pinch, or hold affordance is visible, but those controls may exist outside these frames.",
+      "The frame sample cannot tell whether sunflowers are planted, ready to harvest, decorative, or part of the active loop.",
+      "The frame sample cannot tell what the bottom-right crate icon or bottom-left book icon opens; only their presence is visible."
     ]
   }
 }

@@ -1,0 +1,47 @@
+{
+  "slug": "hay_day",
+  "source": {
+    "video_id": "u66L5jIjWHs",
+    "url": "https://www.youtube.com/watch?v=u66L5jIjWHs",
+    "title": "Hay Day Gameplay | Level 224 💚",
+    "channel": "a lara",
+    "duration_s": 990
+  },
+  "model": "qwen/qwen3-vl-235b-a22b-instruct",
+  "frames_sampled": 8,
+  "spec": {
+    "core_loop": [
+      "[seen] harvest crops from fields",
+      "[seen] collect products from animal pens and processing buildings",
+      "[seen] fulfill orders in the Orders menu by selecting matching items",
+      "[seen] load cargo crates for delivery via ship",
+      "[seen] spend coins or diamonds to expand or upgrade buildings"
+    ],
+    "controls": [
+      "[seen] tap on crops to harvest them",
+      "[seen] tap on animal pens or machines to collect produced goods",
+      "[seen] tap on order slots to select items for fulfillment",
+      "[seen] tap on cargo crates to assign items for shipment",
+      "[seen] tap on building icons or upgrade buttons to spend currency",
+      "[seen] drag/pan the map to navigate different farm areas"
+    ],
+    "progression": [
+      "[seen] coins (6,760,819 visible) and diamonds (54 visible) as primary currencies",
+      "[seen] level 224 shown in video title; progression likely tied to XP or level gates",
+      "[seen] unlockable buildings (e.g., bakery, cheese factory, shipping dock)",
+      "[seen] crop variety expansion (corn, tomatoes, eggplants visible)",
+      "[seen] animal pens (chickens, cows) and product processors (mills, ovens)",
+      "[seen] storage limits (Booster Storage Full pop-up implies capacity systems)",
+      "[seen] area expansion (multiple distinct zones: crop fields, animal pens, processing zone, decorative area)"
+    ],
+    "session_feel": "Fast-paced, visually dense with constant micro-interactions. High juice: animated harvesting, floating numbers, pop-ups, and colorful UI. Session length ~5-15 min bursts. Target audience: casual players who enjoy visual rewards and incremental progress.",
+    "confidence_notes": [
+      "[inferred] real-time vs turn-based timing cannot be determined from stills — no clock or timer visible.",
+      "[inferred] audio cues (sounds of harvesting, notifications) are absent — no speaker icon or sound settings visible.",
+      "[inferred] exact production times, cooldowns, or XP values are not visible — only final counts or progress bars shown.",
+      "[inferred] off-screen systems like quests, events, or social features (friends, gifts) are not visible in any frame.",
+      "[inferred] whether orders expire or reset is unclear — no time stamps or countdowns visible on order slots.",
+      "[inferred] whether cargo loading has a time limit or requires waiting is not visible — only 'Load Time: 12h 59m' shown, but no active timer."
+    ]
+  }
+}

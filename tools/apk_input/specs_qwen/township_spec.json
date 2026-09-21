@@ -1,0 +1,47 @@
+{
+  "slug": "township",
+  "source": {
+    "video_id": "X016xxJSVx8",
+    "url": "https://www.youtube.com/watch?v=X016xxJSVx8",
+    "title": "TOWNSHIP Level 157 Gameplay # 3",
+    "channel": "TownshipDotCom",
+    "duration_s": 805
+  },
+  "model": "qwen/qwen3-vl-235b-a22b-instruct",
+  "frames_sampled": 8,
+  "spec": {
+    "core_loop": [
+      "[seen] harvest crops from fields",
+      "[seen] collect products from factories (e.g., Jam Factory, Festive Factory)",
+      "[seen] sell goods at market stalls or via delivery trucks",
+      "[seen] spend coins and/or diamonds to expand land or build new structures",
+      "[seen] tap on buildings to check production timers or collect output"
+    ],
+    "controls": [
+      "[seen] tap on crops to harvest them",
+      "[seen] tap on factory buildings to view product queue and collection status",
+      "[seen] tap on delivery trucks or market stalls to sell goods",
+      "[seen] tap on building icons in bottom toolbar to place or upgrade structures",
+      "[seen] tap 'Edit Mode' button to rearrange or delete buildings",
+      "[seen] swipe across map to pan view",
+      "[seen] tap treasure chest icon to open rewards"
+    ],
+    "progression": [
+      "[seen] level 157 displayed — progression tracked by player level",
+      "[seen] coins (41M+) and diamonds (3.6K+) as primary currencies",
+      "[seen] unlockable factories (Jam, Soap Bubbles) with tiered production slots",
+      "[seen] expansion via purchasing adjacent land plots (visible empty zones)",
+      "[seen] decorative buildings and themed areas (e.g., 'Golden Sands', 'Hogwarts') unlocked over time",
+      "[seen] population/visitors shown via character icons (bottom left)",
+      "[seen] quest/reward system indicated by star icons and pop-up chests"
+    ],
+    "session_feel": "Fast-paced, visually dense with constant animations (harvesting, production, coin counters). High juice: sparkles, floating numbers, pop-ups. Session length ~5-15 min bursts. Target audience: casual players who enjoy visual rewards and incremental expansion.",
+    "confidence_notes": [
+      "[inferred] real-time vs turn-based timing cannot be determined from stills — production timers suggest real-time but no clock visible.",
+      "[inferred] audio cues (e.g., harvest sounds, notifications) are not observable.",
+      "[inferred] exact resource costs for upgrades or expansions are not visible — only currency totals shown.",
+      "[inferred] off-screen systems like quests, events, or social features (chat, helpers) are partially visible but their full mechanics are not derivable from frames.",
+      "[inferred] player skill or strategy depth is not measurable — all actions appear automated or tap-to-collect."
+    ]
+  }
+}
