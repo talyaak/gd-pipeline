@@ -78,9 +78,17 @@ CANNOT tell you (real-time vs turn timing, audio, exact numbers, off-screen \
 systems) and mark each spec claim as seen / inferred.
 
 Rules:
-- Ground every claim in what is visible. If you are inferring, say so in \
-confidence_notes.
-- Do not pad. Empty observations are better than invented ones.
+- The frames ARE real gameplay of the named game — that is ground truth, not \
+a hypothesis. Your job is to reverse-engineer the loop from what the frames \
+show, not to judge whether a loop is provable from stills.
+- Static screenshots still reveal game systems: visible menus, buildings, \
+crops, animals, currencies, level/counter numbers, map areas. Derive the \
+core loop and progression those elements imply.
+- Every array entry MUST start with a tag: "[seen] " (element directly \
+visible in a frame) or "[inferred] " (system implied by visible UI). Never \
+leave an array empty when any game system is visible; if something is \
+genuinely absent from all frames, say so in confidence_notes instead.
+- Do not pad. Wrong guesses are worse than "[inferred]" hedges.
 - Respond with ONLY the JSON object — no markdown fences, no prose.
 
 NOTE (tooling, not part of your task): plain text output is used instead of \
@@ -151,7 +159,11 @@ def write_spec(slug: str, source: dict, videos_dir: Path, out_dir: Path) -> Path
     # empty bodies (throttling) and truncated JSON (output budget exhausted
     # by reasoning tokens).
     last_error: Exception | None = None
-    for attempt in range(5):
+    for attempt in range(6):
+        if attempt:
+            # Degenerate/empty outputs cluster under provider rate pressure;
+            # a real cooldown between attempts works better than tight spins.
+            time.sleep(30)
         raw = ""
         try:
             resp = llm.invoke([{"role": "user", "content": content}])
@@ -162,15 +174,15 @@ def write_spec(slug: str, source: dict, videos_dir: Path, out_dir: Path) -> Path
             if start == -1 or end == -1:
                 raise ValueError(f"no JSON object in response ({raw[:80]!r})")
             spec = MechanicsSpec.model_validate_json(raw[start:end + 1])
+            if not any([spec.core_loop, spec.controls, spec.progression, spec.session_feel]):
+                raise ValueError("model returned an all-empty spec (degenerate output)")
             break
         except (ValueError, ValidationError) as e:
             last_error = e
-            wait = 5 * (attempt + 1)
             print(
-                f"[spec_writer] {slug}: attempt {attempt + 1}/5 failed "
-                f"({str(e)[:120]}), retrying in {wait}s"
+                f"[spec_writer] {slug}: attempt {attempt + 1}/6 failed "
+                f"({str(e)[:120]}), cooling down 30s"
             )
-            time.sleep(wait)
     else:
         raise RuntimeError(f"vision model failed to produce a valid spec for {slug}: {last_error}")
 

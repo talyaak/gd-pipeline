@@ -7,48 +7,41 @@
     "channel": "a lara",
     "duration_s": 990
   },
-  "model": "nex-agi/nex-n2.5-pro:free",
+  "model": "qwen/qwen3-vl-235b-a22b-instruct",
   "frames_sampled": 8,
   "spec": {
     "core_loop": [
-      "[Inferred from visible crop fields] Grow crops in field plots, then collect harvested goods.",
-      "[Inferred from visible animal pens and production buildings] Collect animal goods and process crops/animal goods in timed production buildings.",
-      "[Seen] Open the Orders board, choose requested goods, and send completed boat/cargo orders for coin and XP rewards.",
-      "[Seen] Load cargo crates with requested goods, then use Load or Skip to complete or leave the cargo shipment.",
-      "[Seen] Resolve storage limits when a Booster Storage Full popup blocks progress.",
-      "[Inferred from visible farm objects and currencies] Spend coins/resources and gain XP/levels to add fields, animals, production buildings, decorations, storage, and land."
+      "[seen] harvest crops from fields",
+      "[seen] collect products from animal pens and processing buildings",
+      "[seen] fulfill orders in the Orders menu by selecting matching items",
+      "[seen] load cargo crates for delivery via ship",
+      "[seen] spend coins or diamonds to expand or upgrade buildings"
     ],
     "controls": [
-      "[Seen] Tap order cards to select an order and view item counts, coin reward, XP stars, timer, and Send button.",
-      "[Seen] Tap cargo crate slots/item checklist and the Load button to fill or submit cargo; tap Skip or red X to exit or skip.",
-      "[Inferred from visible timers/progress indicators] Tap fields, animal pens, and production buildings to plant, collect, start, or inspect farm objects.",
-      "[Seen] Tap modal buttons such as Use storage, Keep, close X, Send, Load, and Skip.",
-      "[Inferred from visible side/bottom icons] Tap toolbar icons for shop, orders, visitors, storage, and settings-style menus.",
-      "[Seen] No drag, swipe, or hold gesture is visible in these frames."
+      "[seen] tap on crops to harvest them",
+      "[seen] tap on animal pens or machines to collect produced goods",
+      "[seen] tap on order slots to select items for fulfillment",
+      "[seen] tap on cargo crates to assign items for shipment",
+      "[seen] tap on building icons or upgrade buttons to spend currency",
+      "[seen] drag/pan the map to navigate different farm areas"
     ],
     "progression": [
-      "[Seen] Persistent resources shown include coins, diamonds, XP/level indicator, and ticket-like skip currency.",
-      "[Seen] Orders and cargo show coin/XP rewards and timers, including a cargo completion timer near 17h59m and a booster duration near 8 hours.",
-      "[Inferred] XP/level progression gates access to more crops, animals, buildings, and order content; exact unlock order is not visible.",
-      "[Seen] Expansion axes visible on the farm include crop plots, animal pens, production buildings, storage/barn/silo icons, roads, decorations, cargo/order boards, and empty/brown land patches.",
-      "[Inferred] Coins buy or place farm expansions/buildings; diamonds/tickets are used for premium actions such as storage use or skipping; exact costs are not visible.",
-      "[Seen] Storage capacity is a constraint: a full booster-storage modal appears with resolution buttons."
+      "[seen] coins (6,760,819 visible) and diamonds (54 visible) as primary currencies",
+      "[seen] level 224 shown in video title; progression likely tied to XP or level gates",
+      "[seen] unlockable buildings (e.g., bakery, cheese factory, shipping dock)",
+      "[seen] crop variety expansion (corn, tomatoes, eggplants visible)",
+      "[seen] animal pens (chickens, cows) and product processors (mills, ovens)",
+      "[seen] storage limits (Booster Storage Full pop-up implies capacity systems)",
+      "[seen] area expansion (multiple distinct zones: crop fields, animal pens, processing zone, decorative area)"
     ],
-    "session_feel": "[Inferred from seen dense isometric farm, many timers, and colorful UI] Relaxed asynchronous farm-management pacing: short tap check-ins to collect, start, and submit, interleaved with minutes-to-hours waits; screen density is high with many buildings, decorations, animals, fields, and order/storage panels; visual polish is cheerful cartoon with polished modals/loading art, but animation/audio intensity cannot be measured; likely casual/family audience with quick 1-5 minute check-ins and occasional 10-20 minute organizing sessions.",
+    "session_feel": "Fast-paced, visually dense with constant micro-interactions. High juice: animated harvesting, floating numbers, pop-ups, and colorful UI. Session length ~5-15 min bursts. Target audience: casual players who enjoy visual rewards and incremental progress.",
     "confidence_notes": [
-      "[Seen] The frames visibly show crop fields, animal pens, production buildings with timers, an Orders board, cargo loading, a storage-full modal, currencies, toolbars, decorations, roads, and empty land patches.",
-      "[Inferred] The ordered core loop is reconstructed from those visible objects; no frame directly shows planting, harvesting, collecting, production-start, or order-send animations.",
-      "[Seen] Order/cargo UI shows requested item counts, coin rewards, XP stars, timers, Send/Load/Skip/close buttons, cargo crate slots, and capacity indicators.",
-      "[Inferred] Orders/cargo are the main coin/XP sink/source and likely drive what players produce; exact payout formulas, refresh rules, and demand weighting are not visible.",
-      "[Seen] Progression objects visible include multiple crop plots, animal pens, production buildings, storage/barn/silo icons, decorations, roads, hot-air balloons, cargo/order boards, and empty/brown land patches.",
-      "[Inferred] Expansion axes include more crops, animals, buildings, storage, decorations, and land; exact unlock order, prerequisites, and costs cannot be determined from the sample.",
-      "[Cannot tell] Whether timers advance in real time, accelerated time, or turn-based steps; only static timer values are visible.",
-      "[Cannot tell] Audio, haptics, animation curves, particle effects, character AI, and exact juice/animation level beyond static art/UI polish.",
-      "[Cannot tell] Exact numbers for crop yields, production times, order rewards, cargo rewards, storage capacities, expansion costs, building costs, and currency balances; some numbers are visible but too small or partial to rely on.",
-      "[Cannot tell] Off-screen systems such as marketplace/sales, neighborhood/social features, quests, achievements, events, fishing/mining/valley/derby, ads, IAP, tutorials, and account progression beyond the displayed farm.",
-      "[Cannot tell] Exact touch gestures for zooming, panning, moving/rotating/deleting buildings, road placement, editing mode, or multi-select; tap affordances are visible, drag/swipe/hold are not.",
-      "[Cannot tell] Whether cargo completion requires returning later, can be instantly collected, or how Skip works beyond the visible Skip button.",
-      "[Cannot tell] Whether the sampled frames capture active player input or mostly UI browsing; they show states rather than full interaction sequences."
+      "[inferred] real-time vs turn-based timing cannot be determined from stills — no clock or timer visible.",
+      "[inferred] audio cues (sounds of harvesting, notifications) are absent — no speaker icon or sound settings visible.",
+      "[inferred] exact production times, cooldowns, or XP values are not visible — only final counts or progress bars shown.",
+      "[inferred] off-screen systems like quests, events, or social features (friends, gifts) are not visible in any frame.",
+      "[inferred] whether orders expire or reset is unclear — no time stamps or countdowns visible on order slots.",
+      "[inferred] whether cargo loading has a time limit or requires waiting is not visible — only 'Load Time: 12h 59m' shown, but no active timer."
     ]
   }
 }
