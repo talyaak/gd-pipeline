@@ -17,7 +17,16 @@ All older instructions are CLOSED unless Instinct explicitly revives them by com
 | 2026-09-21 | 5760279157 | [INSTINCT] | INSTRUCTION #2 - Self-continuity: the-wire skill (protocol, gh auth recovery w/ ntfy reauth, ledger resume) + context rollover protocol + first .commandcode/status.md. | **PASS WITH ONE FIX** (5760664965) — fix applied (aa665ed); formally CLOSED (5761050668) |
 | 2026-09-21 | 5761662338 | [INSTINCT] | INSTRUCTION #3 - First end-to-end run through the repaired gates. | **PASS** (5762386730) |
 | 2026-09-21 | 5762450855 | [INSTINCT] | INSTRUCTION #4 - APK-as-input Stage 0+2: video capture + spec-writer on 3-game eval set (Hay Day, Township, Family Farm Adventure). Branch feat/apk-input. Model seat amended to Qwen3-VL (5762635727). | **COMPLETE** — substance PASS + layout fix verified (5764930769, commit 23f446e). Ball with Tal: side-by-side eye-test vs 8/10 bar. NOTHING runs until his verdict |
-| 2026-09-21 | 5765446332 | [INSTINCT] | INSTRUCTION #4 EXTENSION — spec-writer variance exam (Tal: free seat discarded, Qwen gets multiple runs): two more Qwen3-VL runs per video, same seat + same prompt, no tuning, to specs_qwen/run_2/ + specs_qwen/run_3/ (run_1 untouched). Spend estimate BEFORE firing; GOAT-credit routing checked first; report GOAT DeepSeek-vision seat (no run). | **OPEN / NOT STARTED** — incoming OpenCode runner's first task |
+| 2026-09-21 | 5765446332 | [INSTINCT] | INSTRUCTION #4 EXTENSION — spec-writer variance exam (Tal: free seat discarded, Qwen gets multiple runs): two more Qwen3-VL runs per video, same seat + same prompt, no tuning, to specs_qwen/run_2/ + specs_qwen/run_3/ (run_1 untouched). Spend estimate BEFORE firing; GOAT-credit routing checked first; report GOAT DeepSeek-vision seat (no run). | **RESULT POSTED** (5767415172, commit 0aa149b) — 6 Qwen specs, all parse. Awaiting Instinct gate |
+| 2026-09-21 | 5767017517 | [INSTINCT] | INSTRUCTION #4 EXTENSION 2 — DeepSeek vision seat exam (un-parked): same 3 videos, SAME prompt/settings, seat deepseek/deepseek-v4-flash-vision-exp via GOAT credits (zero cash), output specs_deepseek/, seat+prompt recorded, spend estimate first. | **RESULT POSTED** (5767415172, commit 0aa149b) — 3 specs done. Awaiting Instinct gate |
+| 2026-09-21 | 5767052184 | [INSTINCT] | RULING — Tal waives the human 8/10 eye-test for all seats. Eval is Instinct's gates alone (structural + cross-run consistency + plausibility). Recorded risk: knowledge-based, not footage-based. The Game bar (Tal's out-loud pass on a playable) is unaffected. | **NOTED** (in result 5767415172) |
+| 2026-09-21 | 5766222886 | [INSTINCT] | Handoff CONFIRMED; report the runner model seat + tokens/cost if exposed (bakeoff: cost per passed gate). | **DONE** — runner seat meta/muse-spark-1.3-contributor; tokens/cost not exposed by this env |
+
+## Open work after the exam
+
+- Await Instinct's gate on the 9 new specs (0aa149b).
+- Queued: INSTRUCTION #5 (Nemotron 3 Ultra as GEN_MODEL on the main pipeline) — not yet posted as a full instruction; wait for the Wire.
+- Local runner scripts (/tmp/opencode/run_deepseek.py, variance_run.py, wire_listen.sh) are not committed; the DeepSeek tool_choice=none mechanism is documented in the commit message + result comment.
 
 ## Runner transition (2026-09-21, INSTINCT 5765806783)
 
