@@ -1,0 +1,56 @@
+{
+  "slug": "family_farm_adventure",
+  "source": {
+    "video_id": "hcDpmWRQn8o",
+    "url": "https://www.youtube.com/watch?v=hcDpmWRQn8o",
+    "title": "Family Farm Adventure - Gameplay Walkthrough part 1 - Tutorial (iOS,Android)",
+    "channel": "RSTURBOGAMING",
+    "duration_s": 598
+  },
+  "model": "deepseek/deepseek-v4-flash-vision-exp",
+  "frames_sampled": 8,
+  "spec": {
+    "core_loop": [
+      "[seen] Tap character dialogue bubbles to advance the story and receive the Flower Festival cleanup objective.",
+      "[seen] Tap a highlighted/glowing world object or land plot; the tutorial shows a circular highlight and pointer on the farm.",
+      "[seen] Complete the 'Land Clearing' popup action to convert blocked/ruined farm space into usable plots.",
+      "[seen] Plant/harvest sunflowers by tapping crop plots; a sunflower field is visible as a distinct plantable/collectible crop.",
+      "[seen] Collect eggs from an animal building/chicken coop when prompted; a timer/speed-up popup appears for egg production.",
+      "[seen] Use the 'Speed' button or premium gems to instantly finish an egg/crop timer, or use 'Get' for alternate acquisition.",
+      "[inferred] Repeat production/quest tasks, spend gold, and repair/upgrade farm buildings to progress the Flower Festival and expand via the island map."
+    ],
+    "controls": [
+      "[seen] Tap dialogue boxes and the yellow arrow at the bottom of dialogue to advance character conversations.",
+      "[seen] Tap a highlighted world object or glowing circular prompt to trigger the tutorial interaction on the farm.",
+      "[seen] Tap 'Land Clearing' popup buttons/options to confirm the land-clearing action.",
+      "[seen] Tap crop plots, animal buildings, or resource nodes to plant, harvest, collect, or interact.",
+      "[seen] Tap popup buttons in timed production prompts: 'Speed' spends gems, and 'Get' may be an alternate action.",
+      "[seen] Tap on-screen HUD icons such as the top-left book/quest icon and bottom-right chest/menu icon.",
+      "[inferred] Map screen with multiple island destinations likely supports tap-to-travel and may support drag/pinch navigation, but gestures beyond tap are not directly shown."
+    ],
+    "progression": [
+      "[seen] Currencies/resources visible in HUD: gold coins (1103, 1567), purple/blue gems (20, 7), and a numeric blue bar/energy-like meter (39/41, 16/41, 35/50).",
+      "[seen] Land clearing is a gated expansion action: the 'Land Clearing' popup converts resources/actions into usable farm space.",
+      "[seen] Crop progression includes sunflower plots that can be planted and harvested.",
+      "[seen] Animal progression includes egg-producing buildings/chicken coops with production timers and speed-up options.",
+      "[inferred] Unlock order appears to be: repair/clean Flower Farm -> plant crops -> collect animal goods -> clear more land -> rebuild/upgrade buildings.",
+      "[inferred] Expansion axes include new farm plots, animal types, production timers, island map locations, and narrative festival tasks.",
+      "[seen] A zoomed-out island map shows multiple destinations, resources, characters, and a ship, implying area unlocks beyond the initial farm.",
+      "[inferred] Quest/dialogue objectives likely guide progression rather than pure sandbox farming."
+    ],
+    "session_feel": "[seen] Bright, casual, isometric/top-down farm presentation with cartoon character portraits and speech bubbles. [seen] HUD is dense and mobile-oriented: multiple currencies/timers, quest icon, popups, and collection prompts on screen. [inferred] Pacing is tutorialized and stop-start: dialogue -> tap objective -> short action -> reward/popup -> next dialogue. [inferred] Juice/animation level appears moderate: glowing tap prompts, floating collection icons, timer speed-up popups, and character emotes. [inferred] Tutorial session length is only a few minutes; core sessions likely 5-15 minutes due to production timers and energy gating. [inferred] Target audience: casual mobile players, cozy farm/adventure fans, possibly female-skewing due to character/narrative focus.",
+    "confidence_notes": [
+      "[inferred] Real-time vs turn-based timing is not directly visible; egg timers and speed-up popups imply real-time production timers, but exact timer lengths/refresh rates are unknown.",
+      "[inferred] Audio, music, and SFX cannot be evaluated from still frames.",
+      "[inferred] Exact currency/energy numbers are frame-dependent and may not represent final balance; visible values vary between frames (1103/20, 39/41, 16/41, 1567/7, 35/50).",
+      "[inferred] Energy/level system is suspected from the top-center numeric bar and blue icon, but no frame explicitly labels it; regeneration and costs are not shown.",
+      "[inferred] Monetization, premium shop, energy refills, starter bundles, ads, and social features are off-screen or not visible.",
+      "[inferred] Inventory, crafting/merge systems, storage limits, and building upgrade trees cannot be confirmed from these tutorial frames.",
+      "[inferred] Map navigation gestures beyond tap, such as drag/pinch/hold, are inferred, not proven by sampled stills.",
+      "[inferred] Whether combat, puzzle minigames, or merge boards exist is not visible in this early tutorial sample.",
+      "[inferred] The game may shift from linear tutorial to open-ended farm management later; the sampled frames cover only the opening cleanup/production tutorial."
+    ]
+  },
+  "prompt": "You are a game-mechanics analyst. You are given {num_frames} frames sampled evenly from a single gameplay video of the mobile game **{game}**.\n\nVideo title: \"{title}\"\n\nTASK: write a mechanics spec describing what you can actually SEE in these frames. This spec will be used to build a playable clone of the core loop, so concrete, observable details are worth more than plausible guessing.\n\nReturn a single JSON object with exactly these keys:\n- \"core_loop\": array of strings, the 4-7 ordered steps a player repeats minute to minute (e.g. \"harvest crop -> sell at stall -> buy plot -> unlock crop\").\n- \"controls\": array of strings, how the player interacts (tap, drag, swipe, hold) and what each gesture does, as visible from UI affordances.\n- \"progression\": array of strings, how the game deepens over minutes/hours: currencies, unlock order, expansion axes (buildings, animals, crops, areas).\n- \"session_feel\": string, pacing, screen density, juice/animation level, estimated session length, target audience vibe.\n- \"confidence_notes\": array of strings, REQUIRED: everything a frame sample CANNOT tell you (real-time vs turn timing, audio, exact numbers, off-screen systems) and mark each spec claim as seen / inferred.\n\nRules:\n- The frames ARE real gameplay of the named game — that is ground truth, not a hypothesis. Your job is to reverse-engineer the loop from what the frames show, not to judge whether a loop is provable from stills.\n- Static screenshots still reveal game systems: visible menus, buildings, crops, animals, currencies, level/counter numbers, map areas. Derive the core loop and progression those elements imply.\n- Every array entry MUST start with a tag: \"[seen] \" (element directly visible in a frame) or \"[inferred] \" (system implied by visible UI). Never leave an array empty when any game system is visible; if something is genuinely absent from all frames, say so in confidence_notes instead.\n- Do not pad. Wrong guesses are worse than \"[inferred]\" hedges.\n- Respond with ONLY the JSON object — no markdown fences, no prose.\n\nNOTE (tooling, not part of your task): plain text output is used instead of function calling because the free vision model does not support tool calls with image input.\n",
+  "prompt_sha256": "199825e341423f77b6ee678974f0a8ef310738c3014268f1a8ce3c4b9b226987"
+}

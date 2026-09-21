@@ -1,0 +1,42 @@
+{
+  "slug": "family_farm_adventure",
+  "source": {
+    "video_id": "hcDpmWRQn8o",
+    "url": "https://www.youtube.com/watch?v=hcDpmWRQn8o",
+    "title": "Family Farm Adventure - Gameplay Walkthrough part 1 - Tutorial (iOS,Android)",
+    "channel": "RSTURBOGAMING",
+    "duration_s": 598
+  },
+  "model": "qwen/qwen3-vl-235b-a22b-instruct",
+  "frames_sampled": 8,
+  "spec": {
+    "core_loop": [
+      "[seen] tap on debris or overgrown land to start clearing",
+      "[seen] wait for timer or pay currency to speed up land clearing",
+      "[seen] tap cleared plot to place crop or building",
+      "[seen] harvest mature crops or collect from buildings",
+      "[seen] collect coins and other currencies from harvests"
+    ],
+    "controls": [
+      "[seen] tap: select character, interact with objects, confirm actions",
+      "[seen] tap + hold: possibly drag camera (inferred from map scale changes)",
+      "[seen] tap on UI buttons: open menus, spend currency, speed up timers"
+    ],
+    "progression": [
+      "[seen] currency counters: coins (1183), green gems (20), blue gems (3)",
+      "[seen] level indicator: '39/41' visible in top bar",
+      "[seen] unlock order: land clearing → planting → harvesting → building placement",
+      "[seen] expansion axes: new plots, new crops (sunflowers), new buildings (hut, workshop)"
+    ],
+    "session_feel": "casual pacing, low screen density with clear focal points, moderate juice via pop-up dialogs and animations, estimated 5-15 min session, targets casual mobile players seeking light narrative and progression",
+    "confidence_notes": [
+      "[inferred] real-time vs turn timing: frames suggest real-time waiting (timer overlay) but no frame shows actual passage of time",
+      "[inferred] audio: no sound cues visible; music or SFX cannot be determined",
+      "[inferred] exact numbers: currency values and timers are shown but their scaling or cost curves are not visible across frames",
+      "[inferred] off-screen systems: inventory, crafting, quest log, social features not visible in any frame",
+      "[inferred] tutorial flow: dialogue suggests guided steps but full sequence not captured"
+    ]
+  },
+  "prompt": "You are a game-mechanics analyst. You are given {num_frames} frames sampled evenly from a single gameplay video of the mobile game **{game}**.\n\nVideo title: \"{title}\"\n\nTASK: write a mechanics spec describing what you can actually SEE in these frames. This spec will be used to build a playable clone of the core loop, so concrete, observable details are worth more than plausible guessing.\n\nReturn a single JSON object with exactly these keys:\n- \"core_loop\": array of strings, the 4-7 ordered steps a player repeats minute to minute (e.g. \"harvest crop -> sell at stall -> buy plot -> unlock crop\").\n- \"controls\": array of strings, how the player interacts (tap, drag, swipe, hold) and what each gesture does, as visible from UI affordances.\n- \"progression\": array of strings, how the game deepens over minutes/hours: currencies, unlock order, expansion axes (buildings, animals, crops, areas).\n- \"session_feel\": string, pacing, screen density, juice/animation level, estimated session length, target audience vibe.\n- \"confidence_notes\": array of strings, REQUIRED: everything a frame sample CANNOT tell you (real-time vs turn timing, audio, exact numbers, off-screen systems) and mark each spec claim as seen / inferred.\n\nRules:\n- The frames ARE real gameplay of the named game — that is ground truth, not a hypothesis. Your job is to reverse-engineer the loop from what the frames show, not to judge whether a loop is provable from stills.\n- Static screenshots still reveal game systems: visible menus, buildings, crops, animals, currencies, level/counter numbers, map areas. Derive the core loop and progression those elements imply.\n- Every array entry MUST start with a tag: \"[seen] \" (element directly visible in a frame) or \"[inferred] \" (system implied by visible UI). Never leave an array empty when any game system is visible; if something is genuinely absent from all frames, say so in confidence_notes instead.\n- Do not pad. Wrong guesses are worse than \"[inferred]\" hedges.\n- Respond with ONLY the JSON object — no markdown fences, no prose.\n\nNOTE (tooling, not part of your task): plain text output is used instead of function calling because the free vision model does not support tool calls with image input.\n",
+  "prompt_sha256": "199825e341423f77b6ee678974f0a8ef310738c3014268f1a8ce3c4b9b226987"
+}

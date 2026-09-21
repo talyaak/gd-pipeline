@@ -1,0 +1,46 @@
+{
+  "slug": "township",
+  "source": {
+    "video_id": "X016xxJSVx8",
+    "url": "https://www.youtube.com/watch?v=X016xxJSVx8",
+    "title": "TOWNSHIP Level 157 Gameplay # 3",
+    "channel": "TownshipDotCom",
+    "duration_s": 805
+  },
+  "model": "qwen/qwen3-vl-235b-a22b-instruct",
+  "frames_sampled": 8,
+  "spec": {
+    "core_loop": [
+      "[seen] tap crop/animal to harvest",
+      "[seen] tap factory to start production (e.g. Jam Factory, Soap Bubbles)",
+      "[seen] wait for timer to complete production or collect output",
+      "[seen] tap storage or delivery truck to collect coins and XP",
+      "[inferred] spend coins to expand land or buy new buildings/crops"
+    ],
+    "controls": [
+      "[seen] tap: select building, start production, collect goods, open menus",
+      "[seen] drag: move buildings in Edit Mode (visible in frame 6)",
+      "[seen] swipe: scroll map view (implied by multiple map areas shown across frames)",
+      "[seen] hold: not visible; no long-press UI affordance observed"
+    ],
+    "progression": [
+      "[seen] level 157 displayed → progression via XP bar",
+      "[seen] coins (41M+), green bills (3.6K+), blue gems (10+) → multiple currencies",
+      "[seen] factories unlock products (Jam, Soap Bubbles) → production chain expansion",
+      "[seen] multiple zones (farm, city, beach, zoo) → area unlocking/expansion",
+      "[seen] buildings have upgrade levels (e.g., Jam Factory has 12 stars) → building tiering",
+      "[seen] train tracks and delivery trucks → logistics/transport system"
+    ],
+    "session_feel": "Fast-paced but idle-friendly; high screen density with animated icons and pop-ups; moderate juice (sparkles, counters, floating numbers); session length ~5–15 min; targets casual players who enjoy visual progress and light management.",
+    "confidence_notes": [
+      "[inferred] real-time vs turn-based: timers suggest real-time, but no frame shows active countdowns ticking — inferred from static timers.",
+      "[inferred] audio: no sound cues visible; cannot confirm SFX or music presence.",
+      "[inferred] exact numbers: currency values are large (e.g., 41M coins) but no frame shows earning rate per action.",
+      "[inferred] off-screen systems: social features (chat, helpers) visible but their impact on core loop is not shown.",
+      "[inferred] tutorial or onboarding: no first-time prompts or tooltips visible — assumed player is past tutorial.",
+      "[inferred] failure states: no bankruptcy, overproduction, or resource depletion shown — assumed soft limits."
+    ]
+  },
+  "prompt": "You are a game-mechanics analyst. You are given {num_frames} frames sampled evenly from a single gameplay video of the mobile game **{game}**.\n\nVideo title: \"{title}\"\n\nTASK: write a mechanics spec describing what you can actually SEE in these frames. This spec will be used to build a playable clone of the core loop, so concrete, observable details are worth more than plausible guessing.\n\nReturn a single JSON object with exactly these keys:\n- \"core_loop\": array of strings, the 4-7 ordered steps a player repeats minute to minute (e.g. \"harvest crop -> sell at stall -> buy plot -> unlock crop\").\n- \"controls\": array of strings, how the player interacts (tap, drag, swipe, hold) and what each gesture does, as visible from UI affordances.\n- \"progression\": array of strings, how the game deepens over minutes/hours: currencies, unlock order, expansion axes (buildings, animals, crops, areas).\n- \"session_feel\": string, pacing, screen density, juice/animation level, estimated session length, target audience vibe.\n- \"confidence_notes\": array of strings, REQUIRED: everything a frame sample CANNOT tell you (real-time vs turn timing, audio, exact numbers, off-screen systems) and mark each spec claim as seen / inferred.\n\nRules:\n- The frames ARE real gameplay of the named game — that is ground truth, not a hypothesis. Your job is to reverse-engineer the loop from what the frames show, not to judge whether a loop is provable from stills.\n- Static screenshots still reveal game systems: visible menus, buildings, crops, animals, currencies, level/counter numbers, map areas. Derive the core loop and progression those elements imply.\n- Every array entry MUST start with a tag: \"[seen] \" (element directly visible in a frame) or \"[inferred] \" (system implied by visible UI). Never leave an array empty when any game system is visible; if something is genuinely absent from all frames, say so in confidence_notes instead.\n- Do not pad. Wrong guesses are worse than \"[inferred]\" hedges.\n- Respond with ONLY the JSON object — no markdown fences, no prose.\n\nNOTE (tooling, not part of your task): plain text output is used instead of function calling because the free vision model does not support tool calls with image input.\n",
+  "prompt_sha256": "199825e341423f77b6ee678974f0a8ef310738c3014268f1a8ce3c4b9b226987"
+}

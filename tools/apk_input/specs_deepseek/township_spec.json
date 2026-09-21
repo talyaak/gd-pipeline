@@ -1,0 +1,53 @@
+{
+  "slug": "township",
+  "source": {
+    "video_id": "X016xxJSVx8",
+    "url": "https://www.youtube.com/watch?v=X016xxJSVx8",
+    "title": "TOWNSHIP Level 157 Gameplay # 3",
+    "channel": "TownshipDotCom",
+    "duration_s": 805
+  },
+  "model": "deepseek/deepseek-v4-flash-vision-exp",
+  "frames_sampled": 8,
+  "spec": {
+    "core_loop": [
+      "[seen] Town map shows crop fields, animal pens, factories, roads, houses, and bottom-right helicopter/train/boat/hammer icons.",
+      "[inferred] Tap/collect from ready fields, animal pens, and factory buildings to gather goods.",
+      "[seen] Open factory popups (Jam Factory, Festive Factory) with product cards, ingredients, barn storage, and countdown timers.",
+      "[inferred] Start/queue production by spending ingredients/coins/cash; wait for timers or speed up.",
+      "[seen] Fulfill helicopter/train/boat transport orders shown by HUD icons; earn coins/cash/XP.",
+      "[seen] Spend resources in Edit Mode to place/upgrade buildings, roads, decorations; save layout.",
+      "[seen] Use social/help chat panel and claim reward chests/event popups to repeat loop."
+    ],
+    "controls": [
+      "[seen] Tap bottom-right HUD icons (helicopter, train, boat, hammer) to open transport/order/building actions.",
+      "[seen] Tap factory buildings/popups (Festive Factory, Jam Factory) to open production menus with product carousel arrows.",
+      "[seen] Tap plus icons beside coin/cash counters (green + buttons) to open purchase/currency UI.",
+      "[seen] Tap chat/social icon, type in ENTER MESSAGE field, and send via green button in Helpers and Winners panel.",
+      "[seen] Edit Mode shows tap/drag placement affordances: grid, X/delete, save/cancel/check controls, and left-side building category icons.",
+      "[inferred] Drag to move buildings/decor; tap-and-hold or pinch likely for map navigation, but not directly visible in stills.",
+      "[seen] Timers and FULL/No room indicators imply waiting/gating as non-gesture interaction."
+    ],
+    "progression": [
+      "[seen] Top HUD shows level 157, XP bar 2,775/22,775, +50% modifier, coins 41,298,047, green cash 3,646, and barn/FULL indicator.",
+      "[seen] Factory types visible: Festive Factory (soap bubbles/balloons) and Jam Factory (jam jars), each with production slots, ingredients, barn storage, and timers.",
+      "[seen] Multiple building classes: houses, apartments, barns, factories, roads, water, trees, zoo/event-like structures, and transport hubs.",
+      "[seen] Edit Mode allows town layout changes, decoration, and expansion/placement progression.",
+      "[inferred] Level-gated unlocks likely add crops, animals, factories, community buildings, zoo, and map areas over time.",
+      "[inferred] Currencies function as coins for goods/buildings, cash for premium/speed-ups, XP for levels, and barn capacity as storage gate.",
+      "[seen] Social/help requests ('My Zoo needs help!') and reward chest popups imply cooperative/event progression axes."
+    ],
+    "session_feel": "[seen] Dense, colorful landscape HUD with many permanent buttons, popup factory panels, timers (1H 30M, 32:14H, 10:51), currency counters, and FULL/No room gates; sessions look like short asynchronous check-ins to collect/start production, with longer optional design/social/event sessions. [inferred] Juice/animation and audio cannot be judged from stills; target audience is casual social town-builder/farm players; estimated session length minutes several times per day plus occasional longer decorating sprees.",
+    "confidence_notes": [
+      "[seen] Only 8 sampled frames are available; exact labels/numbers are partially illegible, so timer/currency/level values are approximate transcriptions.",
+      "[inferred] Real-time vs turn-based timing cannot be proven from stills; visible timers imply real-time waits, but offline progress is not confirmable.",
+      "[seen] Audio, music, sound effects, haptics, and animation quality are absent from screenshot evidence.",
+      "[inferred] Off-screen systems not shown include tutorial, quests, achievements, co-op/regatta, mine, settings, shop/IAP, and exact recipe/economy balance.",
+      "[seen] No combat, gacha, avatar movement, or turn-based battle UI appears in any sampled frame.",
+      "[seen] 'Hogwarts' label and chest popup are visible but their event/system context is not determinable from stills.",
+      "[inferred] Gesture details such as drag-to-place, pinch-zoom, tap-and-hold, and exact tap targets are inferred from UI affordances, not directly observed."
+    ]
+  },
+  "prompt": "You are a game-mechanics analyst. You are given {num_frames} frames sampled evenly from a single gameplay video of the mobile game **{game}**.\n\nVideo title: \"{title}\"\n\nTASK: write a mechanics spec describing what you can actually SEE in these frames. This spec will be used to build a playable clone of the core loop, so concrete, observable details are worth more than plausible guessing.\n\nReturn a single JSON object with exactly these keys:\n- \"core_loop\": array of strings, the 4-7 ordered steps a player repeats minute to minute (e.g. \"harvest crop -> sell at stall -> buy plot -> unlock crop\").\n- \"controls\": array of strings, how the player interacts (tap, drag, swipe, hold) and what each gesture does, as visible from UI affordances.\n- \"progression\": array of strings, how the game deepens over minutes/hours: currencies, unlock order, expansion axes (buildings, animals, crops, areas).\n- \"session_feel\": string, pacing, screen density, juice/animation level, estimated session length, target audience vibe.\n- \"confidence_notes\": array of strings, REQUIRED: everything a frame sample CANNOT tell you (real-time vs turn timing, audio, exact numbers, off-screen systems) and mark each spec claim as seen / inferred.\n\nRules:\n- The frames ARE real gameplay of the named game — that is ground truth, not a hypothesis. Your job is to reverse-engineer the loop from what the frames show, not to judge whether a loop is provable from stills.\n- Static screenshots still reveal game systems: visible menus, buildings, crops, animals, currencies, level/counter numbers, map areas. Derive the core loop and progression those elements imply.\n- Every array entry MUST start with a tag: \"[seen] \" (element directly visible in a frame) or \"[inferred] \" (system implied by visible UI). Never leave an array empty when any game system is visible; if something is genuinely absent from all frames, say so in confidence_notes instead.\n- Do not pad. Wrong guesses are worse than \"[inferred]\" hedges.\n- Respond with ONLY the JSON object — no markdown fences, no prose.\n\nNOTE (tooling, not part of your task): plain text output is used instead of function calling because the free vision model does not support tool calls with image input.\n",
+  "prompt_sha256": "199825e341423f77b6ee678974f0a8ef310738c3014268f1a8ce3c4b9b226987"
+}
