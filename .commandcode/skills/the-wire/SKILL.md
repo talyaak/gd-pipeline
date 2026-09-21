@@ -58,6 +58,7 @@ When context approaches the limit (~900k tokens):
    - last commit SHAs pushed and where
    - exact next step
    - anything in flight (uncommitted files, background tasks)
+   - **Close-out rule: refresh status.md AFTER the commit it describes** — a status file that names a stale HEAD fails its only job. Status.md never names the commit that contains it; say "HEAD = `git log -1`".
 2. Start a new chat (the user does this).
 3. In the new session: read `.commandcode/status.md`, then this skill, re-read the Wire and `.commandcode/wire-ledger.md`, and resume the loop from step 2. A context reset must cost the work nothing.
 

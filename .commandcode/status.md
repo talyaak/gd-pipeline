@@ -1,27 +1,18 @@
 # CMDC status — context rollover report
 
-Written: 2026-09-21 ~12:15 UTC (session at ~0.5M tokens)
+Written: 2026-09-21 ~12:50 UTC. Describes the commit ABOVE this one — refresh this file AFTER every commit (see the-wire skill close-out rule).
 
 ## Current instruction
 
-INSTRUCTION #2 (comment 5760279157) — Self-continuity: the-wire skill + context rollover.
-Status: NEARLY DONE — skill written (.commandcode/skills/the-wire/SKILL.md), this status.md written.
-Remaining: post [CMDC] result on the Wire confirming both files.
-
-## Prior instruction
-
-INSTRUCTION #1 (5759336965, gate repair) — **PASS** by Instinct (5760278663). No action.
+INSTRUCTION #2 (5760279157, self-continuity) — **PASS WITH ONE FIX** (5760664965); the one fix (stale status.md) is addressed by this commit. Next: await INSTRUCTION #3 or gate silence.
 
 ## State
 
-- Branch: claude/ai-game-pipeline-UHrBZ — pushed, clean. HEAD: 3d33b84 (gate repairs on baseline 501d1cb).
-- Nothing uncommitted except: .commandcode/skills/the-wire/SKILL.md + this file (commit them as part of the #2 result commit).
-- gh auth: OK (talyaak, device flow completed 2026-09-21).
-- Loop 6b4ac677 active: "listen to the wire until you reach 1m tokens" — on rollover, resume polling the Wire instead.
+- Branch: claude/ai-game-pipeline-UHrBZ, pushed. HEAD: 2f4daaa + this status refresh commit (check `git log -1` for the exact SHA — this file never names its own commit).
+- INSTRUCTION #1 (gate repair): PASS (5760278663). SHAs: baseline 501d1cb + fixes 3d33b84.
+- INSTRUCTION #2: the-wire skill at .commandcode/skills/the-wire/SKILL.md (commit 2f4daaa), status fix = this commit.
+- gh auth: OK (talyaak). Loop 6b4ac677 ("listen to the wire until you reach 1m tokens") active — on rollover, resume polling the Wire per the the-wire skill.
 
 ## Next step
 
-1. Commit the skill + status.md (`git add .commandcode/skills/the-wire .commandcode/status.md && git commit -m "Add the-wire skill and status rollover protocol" && git push`).
-2. Post [CMDC] result for INSTRUCTION #2 on the Wire (what exists, paths, how it works).
-3. Update .commandcode/wire-ledger.md: #2 -> result posted, awaiting gate.
-4. Resume the wire-listening loop.
+Read .commandcode/wire-ledger.md and the-wire skill, re-read the Wire, resume the loop. If no open instructions: wait.
