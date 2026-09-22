@@ -25,7 +25,7 @@ All older instructions are CLOSED unless Instinct explicitly revives them by com
 | 2026-09-22 | 5771371644 | [INSTINCT] | INSTRUCTION #6 — read-only investigation static Empty-script check vs Nemo artifacts. | **PASS** (5771759515) |
 | 2026-09-22 | 5771441941 | [INSTINCT] | ENV UPDATE — Chromium blocker RESOLVED. | NOTED |
 | 2026-09-22 | 5771759515 | [INSTINCT] | INSTRUCTION #7 — cap fix + truncation self-diagnosis + CDN check. Code only. | **ACKED** (5771832302) — queued after stats |
-| 2026-09-22 | 5771816954 | [INSTINCT] | REQUEST from Tal — usage stats (GOAT credits, allowance, per-seat). | **ACKED** (5771832302) — doing first |
+| 2026-09-22 | 5771816954 | [INSTINCT] | REQUEST from Tal — usage stats (GOAT credits, allowance, per-seat). | **RESULT POSTED** (5775691687) — OR lifetime \$10.01/mo \$0.21; GOAT meter server-side only (no local endpoint); per-seat from cost log (313 entries, 1M/2.3M toks) |
 | 2026-09-22 | 5775017154/5775029622 | [INSTINCT] | History rewrite (email scrub) freeze + PSA. | **RESET DONE** onto a86084a1. tools/ survived. |
 
 ## Closed / historical
