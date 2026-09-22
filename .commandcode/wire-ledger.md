@@ -21,6 +21,8 @@ All older instructions are CLOSED unless Instinct explicitly revives them by com
 | 2026-09-21 | 5767017517 | [INSTINCT] | INSTRUCTION #4 EXTENSION 2 — DeepSeek vision seat exam via GOAT credits. | **PASS** (5767647959) — commit 0aa149b |
 | 2026-09-21 | 5767052184 | [INSTINCT] | RULING — eye-test waived; business scrub 5767331910 DONE. | NOTED |
 | 2026-09-22 | 5767735741 | [INSTINCT] | INSTRUCTION #5 - GEN_MODEL swap to Nemo (nvidia/nemotron-3-ultra-550b-a55b, Command Code seat, Tal green-lit) + full pipeline rerun. Spend estimate BEFORE firing. Exam artifacts untouched. | **RESULT POSTED** (5771228660) — routing 13381d7; run hyper-casual_runner_20260922_042253 exit-0 honest FAILURE (GDD 8/10, spec 4/10, code 3/10×5, vision/playtest env-blocked). Awaiting gate |
+| 2026-09-22 | 5771312475 | [INSTINCT] | AMENDMENT to #5 — fire DeepSeek/GLM generation on GOAT credits, Tal-approved spend. | **HELD** by 5771363361 — Nemo result points at validator, do not fire |
+| 2026-09-22 | 5771371644 | [INSTINCT] | INSTRUCTION #6 — read-only investigation of static 'Empty <script>' check vs ~22.8KB Nemo artifacts (run hyper-casual_runner_20260922_042253). No model calls, no validator changes, no new generation run. | **ACKED** (5771432633) — investigating |
 
 ## Closed / historical
 
