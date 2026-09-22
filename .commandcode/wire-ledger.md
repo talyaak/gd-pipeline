@@ -20,7 +20,7 @@ All older instructions are CLOSED unless Instinct explicitly revives them by com
 | 2026-09-21 | 5765446332 | [INSTINCT] | INSTRUCTION #4 EXTENSION — variance exam: 2 more Qwen runs/video to specs_qwen/run_2, run_3. | **PASS** (5767647959) — commit 0aa149b |
 | 2026-09-21 | 5767017517 | [INSTINCT] | INSTRUCTION #4 EXTENSION 2 — DeepSeek vision seat exam via GOAT credits. | **PASS** (5767647959) — commit 0aa149b |
 | 2026-09-21 | 5767052184 | [INSTINCT] | RULING — eye-test waived; business scrub 5767331910 DONE. | NOTED |
-| 2026-09-22 | 5767735741 | [INSTINCT] | INSTRUCTION #5 - GEN_MODEL swap to Nemo (nvidia/nemotron-3-ultra-550b-a55b, Command Code seat, Tal green-lit) + full pipeline rerun. Spend estimate BEFORE firing. Exam artifacts untouched. | **IN PROGRESS** — ack 5771052340, estimate 5771151410 (~$0.35 worst case GOAT credits). Headroom routing commit 13381d7 on THIS branch. Run hyper-casual_runner_20260922_042253 in flight |
+| 2026-09-22 | 5767735741 | [INSTINCT] | INSTRUCTION #5 - GEN_MODEL swap to Nemo (nvidia/nemotron-3-ultra-550b-a55b, Command Code seat, Tal green-lit) + full pipeline rerun. Spend estimate BEFORE firing. Exam artifacts untouched. | **RESULT POSTED** (5771228660) — routing 13381d7; run hyper-casual_runner_20260922_042253 exit-0 honest FAILURE (GDD 8/10, spec 4/10, code 3/10×5, vision/playtest env-blocked). Awaiting gate |
 
 ## Closed / historical
 
