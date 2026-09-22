@@ -42,6 +42,24 @@ def check_html_game(html: str) -> list[str]:
         issues.append("Missing <script> tag — no game code.")
         return issues
 
+    # ── External refs first (#7b): independent of the empty-JS path ─
+    # so a CDN tag is named even when the inline block is truncated.
+    # Whitespace-bound attrs (not \\b): data-src/data-href stay benign.
+    for tag in re.findall(r"<script[^>]*>", html, re.IGNORECASE):
+        if re.search(r"(?:\s|['\"])src\s*=", tag, re.IGNORECASE):
+            issues.append(
+                f"External script reference ({tag.strip()}). "
+                "Zero external files — inline all code."
+            )
+            break
+    for tag in re.findall(r"<link[^>]*>", html, re.IGNORECASE):
+        if re.search(r"(?:\s|['\"])href\s*=", tag, re.IGNORECASE):
+            issues.append(
+                f"External stylesheet reference ({tag.strip()}). "
+                "Zero external files — inline all styles."
+            )
+            break
+
     # ── Extract JS ────────────────────────────────────────────────────
     unclosed = html.count("<script") - html.count("</script>")
     js_blocks = re.findall(r"<script[^>]*>(.*?)</script>", html, re.DOTALL)
@@ -56,21 +74,6 @@ def check_html_game(html: str) -> list[str]:
         else:
             issues.append("Empty <script> — no game code.")
         return issues
-
-    for tag in re.findall(r"<script[^>]*>", html):
-        if re.search(r"\bsrc\s*=", tag):
-            issues.append(
-                f"External script reference ({tag.strip()}). "
-                "Zero external files — inline all code."
-            )
-            break
-    for tag in re.findall(r"<link[^>]*>", html):
-        if re.search(r"\bhref\s*=", tag):
-            issues.append(
-                f"External stylesheet reference ({tag.strip()}). "
-                "Zero external files — inline all styles."
-            )
-            break
 
     # ── Banned delta-time variable names ──────────────────────────────
     for bad in _BANNED_DT_NAMES:
