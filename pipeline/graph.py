@@ -79,6 +79,11 @@ _MODEL_OUTPUT_LIMITS: dict[str, int] = {
     "google/gemini-2.0-flash-exp:free":  8_192,
     "google/gemini-1.5-flash:free":      8_192,
     "nvidia/nemotron-3-ultra:free":      4_096,
+    # Headroom seats (INSTRUCTION #7): caps verified against the local
+    # roster (~/.commandcode/providers.json, mirrors the proxy) - all
+    # maxOutput 65_536; seats live-probed SEAT-OK 2026-09-22.
+    "nvidia/nemotron-3-ultra-550b-a55b": 65_536,
+    "deepseek/deepseek-v4-pro":         65_536,
 }
 
 def _max_tokens(model: str, want: int) -> int:

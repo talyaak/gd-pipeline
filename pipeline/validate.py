@@ -43,11 +43,34 @@ def check_html_game(html: str) -> list[str]:
         return issues
 
     # ── Extract JS ────────────────────────────────────────────────────
+    unclosed = html.count("<script") - html.count("</script>")
     js_blocks = re.findall(r"<script[^>]*>(.*?)</script>", html, re.DOTALL)
     js = "\n".join(js_blocks)
     if not js.strip():
-        issues.append("Empty <script> — no game code.")
+        if unclosed > 0:
+            issues.append(
+                f"Truncated output — {unclosed} <script> tag(s) never closed "
+                "(model hit its output-token cap; no </script></body></html>). "
+                "Raise the seat's output cap, do not blame the game code."
+            )
+        else:
+            issues.append("Empty <script> — no game code.")
         return issues
+
+    for tag in re.findall(r"<script[^>]*>", html):
+        if re.search(r"\bsrc\s*=", tag):
+            issues.append(
+                f"External script reference ({tag.strip()}). "
+                "Zero external files — inline all code."
+            )
+            break
+    for tag in re.findall(r"<link[^>]*>", html):
+        if re.search(r"\bhref\s*=", tag):
+            issues.append(
+                f"External stylesheet reference ({tag.strip()}). "
+                "Zero external files — inline all styles."
+            )
+            break
 
     # ── Banned delta-time variable names ──────────────────────────────
     for bad in _BANNED_DT_NAMES:
