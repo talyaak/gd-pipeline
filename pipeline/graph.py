@@ -47,6 +47,14 @@ from pipeline.validate import check_html_game
 # Set OPENROUTER_API_KEY in .env — get free key at openrouter.ai
 # Models: https://openrouter.ai/models
 
+# Command Code seat: when GEN_MODEL names a seat that lives on the headroom
+# proxy (GOAT credits, not OpenRouter cash), route there. The gateway injects
+# a headroom_retrieve tool, so callers must bind tool_choice="none" — see
+# _make_llm. Set HEADROOM_BASE_URL in .env (default: local proxy).
+HEADROOM_BASE_URL = os.getenv("HEADROOM_BASE_URL", "http://127.0.0.1:8787/v1")
+HEADROOM_API_KEY = os.getenv("HEADROOM_API_KEY", "headroom-local")
+HEADROOM_MODELS = ("nvidia/nemotron-3-ultra-550b-a55b",)
+
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Generation: best free coding model with vision + 1M context
@@ -79,7 +87,23 @@ def _max_tokens(model: str, want: int) -> int:
 
 
 def _make_llm(model: str, temperature: float, max_tokens: int) -> ChatOpenAI:
-    """Create ChatOpenAI configured for OpenRouter."""
+    """Create ChatOpenAI configured for OpenRouter, or the Command Code
+    headroom proxy when the model is a headroom seat (INSTRUCTION #5)."""
+    if model in HEADROOM_MODELS:
+        llm = ChatOpenAI(
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            base_url=HEADROOM_BASE_URL,
+            api_key=HEADROOM_API_KEY,
+            default_headers={
+                "HTTP-Referer": "https://github.com/talyaak/gd-pipeline",
+                "X-Title": "gd-pipeline",
+            },
+        )
+        # The gateway injects a headroom_retrieve tool; without this the model
+        # returns finish_reason=tool_calls with empty text.
+        return llm.bind(tool_choice="none")
     return ChatOpenAI(
         model=model,
         temperature=temperature,
