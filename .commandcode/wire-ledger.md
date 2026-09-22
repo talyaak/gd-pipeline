@@ -15,7 +15,12 @@ All older instructions are CLOSED unless Instinct explicitly revives them by com
 |------|-----------|--------|-------------|--------|
 | 2026-09-21 | 5759336965 | [INSTINCT] | INSTRUCTION #1 - Gate repair: 1) wire real vision review (screenshot + 10-point checklist to VISION_MODEL, structured CodeReview, route on score); 2) live playtest telemetry + wire-or-remove rework path; 3) resolve verify_vision mixed edges. No behavior changes outside the three. | **PASS** (5760278663) — final SHAs: baseline 501d1cb + fixes 3d33b84 |
 | 2026-09-21 | 5760279157 | [INSTINCT] | INSTRUCTION #2 - Self-continuity: the-wire skill (protocol, gh auth recovery w/ ntfy reauth, ledger resume) + context rollover protocol + first .commandcode/status.md. | **PASS WITH ONE FIX** (5760664965) — fix applied (aa665ed); formally CLOSED (5761050668) |
-| 2026-09-21 | 5761662338 | [INSTINCT] | INSTRUCTION #3 - First end-to-end run through the repaired gates. VISION_MODEL set, one genre, act as human at HITL. Deliver run dir, artifact, all reviews, screenshot, telemetry. Failures are valid results. | RESULT POSTED — E2E run completed (output/hyper-casual_runner_20260921_140122), code gate failed honestly 5x (empty script), vision 1/10 real reviews, playtest rework loop fired twice. Fixes committed 209d12e. Awaiting gate |
+| 2026-09-21 | 5761662338 | [INSTINCT] | INSTRUCTION #3 - First end-to-end run through the repaired gates. VISION_MODEL set, one genre, act as human at HITL. Deliver run dir, artifact, all reviews, screenshot, telemetry. Failures are valid results. | **PASS** (5762386730) — fixes 209d12e gated |
+| 2026-09-21 | 5762450855 | [INSTINCT] | INSTRUCTION #4 - APK-as-input Stage 0+2 on feat/apk-input (rooted main dfdc9e7). Qwen seat amendment 5762635727. | **COMPLETE** (5764930769) — work on feat/apk-input, commits da508b9/243f669 + layout 23f446e |
+| 2026-09-21 | 5765446332 | [INSTINCT] | INSTRUCTION #4 EXTENSION — variance exam: 2 more Qwen runs/video to specs_qwen/run_2, run_3. | **PASS** (5767647959) — commit 0aa149b |
+| 2026-09-21 | 5767017517 | [INSTINCT] | INSTRUCTION #4 EXTENSION 2 — DeepSeek vision seat exam via GOAT credits. | **PASS** (5767647959) — commit 0aa149b |
+| 2026-09-21 | 5767052184 | [INSTINCT] | RULING — eye-test waived; business scrub 5767331910 DONE. | NOTED |
+| 2026-09-22 | 5767735741 | [INSTINCT] | INSTRUCTION #5 - GEN_MODEL swap to Nemo (nvidia/nemotron-3-ultra-550b-a55b, Command Code seat, Tal green-lit) + full pipeline rerun. Spend estimate BEFORE firing. Exam artifacts untouched. | **IN PROGRESS** — ack 5771052340, estimate 5771151410 (~$0.35 worst case GOAT credits). Headroom routing commit 13381d7 on THIS branch. Run hyper-casual_runner_20260922_042253 in flight |
 
 ## Closed / historical
 
