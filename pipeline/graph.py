@@ -190,6 +190,15 @@ def research_genre(state: PipelineState) -> PipelineState:
         structured_llm, RESEARCH_PROMPT.format(genre=state["genre"])
     )
 
+    # Honest stage failure (ruling 5793315878): the provider gave up
+    # (None after retries) — say why, never crash on None.model_dump().
+    if analysis is None:
+        raise RuntimeError(
+            "research_genre: review model returned None after retries "
+            "(provider exhausted — see retry log above). Refire after "
+            "the 15-min provider cooldown per retry policy 5793302734."
+        )
+
     path = output.save("01_genre_research", "analysis.json", analysis.model_dump())
     print(f"  [research_genre] Done -> {output.rel(path)}")
 
