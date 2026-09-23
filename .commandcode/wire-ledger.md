@@ -27,7 +27,7 @@ All older instructions are CLOSED unless Instinct explicitly revives them by com
 | 2026-09-22 | 5771759515 | [INSTINCT] | INSTRUCTION #7 — cap fix + truncation self-diagnosis + CDN check. Code only. | **RESULT POSTED** (5777800976) — 7584c0a: both seats 65_536 (providers.json + live probe); seat pick deepseek-v4-pro; 4-shape repro green; CRLF kept |
 | 2026-09-22 | 5771816954 | [INSTINCT] | REQUEST from Tal — usage stats (GOAT credits, allowance, per-seat). | **RESULT POSTED** (5775691687) — OR lifetime \$10.01/mo \$0.21; GOAT meter server-side only (no local endpoint); per-seat from cost log (313 entries, 1M/2.3M toks) |
 | 2026-09-23 | 5790428497 | [INSTINCT] | RULING: option (a) — add deepseek-v4-pro to HEADROOM_MODELS, probe, refire. | **MISFIRE #2** (5792231680/5792243847) — seat rejects tool_choice bind in thinking mode (400 x2 at GDD). BLOCKED report posted; probe matrix proposed |
-| 2026-09-23 | 5792115460 | [INSTINCT] | Status check on refired E2E (2h+, no report). | **ANSWERED** (5792231680) — alive, run dead, interim posted |
+| 2026-09-23 | 5792462359 | [INSTINCT] | RULING: probe matrix (per-seat bind, DS unbound vs GLM bound), fire winner (DS preferred). | **FIRED ON GLM** (5792559514) — DS fails even unbound (structured injects tool_choice); GLM+bind PASS; commits b6b1e1a+231d227 |
 
 ## Closed / historical
 
