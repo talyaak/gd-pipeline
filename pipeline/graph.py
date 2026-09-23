@@ -53,7 +53,7 @@ from pipeline.validate import check_html_game
 # _make_llm. Set HEADROOM_BASE_URL in .env (default: local proxy).
 HEADROOM_BASE_URL = os.getenv("HEADROOM_BASE_URL", "http://127.0.0.1:8787/v1")
 HEADROOM_API_KEY = os.getenv("HEADROOM_API_KEY", "headroom-local")
-HEADROOM_MODELS = ("nvidia/nemotron-3-ultra-550b-a55b", "deepseek/deepseek-v4-pro")
+HEADROOM_MODELS = ("nvidia/nemotron-3-ultra-550b-a55b", "deepseek/deepseek-v4-pro", "z-ai/glm-5.3-flash")
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
@@ -106,8 +106,12 @@ def _make_llm(model: str, temperature: float, max_tokens: int) -> ChatOpenAI:
                 "X-Title": "gd-pipeline",
             },
         )
-        # The gateway injects a headroom_retrieve tool; without this the model
-        # returns finish_reason=tool_calls with empty text.
+        # The gateway injects a headroom_retrieve tool. Nemo needs the
+        # tool_choice=none bind or it returns finish_reason=tool_calls
+        # with empty text; deepseek-v4-pro in thinking mode rejects ANY
+        # tool_choice param (ruling 5792462359), so it goes unbound.
+        if model == "deepseek/deepseek-v4-pro":
+            return llm
         return llm.bind(tool_choice="none")
     return ChatOpenAI(
         model=model,
