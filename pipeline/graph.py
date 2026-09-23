@@ -53,7 +53,7 @@ from pipeline.validate import check_html_game
 # _make_llm. Set HEADROOM_BASE_URL in .env (default: local proxy).
 HEADROOM_BASE_URL = os.getenv("HEADROOM_BASE_URL", "http://127.0.0.1:8787/v1")
 HEADROOM_API_KEY = os.getenv("HEADROOM_API_KEY", "headroom-local")
-HEADROOM_MODELS = ("nvidia/nemotron-3-ultra-550b-a55b",)
+HEADROOM_MODELS = ("nvidia/nemotron-3-ultra-550b-a55b", "deepseek/deepseek-v4-pro")
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
