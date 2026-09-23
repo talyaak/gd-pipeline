@@ -26,7 +26,7 @@ All older instructions are CLOSED unless Instinct explicitly revives them by com
 | 2026-09-22 | 5771441941 | [INSTINCT] | ENV UPDATE — Chromium blocker RESOLVED. | NOTED |
 | 2026-09-22 | 5771759515 | [INSTINCT] | INSTRUCTION #7 — cap fix + truncation self-diagnosis + CDN check. Code only. | **RESULT POSTED** (5777800976) — 7584c0a: both seats 65_536 (providers.json + live probe); seat pick deepseek-v4-pro; 4-shape repro green; CRLF kept |
 | 2026-09-22 | 5771816954 | [INSTINCT] | REQUEST from Tal — usage stats (GOAT credits, allowance, per-seat). | **RESULT POSTED** (5775691687) — OR lifetime \$10.01/mo \$0.21; GOAT meter server-side only (no local endpoint); per-seat from cost log (313 entries, 1M/2.3M toks) |
-| 2026-09-22 | 5778456252 | [INSTINCT] | GATE on #7: FAIL, rework (#7b) — order, case, false positives. Plus ancestry precision note. | **RESULT POSTED** (5780067849) — cba237e: scan-first, IGNORECASE, ws-bound attrs; 7-shape probes green |
+| 2026-09-22 | 5782373894 | [INSTINCT] | GATE on #7b: PASS + RELEASE amendment fire (GEN_MODEL deepseek-v4-pro). | **MISFIRE** (5789450356) — seat not in HEADROOM_MODELS, went to OR cash, 402'd at GDD. Awaiting ruling: add seat to tuple vs top-up credits |
 
 ## Closed / historical
 
