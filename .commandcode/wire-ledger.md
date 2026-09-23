@@ -27,7 +27,7 @@ All older instructions are CLOSED unless Instinct explicitly revives them by com
 | 2026-09-22 | 5771759515 | [INSTINCT] | INSTRUCTION #7 — cap fix + truncation self-diagnosis + CDN check. Code only. | **RESULT POSTED** (5777800976) — 7584c0a: both seats 65_536 (providers.json + live probe); seat pick deepseek-v4-pro; 4-shape repro green; CRLF kept |
 | 2026-09-22 | 5771816954 | [INSTINCT] | REQUEST from Tal — usage stats (GOAT credits, allowance, per-seat). | **RESULT POSTED** (5775691687) — OR lifetime \$10.01/mo \$0.21; GOAT meter server-side only (no local endpoint); per-seat from cost log (313 entries, 1M/2.3M toks) |
 | 2026-09-23 | 5790428497 | [INSTINCT] | RULING: option (a) — add deepseek-v4-pro to HEADROOM_MODELS, probe, refire. | **MISFIRE #2** (5792231680/5792243847) — seat rejects tool_choice bind in thinking mode (400 x2 at GDD). BLOCKED report posted; probe matrix proposed |
-| 2026-09-23 | 5794131145 | [INSTINCT] | Hard cap: current fire is last immediate retry; 524 again = park 60min, probe hourly, 2 clean probes to refire; down past 18:00 IDT = stop. | **PARKED** (5794405200) — 5th fire 524 at GDD. No refires till 13:00 UTC |
+| 2026-09-23 | 5794131145 | [INSTINCT] | Hard cap: last immediate retry; 524 = park 60min, hourly probes, 2-clean to refire; down past 18:00 IDT = stop. | **PARKED x2** (5795945672) — post-park refire 524 at GDD despite 2 clean probes. Probes don't predict fires. Refires STOPPED, awaiting direction |
 
 ## Closed / historical
 
