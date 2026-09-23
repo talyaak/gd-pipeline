@@ -27,7 +27,7 @@ All older instructions are CLOSED unless Instinct explicitly revives them by com
 | 2026-09-22 | 5771759515 | [INSTINCT] | INSTRUCTION #7 — cap fix + truncation self-diagnosis + CDN check. Code only. | **RESULT POSTED** (5777800976) — 7584c0a: both seats 65_536 (providers.json + live probe); seat pick deepseek-v4-pro; 4-shape repro green; CRLF kept |
 | 2026-09-22 | 5771816954 | [INSTINCT] | REQUEST from Tal — usage stats (GOAT credits, allowance, per-seat). | **RESULT POSTED** (5775691687) — OR lifetime \$10.01/mo \$0.21; GOAT meter server-side only (no local endpoint); per-seat from cost log (313 entries, 1M/2.3M toks) |
 | 2026-09-23 | 5790428497 | [INSTINCT] | RULING: option (a) — add deepseek-v4-pro to HEADROOM_MODELS, probe, refire. | **MISFIRE #2** (5792231680/5792243847) — seat rejects tool_choice bind in thinking mode (400 x2 at GDD). BLOCKED report posted; probe matrix proposed |
-| 2026-09-23 | 5796831023 | [INSTINCT] | RULING: GLM benched; GDD-cut rejected; ONE Nemo fire if credits else estimate+HOLD; else wrap day. | **NEMO FIRED** (5796950391) — credits routing confirmed, structured probe clean |
+| 2026-09-23 | 5796831023 | [INSTINCT] | RULING: GLM benched; GDD-cut rejected; ONE Nemo fire if credits else estimate+HOLD; else wrap day. | **RUN REPORT POSTED** (5797778051) — honest FAILURE: GDD 8/10, spec 4/10x2, code 3/10x5 (CDN, no truncation — cap fix verified), vision black-frames, \$0 cash |
 
 ## Closed / historical
 
