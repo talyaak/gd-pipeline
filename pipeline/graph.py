@@ -84,6 +84,7 @@ _MODEL_OUTPUT_LIMITS: dict[str, int] = {
     # maxOutput 65_536; seats live-probed SEAT-OK 2026-09-22.
     "nvidia/nemotron-3-ultra-550b-a55b": 65_536,
     "deepseek/deepseek-v4-pro":         65_536,
+    "z-ai/glm-5.3-flash":                 65_536,
 }
 
 def _max_tokens(model: str, want: int) -> int:
