@@ -16,6 +16,19 @@ the primary pass/fail gate.
 
 ## Pipeline
 
+The pipeline is built on LangGraph. `pipeline/graph.py` defines a `StateGraph`
+with stage nodes and conditional edges, then compiles it; `pipeline/cli.py`
+builds and invokes the compiled graph. The main path is `research` -> `design`
+-> optional `human_review_gdd` -> `spec` -> `visual_spec` -> `codegen`
+-> `validate_execute` -> `review` -> `variant_gen`, with bounded rework back
+to `codegen` and an explicit `give_up` node for failed runs.
+
+`pipeline/cli.py` uses LangGraph's `SqliteSaver` to checkpoint state to each
+run's `checkpoint.sqlite` and resumes human-review interrupts with
+`Command(resume=...)`. The LLM provider layer in `pipeline/llm.py` uses LangChain's
+`ChatOpenAI` (`langchain-openai`) for OpenRouter and `ChatAnthropic`
+(`langchain-anthropic`) for Anthropic.
+
 ```
 research -> design (GDD) -> [human review, configurable] -> spec -> codegen
   -> validate (static regex + browser execution)
